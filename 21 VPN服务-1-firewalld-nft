@@ -1,0 +1,549 @@
+
+1 firewalld和最新技术nft实现防火墙功能
+
+1.1 firewalld
+	firewalld是CentOS 7.0新推出的管理netfilter的用户空间软件工具,也被ubuntu18.04版以上所支持(apt install firewalld安装即可)
+	firewalld是配置和监控防火墙规则的系统守护进程。可以实iptables,ip6tables,ebtables的功能
+	firewalld服务由firewalld包提供
+	firewalld支持划分区域zone,每个zone可以设置独立的防火墙规则
+	
+	归入zone顺序：
+		先根据数据包中源地址，将其纳为某个zone
+		纳为网络接口所属zone
+		纳入默认zone，默认为public zone,管理员可以改为其它zone
+		网卡默认属于public zone,lo网络接口属于trusted zone
+	
+	
+	firewalld zone 分类
+		zone名称	|	默认配置
+		--------------------------------------------------------------------------------------------------------------------------
+		trusted		|	允许所有流量
+		home		|	拒绝除和传出流量相关的，以及ssh,mdsn,ipp-client,samba-client,dhcpv6-client预定义服务之外其它所有传入流量
+		internal	|	和home相同
+		work		|	拒绝除和传出流量相关的，以及ssh,ipp-client,dhcpv6-client预定义服务之外的其它所有传入流量
+		public		|	拒绝除和传出流量相关的，以及ssh,dhcpv6-client预定义服务之外的其它所有传入流量，新加的网卡默认属于public zone
+		external	|	拒绝除和传出流量相关的，以及ssh预定义服务之外的其它所有传入流量，属于
+		external 	|	zone的传出ipv4流量的源地址将被伪装为传出网卡的地址。
+		dmz			|	拒绝除和传出流量相关的，以及ssh预定义服务之外的其它所有传入流量
+		block		|	拒绝除和传出流量相关的所有传入流量
+		drop		|	拒绝除和传出流量相关的所有传入流量（甚至不以ICMP错误进行回应）
+
+	
+	预定义服务，除了下面列出的，还有很多，比如dhcp、http、ftp等
+		服务名称	  |  配置
+		--------------------------------------------------------------------------------------------------------------------------
+		ssh			  |  Local SSH server. Traffic to 22/tcp
+		dhcpv6-client |  Local DHCPv6 client. Traffic to 546/udp on the fe80::/64 IPv6 network
+		ipp-client	  |  Local IPP printing. Traffic to 631/udp.
+		samba-client  |  Local Windows file and print sharing client. Traffic to 137/udp and 138/udp.
+		mdns		  |  Multicast DNS (mDNS) local-link name resolution. Traffic to 5353/udp to the 224.0.0.251 (IPv4) or ff02::fb (IPv6) multicast addresses.
+	
+	
+	firewalld预定义服务配置
+		firewall-cmd --get-services 查看预定义服务列表
+		/usr/lib/firewalld/services/*.xml预定义服务的配置
+	
+	
+	firewalld 三种配置方法
+		firewall-config 图形工具: 需安装 firewall-config包
+		firewall-cmd 命令行工具: firewalld包,默认安装
+		/etc/firewalld/ 配置文件，一般不建议,如:/etc/firewalld/zones/public.xml
+	
+	
+	firewall-cmd 命令
+		firewall-cmd 格式：
+			Usage: firewall-cmd [OPTIONS...]
+		常见选项：
+			--get-zones 				列出所有可用区域
+			--get-default-zone 			查询默认区域
+			--set-default-zone=<ZONE> 	设置默认区域
+			--get-active-zones 			列出当前正使用的区域
+			--add-source=<CIDR>[--zone=<ZONE>] 		添加源地址的流量到指定区域，如果无--zone= 选项，使用默认区域
+			--remove-source=<CIDR> [--zone=<ZONE>] 	从指定区域删除源地址的流量，如无--zone= 选项，使用默认区域
+			--add-interface=<INTERFACE>[--zone=<ZONE>] 		添加来自于指定接口的流量到特定区域，如果无--zone= 选项，使用默认区域
+			--change-interface=<INTERFACE>[--zone=<ZONE>] 	改变指定接口至新的区域，如果无--zone=选项，使用默认区域
+			--add-service=<SERVICE> [--zone=<ZONE>] 		允许服务的流量通过，如果无--zone= 选项，使用默认区域
+			--add-port=<PORT/PROTOCOL>[--zone=<ZONE>] 		允许指定端口和协议的流量，如果无--zone= 选项，使用默认区域
+			--remove-service=<SERVICE> [--zone=<ZONE>] 		从区域中删除指定服务，禁止该服务流量，如果无--zone= 选项，使用默认区域
+			--remove-port=<PORT/PROTOCOL>[--zone=<ZONE>] 	从区域中删除指定端口和协议，禁止该端口的流量，如果无--zone= 选项，使用默认区域
+			--reload 						删除当前运行时配置，应用加载永久配置
+			--list-services 				查看开放的服务
+			--list-ports 					查看开放的端口
+			--list-all [--zone=<ZONE>] 		列出指定区域的所有配置信息，包括接口，源地址，端口，服务等，如果无--zone= 选项，使用默认区域
+	
+	
+		示例：临时修改规则
+			systemctl start firewalld				# 默认用的是 public zone 
+			iptables -vnL
+			firewall-cmd --get-zones 				# 列出所有可用区域
+			firewall-cmd --get-default-zone 		# 查询默认区域
+			firewall-cmd --set-default-zone=block 	# 设置默认区域为block
+			firewall-cmd --list-services 			# 查看当前允许的服务列表
+			firewall-cmd --add-service=http			# 允许http服务的流量通过，如果无 --zone= 选项，使用默认区域
+			firewall-cmd --remove-service=http		# 从区域中删除http服务，禁止该服务流量，如果无 --zone= 选项，使用默认区域
+			firewall-cmd --get-service				# 列出当前系统中支持的所有service
+			
+			
+		示例：永久保存规则并立马生效	
+			firewall-cmd --set-default-zone=dmz		#默认zone设为dmz
+			firewall-cmd --permanent --zone=internal --add-source=192.168.0.0/24		#在internal zone中增加源地址192.168.0.0/24的永久规则
+			firewall-cmd --permanent --zone=internal --add-service=mysql				#在internal zone中增加协议mysql的永久规则
+			firewall-cmd --reload					#加载新规则以生效
+	
+	
+	firewall 图形化操作：
+		yum -y install firewall-config 	# 安装图形化工具
+		在window上使用xmanager打开
+		export DISPLAY=windowIP:xmanager窗口编号
+		firewall-config
+		
+		
+	当基本firewalld语法规则不能满足要求时，可以使用以下更复杂的规则
+		rich-rules 富规则，功能强,表达性语言
+		Direct configuration rules 直接规则，灵活性差, 帮助：man 5 firewalld.direct
+
+
+1.2 管理rich规则	
+	rich规则比基本的firewalld语法实现更强的功能，不仅实现允许/拒绝，还可以实现日志syslog和auditd，也可以实现端口转发，伪装和限制速率
+	
+	查看帮助：
+		man 5 firewalld.richlanguage
+	
+	规则实施顺序：
+		该区域的端口转发，伪装规则
+		该区域的日志规则
+		该区域的允许规则
+		该区域的拒绝规则
+	每个匹配的规则生效，所有规则都不匹配，该区域默认规则生效
+	
+	rich语法：
+		rule
+			[source]
+			[destination]
+			service|port|protocol|icmp-block|masquerade|forward-port
+			[log]
+			[audit]
+			[accept|reject|drop]	
+	
+	rich规则选项：
+				选项			描述
+		----------------------|------------------------------------------------------------------------------------------
+		--add-rich-rule=''	  |	Add to the specified zone,or the default zone if no zone is specified.
+		--remove-rich-rule='' | Remove to the specified zone,or the default zone if no zone is specified.
+		--query-rich-rule=''  |	Query if has been added to the specified zone,or the default zone if no zoneis specified.Returns 0 if the rule is present,otherwise 1.
+		--list-rich-rules	  | Outputs all rich rules for the specified zone,or the default zone if no zone isspecified.
+
+
+	示例：
+		//拒绝从192.168.0.100的所有流量，当address 选项使用source 或 destination时，必须用family= ipv4|ipv6
+		firewall-cmd --permanent --zone=public --add-rich-rule='rule family=ipv4 source address=192.168.0.100/32 reject'
+		
+		// 限制每分钟只有两个连接到ftp服务，实现限流功能
+		firewall-cmd --add-rich-rule=‘rule service name=ftp limit value=2/m accept’
+		
+		
+		// 抛弃esp（ IPsec 体系中的一种主要协议）协议的所有数据包，esp是和加密有关的协议
+		firewall-cmd --permanent --add-rich-rule='rule protocol value=esp drop'		# 拒绝所有esp协议
+	
+		
+		// 接受所有192.168.1.0/24子网端口5900-5905范围的TCP流量
+		firewall-cmd --permanent --zone=vnc --add-rich-rule='rule family=ipv4 source address=192.168.1.0/24 port port=5900-5905 protocol=tcp accept'
+		
+		
+	rich日志规则：
+		log [prefix="<PREFIX TEXT>" [level=<LOGLEVEL>] [limit value="<RATE/DURATION>"]
+		说明：
+			<LOGLEVEL> 可以是emerg,alert, crit, error, warning, notice, info, debug.
+			<DURATION> s：秒, m：分钟, h：小时, d：天
+			audit [limit value="<RATE/DURATION>"]
+	
+		示例：
+			//接受ssh新连接，记录日志到syslog的notice级别，每分钟最多三条信息
+			firewall-cmd --permanent --zone=work --add-rich-rule='rule service name="ssh" log prefix="ssh " level="notice" limit value="3/m" accept
+			
+
+1.3 伪装和端口转发
+	NAT网络地址转换，firewalld支持伪装和端口转发两种NAT方式
+	
+	伪装NAT：相当于 iptables中的 SNAT
+		firewall-cmd --permanent --zone=<ZONE> --add-masquerade
+		firewall-cmd --query-masquerade 							#检查是否允许伪装
+		firewall-cmd --add-masquerade 								#允许防火墙伪装IP
+		firewall-cmd --remove-masquerade 							#禁止防火墙伪装IP
+	
+		示例：rich规则的伪装NAT
+			firewall-cmd --add-rich-rule='rule family=ipv4 source address=192.168.0.0/24 masquerade'
+
+	端口转发：将发往本机的特定端口的流量转发到本机或不同机器的另一个端口。通常要配合地址伪装才能实现。相当于 iptables中的 DNAT
+		格式：
+			firewall-cmd --permanent --zone=<ZONE> --add-forward-port=port=<PORTNUMBER>:proto=<PROTOCOL>[:toport=<PORTNUMBER>][:toaddr=]
+		说明：toport= 和toaddr= 至少要指定一个
+		
+		示例：
+			// 转发传入的连接9527/TCP，到防火墙的80/TCP到public zone 的192.168.0.254
+			firewall-cmd --add-masquerade 	#启用伪装
+			firewall-cmd --zone=public --add-forward-port=port=9527:proto=tcp:toport=80:toaddr=192.168.0.254
+		
+		
+		rich规则的port转发语法：
+			forward-port port=<PORTNUM> protocol=tcp|udp [to-port=<PORTNUM>] [to-addr=<ADDRESS>]
+		
+		示例：
+			#转发从192.168.0.0/24来的，发往80/TCP的流量到防火墙的端口8080/TCP
+			firewall-cmd --zone=work --add-rich-rule='rule family=ipv4 source address=192.168.0.0/24 forward-port port=80 protocol=tcp to-port=8080'
+			firewall-cmd --permanent --add-rich-rule 'rule family=ipv4 source address=172.25.X.10/32 forward-port port=443 protocol=tcp to-port=22'
+			firewall-cmd --reload
+			ssh -p 443 serverX.example.com			
+		
+		
+1.4 nft 		
+	ntf介绍：
+		nftables 是一个 netfilter 项目，旨在替换现有的{ip,ip6,arp,eb}tables 框架，为{ip,ip6}tables提供一个新的包过滤框架、一个新的用户空间实用程序(nft)和一个兼容层。
+		它使用现有的钩子、链接跟踪系统、用户空间排队组件和 netfilter 日志子系统。
+		nftables 主要由三个组件组成：内核实现、libnl netlink 通信和 nftables 用户空间。
+		其中内核提供了一个 netlink 配置接口以及运行时规则集，libnl 包含了与内核通信的基本函数，用户空间可以通过 nft 和用户进行交互。
+		
+	nft简单解释：
+		nft	是用户空间工具，可以替代 iptables 以及其它防火墙工具，功能更加丰富。
+		nft 基于较新内核实现新功能，原因是新底层内核的工作原理和工作框架已经有一些变化，
+		以前的 iptables、ip6tables、arptables、ebtables 框架是独立的，各有个的框架和工具，ntf把这些框架统一起来，用ntf统一管理，ntf相当于是集成工具
+		在 Linux 内核版本高于 3.13 时可用。提供一个新的命令行工具 nft 语法与 iptables 不同。centos7的内核版本是"3.10.0"，所以centos7不支持nft
+	
+	nft 相关概念
+		nftables 和 iptables 一样，由表（table）、链（chain）和规则（rule）组成，其中表包含链，链包含规则，规则是真正的 action，
+		规则由地址，接口，端口或包含当前处理数据包中的其他数据等表达式以及诸如drop, queue, continue等声明组成。
+	
+	与 iptables 相比，nftables 主要有以下几个变化：
+		1) nftables不包含任何内置表和链，需要自己手动写，这样带来的好处是省资源
+		2) iptables 有内置的链，即使只需要一条链，其他的链也会跟着注册；而 nftables 不存在内置的链，可以按需注册(按需注册的意思就是自己手写)。
+		   由于 iptables 内置了一个数据包计数器，所以即使这些内置的链是空的，也会带来性能损耗
+		3) 其它规则详见PDF！
+	
+	nftables 的每个表只有一个地址簇，并且只适用于该簇的数据包。表可以指定五个簇中的一个：
+		------------------------------------------------------
+		| nftables簇				  |	iptables命令行工具   |
+		|====================================================|
+		| ip IPv4 地址 				  |	iptables             |
+		|-----------------------------|----------------------|
+		| ip6 IPv6 地址				  |	ip6tables            |
+		|-----------------------------|----------------------|
+		| inet IPv4 和 IPv6 地址	  |	iptables和ip6tables  |
+		|-----------------------------|----------------------|
+		| arp 地址解析协议(ARP)地址	  |	arptables            |
+		|-----------------------------|----------------------|
+		| bridge 处理桥接数据包		  |	ebtables             |
+		------------------------------------------------------
+		inet 同时适用于 IPv4 和 IPv6 的数据包，即统一了 ip 和 ip6 簇，可以更容易地定义规则，注：当没有指定地址簇时，默认为ip
+		
+		
+	Pv4/IPv6/Inet address family hooks，IPv4 和 IPv6 也内置了勾子函数：
+		prerouting
+		input
+		forward
+		output
+		postrouting
+		
+	链是用来保存规则的，和表一样，链也需要被显示创建，因为 nftables 没有内置的链。链有以下两种类型：
+		基本链 : 数据包的入口点，需要指定钩子类型和优先级，相当于内置链
+		常规链 : 不需要指定钩子类型和优先级，可以用来做跳转，从逻辑上对规则进行分类，类似于自定义链	
+
+
+	nft包信息：
+
+		// nft 来自 nftables 包	
+		[root@centos8 ~]#rpm -qf `which nft`	
+		nftables-0.9.3-16.e18.x86_64
+
+		[root@centos8 ~]#rpm -qi nftables
+		Name : nftables
+		......省略
+		
+		[root@centos8 ~]#rpm -ql nftables
+		/usr/sbin/nft							# 用户空间工具	
+		......省略
+	
+	
+1.5 nft 常见用法 
+	
+	nft 命令格式
+		[root@centos8 ~]#nft --help
+		Usage: nft [ options ] [ cmds... ]
+		选项说明：
+			-h, --help 		显示帮书
+			-v, --version 	显示版本信息
+			-c, --check 	检查命令的有效性，而不实际应用更改。
+			-f, --file <filename> 	包含文件内容<filename>
+			-i, --interactive 		从命令行读取输入
+			-j, --json 				以JSON格式化输出
+			-n, --numeric 		指定一次后，以数字方式显示网络地址(默认行为)。指定两次以数字方式显示Internet服务(端口号)。指定三次以数字方式显示协议，用户ID和组ID。
+			-s, --stateless 	省略规则集的有状态信息
+			-N 					将IP地址转换为名称。
+			-a, --handle 		显示规则句柄handle
+			-e, --echo Echo what has been added, inserted or replaced.
+			-I, --includepath <directory> 	添加<directory>目录到包含文件的搜索路径中。默认为: /etc
+			--debug <level [,level...]> 	添加调试,在level处(scanner, parser, eval, netlink, mnl,proto-ctx, segtree, all)
+		
+		
+	nft 命令基本格式：
+		nft 操作符 操作目标 操作内容
+		说明：
+			1 操作符: 增,删,改,查,清除,插入,创建
+				表操作：add,delete,list,flush
+				链操作：add,delete,rename,list,flush,create
+				规则：add,delete,insert
+			2 操作目标: 簇,表,链,规则
+				链类型：filter,route,nat
+				链钩子：hook
+			3 操作内容：...
+	
+	
+	规则选项：
+		------------------------------------------------------------------------------------------------------------------
+		| 1	 | accept	|	接受	|	接受包						|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 2	 | drop		|	丢弃	|	丢弃包						|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 3	 | reject	|	拒绝	|	驳回包						|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 4	 | queue	|	队列	|	发送包到用户空间程序		|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 5	 | continue	|	继续	|	继续处理包                  |                                                    |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 6	 | return	|	返回	|	发送到调用的规则链进行处理  |                                                    |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 7	 | jump		|	跳跃	|	发送到指定的规则链进行处理	|	当完成时或执行了返回的声明，返回到调用的规则链   |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 8	 | goto		|	转到	|	发送到指定的规则链进行处理	|	不返回到调用的规则链                             |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 9	 | limit	|	limit	|	达到接收包的匹配限制，		|	则根据规则处理包                                 |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 10 | log		|	log		|	日志记录包					|	继续处理	                                     |
+		------------------------------------------------------------------------------------------------------------------
+
+	
+1.6 查看、增加、删、改
+	
+	查看：
+		说明：以下命令后面也可以加 -nn 用于不解析ip地址和端口，加 -a 用于显示 handles
+		nft list ruleset 				# 列出所有规则
+		nft list tables 				# 列出所有表
+		nft list table filter 			# 列出ip簇的filter表
+		nft list table inet filter 		# 列出inet簇的filter表
+		nft list chain filter INPUT 	# 列出filter表input链
+
+	增加：
+		增加表：nft add table fillter
+		增加链：nft add chain filter input { type filter hook input priority 0 \; } 	# 要和hook（钩子）相关连
+		增加规则：nft add rule filter input tcp dport 22 accept
+	
+	删：
+		只需要把上面的 add 改为 delete 即可
+
+	改：
+		更改链名用 rename
+		更改规则用 replace
+
+
+实践1：创建表和删除表
+	// 启动 nftables 这个服务
+	[root@centos8 ~]#systemctl start nftables.service
+
+	// 创建表，这个表在 inet 簇中 
+	[root@centos8 ~]#nft add table inet test_table			# inet 簇代表 iptables和ip6tables
+	
+	// 列出表
+	[root@centos8 ~]#nft list tables
+	table inet test_table
+	
+	// 删除表
+	[root@centos8 ~]#nft delete table inet test_table
+	
+	[root@centos8 ~]#nft list tables
+	
+
+实践2：创建链
+	// 创建链之前首选要创建表
+	[root@centos8 ~]#nft add table inet test_table
+	
+	// 创建基本链。反斜线（ \ ）用来转义，这样 shell 就不会将分号解释为命令的结尾； priority 采用整数值，可以是负数，值较小的链优先处理；
+	[root@centos8 ~]#nft add chain inet test_table test_filter_input_chain { type filter hook input priority 0 \; }
+
+	// 列出表
+	[root@centos8 ~]#nft list tables
+	table inet test_table
+	
+	//列出所有规则
+	[root@centos8 ~]#nft list ruleset
+	table inet test_table {
+		chain test_filter_input_chain {	
+			// "type filter"表示使用的是filter表，"hook input"表示使用的是input这个基本链(也就是勾子函数),"policy accept"表示默认策略是允许
+			type filter hook input priority filter; policy accept;	
+		}
+	}	
+	
+	
+	[root@centos8 ~]#yum -y install httpd; systemctl start httpd		
+
+	// 其它同网段的主机可以访问http服务
+	
+	
+	[root@centos8 ~]#iptables -vnL
+	Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+
+	Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+
+	Chain OUTPUT (policy ACCEPT 0 packets, 0 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	
+	
+	[root@centos8 ~]#nft list ruleset
+	table inet test_table {
+			chain test_filter_input_chain {
+					type filter hook input priority filter; policy accept; //相当于定义了表(filter表)和链(基本链input,也就是勾子函数)，并且默认策略是 accept
+			}
+	}
+	table ip filter {		# 运行"iptables -vnL"之后才有的信息。说明运行"iptables"命令时，"iptables"发现没有默认的filter表和filter表里面的链，就会自动生成
+			chain INPUT {
+					type filter hook input priority filter; policy accept;
+			}
+
+			chain FORWARD {
+					type filter hook forward priority filter; policy accept;
+			}
+
+			chain OUTPUT {
+					type filter hook output priority filter; policy accept;
+			}
+	}
+
+	
+	// 创建常规链规则
+	[root@centos8 ~]#nft add rule inet test_table test_filter_input_chain tcp dport http reject
+	
+	
+	// 其它同网段的主机不能访问http服务
+	
+	
+	[root@centos8 ~]#nft list ruleset
+	table inet test_table {
+		chain test_filter_input_chain {
+			type filter hook input priority filter; policy accept;	// 这个相当于内置链，不是规则
+			tcp dport 80 reject										// 表示链里面的第一个规则
+		}
+	}
+	table ip filter {
+		chain INPUT {
+			type filter hook input priority filter; policy accept;
+		}
+		
+		chain FORWARD {
+			type filter hook forward priority filter; policy accept;
+		}
+		
+		chain OUTPUT {
+			type filter hook output priority filter; policy accept;
+		}
+	}
+	
+	
+	// 将规则插入到链中的位置为0的位置，也就是放在次序为1的位置
+	[root@centos8 ~]#nft insert rule inet test_table test_filter_input_chain index 0 ip saddr 10.0.0.7 accept
+
+
+	// 这是 " 10.0.0.7" 主机可以访问http服务，其它主机不行，说明规则也有次序
+	
+
+	[root@centos8 ~]#nft list ruleset
+	table inet test_table {
+		chain test_filter_input_chain {
+			type filter hook input priority filter; policy accept;	 // 这个相当于内置链，不是规则
+			ip saddr 10.0.0.7 accept								 // 这是第1个规则，下标为0
+			tcp dport 80 reject										 // 这是第2个规则，下标为1
+		}
+	}
+	table ip filter {
+		chain INPUT {
+			type filter hook input priority filter; policy accept;
+		}
+		
+		chain FORWARD {
+			type filter hook forward priority filter; policy accept;
+		}
+		
+		chain OUTPUT {
+			type filter hook output priority filter; policy accept;
+		}
+	}
+
+
+实践3：删除规则
+	删除单个规则：单个规则只能通过其句柄删除，首先需要找到想删除的规则句柄
+		详见PDF！
+	
+	删除所有规则：
+		[root@centos8 ~]#nft flush ruleset
+		[root@centos8 ~]#nft list ruleset
+
+
+实践4：备份还原
+	规则都是临时的，要想永久生效，可以将规则备份，重启后自动加载恢复
+	
+	// 查看service文件
+	[root@centos8 ~]#cat /lib/systemd/system/nftables.service
+	[Unit]
+	Description=Netfilter Tables
+	Documentation=man:nft(8)
+	Wants=network-pre.target
+	Before=network-pre.target
+	
+	[Service]
+	Type=oneshot
+	ProtectSystem=full
+	ProtectHome=true
+	ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf								// 可以发现，开机加载的其实是这个文件，所以只需要把规则持久化到这个文件
+	ExecReload=/sbin/nft 'flush ruleset; include "/etc/sysconfig/nftables.conf";'
+	ExecStop=/sbin/nft flush ruleset
+	RemainAfterExit=yes
+	
+	[Install]
+	WantedBy=multi-user.target	
+	
+	
+	// 方式1：备份至文件中
+	[root@centos8 ~]#nft list ruleset > /etc/sysconfig/nftables.conf
+
+
+	// 方式2：启用指定的配置文件，假如把规则保存在"nftables2.conf"文件中
+	[root@centos8 ~]#nft -f nftables2.conf		# -f 指定规则配置文件，如果已经有规则，是追加至现有规则后
+
+
+实践5：迁移iptables规则到nft	
+	详见PDF！
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展：
+
+	(1) httpd
+		// httpd可以同时监听多个端口
+		[root@localhost ~]# cat /etc/httpd/conf/httpd.conf
+		......省略
+		Listen 80
+		Listen 8080
+		......省略
+
+	(2) uname命令
+		// 显示操作系统的发行版号
+		[root@localhost ~]# uname -r
+		4.18.0-193.el8.x86_64
+
+		// 显示系统名、节点名称、操作系统的发行版号、内核版本等等
+		[root@localhost ~]# uname -a
+		Linux localhost.localdomain 4.18.0-193.el8.x86_64 #1 SMP Fri May 8 10:59:10 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux
+
+
+
+

@@ -1,0 +1,1075 @@
+
+1 文件路径和文件访问
+
+1.1 windows也可以把一个分区和文件夹关联起来, 也能实现linux一样的只有一个根目录的效果
+[root@localhost ~]#lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   40G  0 disk				// 硬盘
+├─sda1            8:1    0    1G  0 part /boot			// 对硬盘的分区1
+└─sda2            8:2    0   39G  0 part				// 对硬盘的分区2
+  ├─centos-root 253:0    0 35.1G  0 lvm  /
+  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+sr0              11:0    1 1024M  0 rom
+[root@localhost ~]#df -h
+Filesystem               Size  Used Avail Use% Mounted on
+devtmpfs                 1.9G     0  1.9G   0% /dev
+tmpfs                    1.9G     0  1.9G   0% /dev/shm
+tmpfs                    1.9G   12M  1.9G   1% /run
+tmpfs                    1.9G     0  1.9G   0% /sys/fs/cgroup
+/dev/mapper/centos-root   36G  1.9G   34G   6% /
+/dev/sda1               1014M  151M  864M  15% /boot
+tmpfs                    378M     0  378M   0% /run/user/0
+
+1.2 绝对路径和相对路径
+pwd
+ls
+ll ./
+ll ../
+
+basename和dirname
+[root@localhost ~]#basename /etc/sysconfig/network-scripts/ifcfg-etho
+ifcfg-etho
+[root@localhost ~]#dirname /etc/sysconfig/network-scripts/ifcfg-etho
+/etc/sysconfig/network-scripts
+
+回到父目录
+	cd ..
+回到上一个目录, 能回到上一个目录是因为有 $OLDPWD 变量记住了这个目录
+	cd -
+
+查看 $OLDPWD 变量
+	[root@localhost sysconfig]#echo $OLDPWD
+	/root
+
+回到自己的家目录, cd ~ 和 cd 都表示回到自己的家目录
+	cd ~
+	cd
+	
+回到其它的家目录 "cd ~用户名"
+	[root@localhost sysconfig]#cd ~aaron
+	[root@localhost aaron]#pwd
+	/home/aaron
+	
+1.2 cd
+切换至物理路径，而非软链接目录
+	cd -P 
+	
+1.3 ls
+
+显示隐藏文件(以点开头的文件)
+	ls -a
+
+显示文件的相信信息, "ls -l" 等价于 "ll"
+	ls -l
+	ll
+	[root@localhost sysconfig]#type ll
+	ll is aliased to `ls -l --color=auto'
+	
+按文件大小排序(大到小排序)
+	ls -lS
+	ls -lSr  		// 小到打排
+
+按时间排序(新到旧排)
+	ls -lt
+	ls -ltr  		// 旧到新排
+	
+查看文件夹信息
+	ls -ld /etc
+
+查看文件夹里面的内容
+	ls -l  /etc
+
+查看具体文件信息
+	ls -l 文件名
+
+查看文件夹以及里面子文件夹里面的文件
+	ls -lR  /etc
+
+给文件加上特殊的标识符,表示不同类型, 使用 -F , 如 */=>@|, "|" 表示管道文件, "/" 表示目录 , "@" 表示衔接, "="表示socket文件
+	[root@localhost sysconfig]#ls -lF /run/
+	total 24
+	drwxr-x---.  2 chrony chrony   80 Oct 15 20:48 chrony/
+	----------.  1 root   root      0 Oct 15 20:48 cron.reboot
+	prw-------.  1 root   root      0 Oct 15 20:48 dmeventd-client|
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 文件通配符
+
+2.1 文件的元数据，文件的元数据和数据是分开分的,比如一个硬盘一个分区,这个分区一部份放元数据,一部分放数据
+
+在windows下，一个文件有：创建时间、修改时间、访问时间。
+在Linux下，一个文件有：状态改动时间、修改时间、访问时间。 状态改动时间：文件的i节点最后一次被修改的时间，通过chmod、chown修改文件属性时，ctime会更新
+
+"anaconda-ks.cfg" 这个文件装完系统就有
+[root@localhost ~]#stat anaconda-ks.cfg
+  File: ‘anaconda-ks.cfg’
+  Size: 1414            Blocks: 8          IO Block: 4096   regular file
+Device: fd00h/64768d    Inode: 67144898    Links: 1
+Access: (0600/-rw-------)  Uid: (    0/    root)   Gid: (    0/    root)
+Context: system_u:object_r:admin_home_t:s0
+Access: 2022-10-14 20:07:39.953896194 +0800
+Modify: 2021-08-20 19:23:51.798006179 +0800
+Change: 2021-08-20 19:23:51.798006179 +0800
+ Birth: -
+
+访问时间并不会访问一次就更改一次,触发的条件为: 距离上次访问超过1天 或 修改的时间比读的时间新,在读文件时也会触发访问时间的更新,这主要时提高磁盘的IO性能,因为频繁的更新访问时间意义不大
+运行下面命令就会出现"修改的时间比读的时间新"这种情况, 同时ChangeTime也变的和ModifyTime时间一样
+	echo >> anaconda-ks.cfg
+
+[root@localhost ~]#ls -lh
+-rw-------. 1 root root 1.4K Aug 20  2021 anaconda-ks.cfg
+	// 1 表示衔接个数
+	// root 表示所述用户, 后面的root表示用户组
+	// 1.4K 表示文件所占空间
+	// Aug 20  2021 表示文件的修改日期
+
+查看文件的 ChangeTime
+[root@localhost ~]#ls -l --time=ctime anaconda-ks.cfg
+-rw-------. 1 root root 1414 Aug 20  2021 anaconda-ks.cfg		// Aug 20  2021 表示文件的 ChangeTime
+
+查看文件的 AccessTime
+[root@localhost ~]#ls -l --time=atime anaconda-ks.cfg
+-rw-------. 1 root root 1414 Oct 14 20:07 anaconda-ks.cfg		// Oct 14 20:0 表示文件的 AccessTime
+
+[root@localhost ~]#mount
+sysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime,seclabel)		// 实现文件挂载系统由 relatime 属性值来实现 访问时间 更新的条件，centos5之前没有这个属性,所以就会访问一次更新一次
+
+
+2.2  别名
+[root@localhost ~]#alias
+alias cp='cp -i'
+alias egrep='egrep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias grep='grep --color=auto'
+alias l.='ls -d .* --color=auto'
+alias ll='ls -l --color=auto'
+alias ls='ls --color=auto'
+alias mv='mv -i'
+alias rm='rm -i'
+alias which='alias | /usr/bin/which --tty-only --read-alias --show-dot --show-tilde'
+
+
+只显示文件夹本身,不显示其它文件
+	[root@localhost ~]#ls -d /etc
+	/etc
+
+2.3 文件可以粗略的分为两类,文本文件和二进制文件;网页属于文本文件
+
+判断文件的类型 file:
+[root@localhost ~]#file /usr/bin/hostname
+/usr/bin/hostname: ELF 64-bit LSB executable, 
+
+[root@localhost ~]#file anaconda-ks.cfg
+anaconda-ks.cfg: ASCII text
+
+2.4 文件通配符. 成产环境中由于硬盘很大,如果敲"ll"可能会导致大量输出导致机器死机等异常
+	* 匹配零个或多个字符，但不匹配 "." 开头的文件，即隐藏文件
+	? 匹配任何单个字符,一个汉字也算一个字符
+	~ 当前用户家目录
+	~mage 用户mage家目录
+	. 和 ~+ 当前工作目录
+	~- 前一个工作目录
+	[0-9] 匹配数字范围
+	[a-z] 一个字母
+	[A-Z] 一个字母
+	[wang] 匹配列表中的任何的一个字符
+	[^wang] 匹配列表中的所有字符以外的字符
+	[^a-z] 匹配列表中的所有字符以外的字符
+
+ls *.txt
+
+列出只有三个字符,并且以".txt"结尾的文件,一个汉字也算一个字符
+ls ???.txt
+
+[root@localhost ~]#cd /run
+[root@localhost run]#pwd
+/run
+查看上一个工作目录下的文件
+[root@localhost run]#ll -/anaconda-ks.cfg  		// 这种写法是错误的
+ls: invalid option -- '/'
+Try 'ls --help' for more information
+[root@localhost run]#ll ~-/anaconda-ks.cfg		// 正确写法
+-rw-------. 1 root root 1414 Aug 20  2021 /root/anaconda-ks.cfg
+
+touch  xxx_{a..z}.txt
+
+匹配列表中的任何的一个字符, 如果文件存在, 可以找到 fa.txt、fb.txt、fc.txt、fd.txt
+ls f[abcd].txt   
+
+ls f[a-d].txt   		// a-d 表示 a、A、b、B、c、C、d, 注意少了D
+ls f[A-D].txt			// A-D 表示  A、b、B、c、C、d、D, 注意少了A
+  
+ls f[A-D].txt -1		// -1 表示用1列来显示,也就是竖着显示, 1 是数字 1
+
+
+别外还有在Linux系统中预定义的字符类
+	[:digit:]：任意数字，相当于0-9
+	[:lower:]：任意小写字母,表示 a-z
+	[:upper:]: 任意大写字母,表示 A-Z
+	[:alpha:]: 任意大小写字母
+	[:alnum:]：任意数字或字母
+	[:blank:]：水平空白字符
+	[:space:]：水平或垂直空白字符
+	[:punct:]：标点符号
+	[:print:]：可打印字符
+	[:cntrl:]：控制（非打印）字符
+	[:graph:]：图形字符
+	[:xdigit:]：十六进制字符
+
+ls f[[:lower:]].txt 	// [[:lower:]] 表示 a 到 z 的小写字母
+
+ls f[[:upper:]].txt     //  [[:upper:]] 表示 A 到 Z
+
+l. 命令只显示隐藏文件:
+	[root@localhost ~]#alias l.
+	alias l.='ls -d .* --color=auto'
+
+表示不进入 /etc 查看 /etc 目录下的隐藏文件, -d 表示不进入到这个目录的内容,只看目录本身
+	[root@localhost ~]#ls -d /etc/.*
+	/etc/.  /etc/..  /etc/.pwd.lock  /etc/.updated
+	
+	"ls /etc/.*" 其实就包含了 "ls /etc/..", ".." 表示上个上一个目录, etc 的上个目录是 root，所以这时候也会把 root 下面的文件文件给列出来
+	"ls -d /etc/.*" 表示只列出 "/etc/.." 这个目录, 而不列出这个目录的内容
+
+	每个文件夹下都有 . 和 .. 两个目录, 所以 cd . 和 cd .. 才会生效， 注意:根目录(/root)下的".."还是指的是根目录, 因为根目录没有上层目录了.
+
+	
+解决"ls f[a-d].txt"会匹配出大写字母的方法:
+	[root@localhost ~]#LC_COLLATE=C
+	[root@localhost ~]#export LC_COLLATE
+	[root@localhost ~]#export PATH=$LC_COLLATE:$PATH
+	[root@localhost ~]#touch f{a..e}.txt
+	[root@localhost ~]#touch f{A..E}.txt
+	[root@localhost ~]#ll f[a-c].txt
+	-rw-r--r--. 1 root root 0 Oct 16 01:55 fa.txt
+	-rw-r--r--. 1 root root 0 Oct 16 01:55 fb.txt
+	-rw-r--r--. 1 root root 0 Oct 16 01:55 fc.txt
+	
+	// 在命令行里面只是设置了临时变量, 要长久生效,需要配置到系统文件中
+	// 参考资料: 
+		linux怎么修改path环境变量  https://m.php.cn/article/485970.html
+		ls使用通配符[a-z],[A-Z]匹配的结果不对  https://blog.csdn.net/bokutake/article/details/50371098
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 文本管理命令
+
+3.1 创建文件
+touch命令可以用来创建空文件或刷新文件的时间
+
+touch 创建一个已存在的文件,不会覆盖原文件,但会改变文件的ModifyTime
+touch 123.txt
+touch $(date -d "l year" +%F_%T).log
+
+
+> 创建文件, 如果这个文件已经存在,会清空文件的内容
+	> 123.txt
+	
+3.2 复制文件和目录
+
+cp 源     目标  
+cp 多个源 一个目录
+cp -t 源  目标
+
+把aaron家目录下的 123.txt 拷贝到 /opt 目录下
+cp ~aaron/123.txt /opt
+
+拷贝并修改名称
+cp ~aaron/123.txt /opt/111.txt
+	
+-a 保留属性,经常使用
+	// 用另外的账号创建一个文件
+	[aaron@localhost ~]$touch 123.txt
+
+	[root@localhost ~]#cp ~aaron/123.txt ~aaron/345.txt
+	[root@localhost ~]#ll ~aaron/
+	total 0
+	-rw-rw-r--. 1 aaron aaron 0 Oct 16 12:00 123.txt
+	-rw-r--r--. 1 root  root  0 Oct 16 12:01 345.txt
+	
+	// 从上面可以看到, 文件的属性已经发生变化， -rw-rw-r-- 变为了 -rw-r--r--
+	cp -a ~aaron/123.txt /opt/111.txt	
+
+	// 加了"-a"参数后, 123.txt 和 456.txt 属性一样了
+	[root@localhost ~]#cp -a ~aaron/123.txt ~aaron/456.txt
+	[root@localhost ~]#ll ~aaron/
+	total 0
+	-rw-rw-r--. 1 aaron aaron 0 Oct 16 12:00 123.txt
+	-rw-r--r--. 1 root  root  0 Oct 16 12:01 345.txt
+	-rw-rw-r--. 1 aaron aaron 0 Oct 16 12:00 456.txt
+
+-a 拷贝衔接文件的用法
+	[root@localhost ~]#ll /etc/ | grep "os-release ->"
+	lrwxrwxrwx.  1 root root       21 Aug 20  2021 os-release -> ../usr/lib/os-release
+	
+	// 拷贝衔接文件,不加 -a , 实际上拷贝的是 "/usr/lib/os-release"
+	cp /etc/os-release /tmp
+
+	// 拷贝衔接文件,加 -a, 拷贝的才是衔接本省文件
+	cp -a /etc/os-release /tmp
+	
+	高级用法
+	[root@localhost ~]#touch 123.txt
+	// "cp -a 123.txt{,.bak}" 相当于 "cp -a 123.txt 123.txt.bak" ,  
+	[root@localhost ~]#cp -a 123.txt{,.bak}
+	[root@localhost ~]#ll
+	total 12
+	-rw-r--r--. 1 root root    0 Oct 16 12:24 123.txt
+	-rw-r--r--. 1 root root    0 Oct 16 12:24 123.txt.bak
+	
+	// "cp -a 123.txt{,.bak}"
+	// 		{,.bak}  逗号前面是空, 和 123.txt 组合就是 123.txt
+	// 		{,.bak}  逗号后面是".bak",  和 123.txt 组合就是 123.txt.bak
+	
+	
+-r 和 —R 表示拷贝文件见:
+	cp -r /etc  /tmp/etc-bak
+	
+	如果 etc-bak 文件夹已经存在, 那么 etc 目录会放在 etc-bak 这个目录下,cp不是幂等性(同一个命令执行多次,效果一样)的,所以cp有风险
+	cp -r /etc  /tmp/etc-bak
+	
+	幂等性安全可控,非幂等不可控
+	
+-i 覆盖前询问
+	[root@localhost ~]#alias cp
+	alias cp='cp -i'
+	
+	// 如果 456.txt 已经存在, 直接用 cp 会提示是否覆盖, 用 \cp 跳过提示,直接覆盖
+	[root@localhost ~]#\cp ./123.txt ./456.txt
+
+-u  --update 只复制源比目标更新文件或目标不存在的文件
+
+-b	目标存在，覆盖前先备份，默认形式为 filename~ ,只保留最近的一个备份
+
+--backup=numbered 目标存在，覆盖前先备份加数字后缀，形式为 filename.~#~ ，可以保留多个版本
+	cp --backup=numbered ./123.txt  ./456.txt
+
+-v 显示过程
+
+特殊文件的拷贝
+	[root@localhost ~]#ll /dev/zero
+	crw-rw-rw-. 1 root root 1, 5 Oct 16 13:21 /dev/zero
+	
+	拷贝一个字符文件,可以看到这个字符文件拷贝后变的非常大,而且属性也变了
+	[root@localhost ~]#ll -h
+	total 4.5G
+	-rw-r--r--. 1 root root 4.5G Oct 16 13:23 zero
+	
+	加上 -a 选项可以看到正常拷贝
+	[root@localhost ~]#cp -a /dev/zero ./zero.bak
+	[root@localhost ~]#ll -h
+	total 4.5G
+	-rw-r--r--. 1 root root 4.5G Oct 16 13:23 zero
+	crw-rw-rw-. 1 root root 1, 5 Oct 16 13:21 zero.bak
+
+生成中经常用cp做备份
+	比如 /data 就是放生产环境中的数据,真正的备份一般是跨机房、跨地区备份，一般会备份多份
+	cp -a /data	/opt/data-`date +%F`
+	
+
+3.2 mv 移动和重命名文件, 改名一次只能改一个
+	
+mv 源文件  	 目标
+mv 源文件夹   文件夹
+ 
+-v 显示过程:
+	[root@localhost ~]#mv -v ./123.txt ./111.txt
+	‘./123.txt’ -> ‘./111.txt’	
+
+rename 批量改文件名
+	// 把以".txt"结尾的文件中的txt部分替换为txt.bak
+	rename txt txt.bak *.txt
+	
+
+3.3 rm 删除文件, 生产环境中用 mv 代替 rm, rm 很危险
+	[root@localhost ~]#alias rm
+	alias rm='rm -i'
+	
+	// 询问删除
+	rm  123.txt
+	
+	// 直接删除,不询问
+	\rm 123.txt
+	
+	// -f 表示强制删除,不询问
+	rm -f 123.txt
+	
+	// -r 表示删除文件夹, 每删除目录下一个文件都会询问
+	rm -r /tmp
+	
+	// 直接删除文件夹,不询问
+	rm -rf /tmp
+	
+	// "rm -rf /" 这个命令太多危险, 系统已经禁止使用
+	[root@localhost ~]#rm -rf /
+	rm: it is dangerous to operate recursively on ‘/’
+	rm: use --no-preserve-root to override this failsafe
+	
+	// 加上参数就能运行,当运行后,也不是把绝对清空,只有少许的东西会保留下来,但数据肯定是没有了,删的过程中可以看到有些文件没有权限删除,这是一些内存文件.
+	rm -rf / --no-preserve-root
+	
+	这个命令是可以运行的
+	rm -rf /*
+	
+	有些企业里面为了安全,都禁止使用删除命令,有些文件实在不需要了,就是用移动替代删除,把不要的文件统一移到一个文件夹中,间接达到删除效果
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 文件的删除和节点表结构
+
+4.1 删除文件
+	// 创建一个以 - 开头的文件
+	[root@localhost ~]#touch ./-f
+	[root@localhost ~]#ll
+	total 12
+	-rw-r--r--. 1 root root    0 Oct 16 14:06 -f
+	
+	// 删除以 - 开头的文件的两种方式
+	rm -- -f
+	rm ./-f
+
+4.2 理论上删除的文件可以还原,因为删除的文件不会从磁盘上立即销毁,利用恢复软件可以文件找回来,甚至删除文件后空间都不会立即释放
+    删除后有可能还原,但需要时间,甚至成本。但是也不是确保能100%找回所有文件
+	
+	在linux中一个文件正在使用,是允许删除的,但是删除后空间大小不会被释放,生产环境中磁盘空间要作为重点监控
+	
+	问题？删除大的临时文件后空间不能释放，其它文件不能删除，这时空间快满了，服务将要停止，怎么办？最好用方式2解决
+		
+		方法1:
+		
+			// lsof（list open files）是一个列出当前系统打开文件的工具
+			[root@localhost ~]# yum install -y lsof
+			
+			// 列出已删除的文件, 就能看到是哪一个程序在使用已删除的文件, 或使用 w 命令也能找到哪一个程序在使用已删除的文件
+			[root@localhost ~]#lsof | grep delete
+			firewalld  709         root    8u      REG              253,0      4096   33554503 /tmp/#33554503 (deleted)
+			vim        709  874    root    8u      REG              253,0      4096   33554503 /boot/bigfile.img (deleted)
+		
+			//  然后使用 kill 命令杀掉进程,然后空间得到释放
+		
+		
+		方法2: 把已存在的文件清空,空间会被马上释放
+		
+			> /xxx/xx/文件				// 运行后空间马上被释放
+			rm -rf /xxx/xx/文件	 		// 删除后防止新的数据又写入
+			
+			注意: > 这个命令依赖于 shell,  比如 bash 支持, csh 就不支持 >, 下面的写法各个shll都支持
+				cat /dev/null > /xxx/xx/文件
+		
+		"/dev/null"是系统自带的设备,是个字符设备,这个设备经常用来作为垃圾箱使用，在运行命令的时候经常会在屏幕上显示一些结果,但有时候就不想让它显示。尤其写脚本,有些命令运行时信息太多,不想让别人看
+			[root@localhost ~]#ll /dev/null
+			crw-rw-rw-. 1 root root 1, 3 Oct 17 10:38 /dev/null
+			
+4.3 彻底删除防止找回
+	
+	shred [OPTION]  FILE
+		-z 最后一次覆盖添加0，以隐藏覆盖操作
+		-v 能够显示操作进度
+		-u 覆盖后截断并删除文件
+		-n # 指定覆盖文件内容的次数（默认值是3次）
+
+4.4 目录操作
+
+tree
+
+	[root@localhost ~]#yum -y install tree
+
+	[root@localhost ~]#tree
+	.
+	├── 111.txt
+	├── 123.txt.bak
+	├── 2023-10-17_06:48:44.log
+	├── anaconda-ks.cfg
+	├── os-release
+	└── os-release2
+
+	0 directories, 6 files
+	[root@localhost ~]#
+
+	
+只显示目录,不显示文件, 这个命令 windows 也支持	
+	tree -d  /boot		
+			
+	
+创建目录 mkdir
+	mkdir xxx
+	
+	-p 表示创建zzzz目录时,如果没有 xxx 和 yyy 目录, 那随便把 xxx 和 yyy 目录也创建了
+	mkdir -p /xxx/yyy/zzzz	
+	
+	-v 表示打印出创建信息
+	mkdir -pv /xxx/yyy/zzzz	
+	
+	[root@localhost ~]#mkdir -pv /tmp/xxx/yyy/{test1,test2,test3}
+	mkdir: created directory ‘/tmp/xxx’
+	mkdir: created directory ‘/tmp/xxx/yyy’
+	mkdir: created directory ‘/tmp/xxx/yyy/test1’
+	mkdir: created directory ‘/tmp/xxx/yyy/test2’
+	mkdir: created directory ‘/tmp/xxx/yyy/test3
+	
+	[root@localhost ~]#tree -d /tmp/
+	/tmp/
+	└── xxx
+		└── yyy
+			├── test1
+			├── test2
+			└── test3
+		
+删除目录 rmdir , rmdir 只能删除空目录
+	rmdir /xxx/yyy/zzzz
+
+4.5 inode 表结构:
+	用来记录文件系统对象的一些元信息数据。一个文件占用一个inode ， inode数量大小是固定的（ext4与xfs可以设置为256B）。
+	一个文件占用一个inode ，且inode是固定的，小文件过多就可能造成磁盘空间剩余挺多，但是inode耗尽的情况。
+	不同的文件系统,inode的结构可能不一样
+	因为inode的存在,所以一个文件占用的最大空间是有大小限制的,一般为4T
+	
+文件的节点号,
+	每个文件在磁盘上都有一个节点号(inode number), 创建新文件时,系统都会创建一个独一无二的节点号。每个分区自己分自己的节点号
+
+	-i 查看节点号 
+	[ec2-user@ip-172-31-32-113 ~]$ ls -i -1
+	13310272 passwd
+	12584645 test.sh
+	13331867 txt
+	
+	[ec2-user@ip-172-31-32-113 ~]$ ll -i
+	total 20
+	13310272 -rw-r--r-- 1 root     root      1312 Aug 30 15:31 passwd
+	12584645 -rwxrwxrwx 1 ec2-user ec2-user   406 Sep 17 15:00 test.sh
+	13331867 -rw-rw-r-- 1 ec2-user ec2-user 10052 Sep 18 10:51 txt
+	
+	linux里面一个文件可以有多个文件名, 但都用同一个节点号。好处是为了访问方便。
+	一个节点号对应一份空间，所以虽然一个文件可以有多个文件名,但对应的只占用一份磁盘空间。
+	
+
+文件夹时个特殊的文件，文件夹也有元数据, 对应的数据部分保存的就是目录下的文件节点号
+	当删除文件时, 文件下对应节点号会被标识为不可用, 下次有文件时直接覆盖,这就是为什么删除的文件有机会还原
+	
+	
+inode 是有大小限制的:
+	// tmpfs 是一个不存在于实体硬盘上、而是驻在记忆里的特殊文件系统。其中一个副作用就是当你失去电源（或重就开机）时，tmpfs 上的一切内容都会消失。
+	// 1K-blocks 表示 这个分区有多少个block块
+	[aaron@localhost ~]$df
+	Filesystem              1K-blocks    Used Available Use% Mounted on
+	devtmpfs                  1918632       0   1918632   0% /dev
+	tmpfs                     1930644       0   1930644   0% /dev/shm
+	tmpfs                     1930644   11824   1918820   1% /run
+	tmpfs                     1930644       0   1930644   0% /sys/fs/cgroup
+	/dev/mapper/centos-root  36805060 1928620  34876440   6% /
+	/dev/sda1                 1038336  153708    884628  15% /boot
+	tmpfs                      386132       0    386132   0% /run/user/1000
+	
+	// -i 列出 inode 信息, Inodes是节点容量，IUsed是已使用节点，IFree 是未使用节点， IUse%是已使用所占百分比
+	[aaron@localhost ~]$df -i
+	Filesystem                Inodes IUsed    IFree IUse% Mounted on
+	devtmpfs                  479658   388   479270    1% /dev
+	tmpfs                     482661     1   482660    1% /dev/shm
+	tmpfs                     482661  1250   481411    1% /run
+	tmpfs                     482661    16   482645    1% /sys/fs/cgroup
+	/dev/mapper/centos-root 18411520 29278 18382242    1% /
+	/dev/sda1                 524288   327   523961    1% /boot
+	tmpfs                     482661     1   482660    1% /run/user/1000
+	
+	// inode 是有限的资源, 使用一个少一个, 所以在一个分区能创建的文件个数是有限的, inode结构中的块指针又限制了一个文件最大能占用的空间
+	// 节点表是二进制文件，不同的文件系统节点表的结构也不一样
+	
+参考资料:
+	linux中df命令查看硬盘占用情况详解  https://blog.csdn.net/songyuchaoshi/article/details/108972183
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 硬链接和软链接及重定向
+
+5.1 一次性创建多个文件
+	[aaron@localhost ~]$touch file{1..523985}.txt
+	-bash: /usr/bin/touch: Argument list too long
+	
+	// 这个命令可以一次性创建很多文件，生产中对于大的目录不要敲ls,因为文件太多,容易导致司机
+	[aaron@localhost ~]$echo file{1..523985} | xargs touch
+
+	// 节点编号用完后只有删除一些没用的文件解决, 节点编号不能修改手动调整
+	
+5.2 硬链接和软衔接
+	硬衔接就是一个文件多个文件名, 好处是有多个路径可以访问
+	软衔接就是快捷方式
+	
+	[root@localhost test]#ll ./data/
+	total 0
+	-rw-r--r--. 1 root root 0 Oct 16 20:19 123.txt
+	
+	创建一个硬链接,可以看到两个文件的节点数一样,这两个文件本质上是一个文件,实际上就是一个文件的多个名称, 当一个文件发生改变,硬链接的文件也会发生改变
+	[root@localhost test]#ll -i 111.txt ./data/123.txt
+	30244 -rw-r--r--. 2 root root 0 Oct 16 20:19 111.txt				// 2表示有2个衔接
+	30244 -rw-r--r--. 2 root root 0 Oct 16 20:19 ./data/123.txt
+	
+	输出源文件
+	[root@localhost test]#rm -rf ./data/123.txt
+	
+	[root@localhost test]#ll -i
+	total 4
+	30244 -rw-r--r--. 1 root root 5 Oct 16 20:37 111.txt
+	30243 drwxr-xr-x. 2 root root 6 Oct 16 20:37 data
+	
+	[root@localhost test]#cat 111.txt
+	text
+		
+硬链接的局限性
+	硬衔接不能跨设备,跨分区
+	不能给文件夹创建硬衔接
+	硬链接和源文件没有依赖关系,源文件删除后,硬链接的文件仍然可以访问。硬链接和源文件是相等的
+	添加一个硬衔接,衔接数会加1,删除一个硬衔接文件(不管是源还是目标),衔接数会减1
+	
+
+为什么目录的衔接数是2,目录本身 + 目录里面的. , 所以是任何一个文件夹的衔接数都是2起步；
+	[root@localhost test]#ll -i
+	total 4
+	30244 -rw-r--r--. 1 root root 5 Oct 16 20:37 111.txt
+	30243 drwxr-xr-x. 2 root root 6 Oct 16 20:37 data			// +1
+	
+	[root@localhost test]#ll ./data/ -a -i
+	total 0
+		30243 drwxr-xr-x. 2 root root  6 Oct 16 20:37 .			// +1
+	101456255 drwxr-xr-x. 3 root root 33 Oct 16 20:19 ..
+	
+	在 data 目录下创建一个新的目录, 然后可以看到衔接数变为了3
+	[root@localhost test]#mkdir ./data/data2
+	total 4
+	-rw-r--r--. 1 root root  5 Oct 16 20:37 111.txt
+	drwxr-xr-x. 3 root root 19 Oct 16 21:21 data
+	
+	[root@localhost test]#ll -a -i ./data/data2/
+	total 0
+	33949666 drwxr-xr-x. 2 root root  6 Oct 16 21:21 .
+	   30243 drwxr-xr-x. 3 root root 19 Oct 16 21:21 ..			// +1, .. 指的就是上一个目录,这里上一个目录就是data目录
+	
+5.3 因为硬链接不能跨分区,所以生产中更多使用的是软衔接(符号衔接)
+
+软衔接
+	windows中用的快捷方式和软衔接一样
+	软衔接和目标文件不是同一个文件
+	软衔接和目标文件的衔接数没有增长
+	软衔接和目标文件类型不同
+	软衔接和目标文件大小不同
+	通过软衔接看到的内容,其实就是目标文件的内容
+	删除源文件，此时不能通过软衔接访问源文件的内容
+	删除源文件，再增加一个源文件,源文件路径和软衔接指定的一样,这时同样可以通过软衔接访问
+	软衔接可以跨设备,跨区
+	软衔接支持文件夹
+	
+-s 创建软衔接
+	[root@localhost test]#echo 'this test file' > ./data/test.txt
+	
+	ln -s 目标文件 衔接文件
+	[root@localhost test]#ln -s ./data/test.txt  ./123.txt
+	
+	[root@localhost test]#ls -il 123.txt ./data/test.txt
+	101456256 lrwxrwxrwx. 1 root root 15 Oct 16 22:11 123.txt -> ./data/test.txt    //可以看到软衔接文件占15个字符(字节),这时因为"./data/test.txt"占15个字节
+    30242 -rw-r--r--. 1 root root 15 Oct 16 22:10 ./data/test.txt
+	
+如果目标文件用相对路径表示, 在通过软衔接找目标文件时,会通过软衔接的相对路径去找目标文件
+	ln -s test.txt /opt/test1.txt 	 
+	
+软件升级和回滚原理:
+    一个服务有v1、v2两个版本, 创建一个软衔接指向v1, 升级的话就用这个软链接指向v2, 回滚的话就指向v1
+	
+5.4 IO 就是"读入数据(Input)"和"输出数据(Output)"
+
+Linux中有个特点，每打开的文件系统会分配一个唯一的数字,这个数字称为FD(file descriptor,文件描述符), 0、1、2 预留给系统用的
+Linux给程序提供三种 I/O 设备
+	标准输入（STDIN） － 0 默认接受来自终端窗口的输入
+	标准输出（STDOUT）－ 1 默认输出到终端窗口
+	标准错误（STDERR）－ 2 默认输出到终端窗口
+
+[root@localhost test]#ll /dev/std*
+lrwxrwxrwx. 1 root root 15 Oct 16 19:41 /dev/stderr -> /proc/self/fd/2
+lrwxrwxrwx. 1 root root 15 Oct 16 19:41 /dev/stdin -> /proc/self/fd/0
+lrwxrwxrwx. 1 root root 15 Oct 16 19:41 /dev/stdout -> /proc/self/fd/1	
+	
+
+可以看到标准输入、标准输出、标准错误 都指向了当前的终端，所以当前终端就作为标准输入、标准输出、标准错误的设备
+默认情况下，标准输入、标准输出、标准错误都是由当前窗口完成， 报警信息以及提示信息在linux中也归类到标准错误
+[root@localhost test]#ll /proc/self/fd/1
+lrwx------. 1 root root 64 Oct 16 22:38 /proc/self/fd/1 -> /dev/pts/1
+
+[root@localhost test]#ll /proc/self/fd/2
+lrwx------. 1 root root 64 Oct 16 22:38 /proc/self/fd/2 -> /dev/pts/1
+
+[root@localhost test]#ll /proc/self/fd/0
+lrwx------. 1 root root 64 Oct 16 22:38 /proc/self/fd/0 -> /dev/pts/1
+
+[root@localhost test]#tty
+/dev/pts/1
+
+三个设备指向三个文件描述符,三个文件描述符默指向了当前的窗口
+
+
+5.5 I/O重定向：将默认的输入，输出或错误对应的设备改变，指向新的目标
+	
+	打开2个终端
+		终端1
+		[root@localhost test]#tty
+		/dev/pts/1
+		
+		终端2
+		[root@localhost ~]#tty
+		/dev/pts/2
+	
+	在终端1上操作,把标准输出重定向到终端2
+		[root@localhost test]#ls > /dev/pts/2
+		# ls 1> /dev/pts/2   // 标准写法是 1> ,  因为重定向标准输出用的太多,所以大部分情况就省略了 > 前面的数字1
+		
+	发现在终端2上显示出了如下信息:
+		[root@localhost ~]#123.txt  data
+	
+
+普通用户不能重定向到root用户设备上,也不能重定向到其它用户设备上:
+	[aaron@localhost ~]$w
+	 23:14:18 up  3:33,  3 users,  load average: 0.00, 0.01, 0.05
+	USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT
+	aaron    pts/0    192.168.32.1     19:44    2.00s  1.99s  0.01s w
+	root     pts/1    192.168.32.1     20:11   16:10   1.06s  1.06s -bash
+	root     pts/2    192.168.32.1     22:42   16:34   0.06s  0.06s -bash
+	[aaron@localhost ~]$echo "xxxx" > /dev/pts/1
+	-bash: /dev/pts/1: Permission denied
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 重定向和管道
+
+6.1 通常做法是重定向到某个文件中，把输入输出的内容直接生成到文件中，这就是重定向
+
+cat 支持标准输入也支持标准输出
+	[root@localhost ~]#cat
+	test
+	test
+	ctrl + c  结束输入
+
+cat 把标准输出到重定向
+	[root@localhost ~]#cat > aaa.txt
+	aaaaaaa
+	ctrl + c  结束输入
+	
+	[root@localhost ~]#cat aaa.txt
+	aaaaaaa
+	
+6.2 重定向符号
+	>		覆盖内容
+	>>		追加内容
+	
+	2>		覆盖
+	2>>		追加内容
+	
+把正确输出和错误输出分开放到一个文件
+	[root@localhost ~]#ls test/ error/ > f1.txt 2> f2.txt
+	[root@localhost ~]#cat f1.txt
+	test/:
+	123.txt
+	data
+	[root@localhost ~]#cat f2.txt
+	ls: cannot access error/: No such file or directory
+
+把正确输出和错误输出放到一个文件, "&"用来说明1是文件描述符(标准输出的描述符就是1,所以1代表标准输出), 直接写"2>1"会把1当成文件名
+"2>&1"表示把标错误重定向到标准输出
+	[root@localhost ~]#ls test/
+	123.txt  data
+	[root@localhost ~]#ls error/
+	ls: cannot access error/: No such file or directory
+		
+	[root@localhost ~]#ls test/ error/ > all.txt 2>&1
+	[root@localhost ~]#cat all.txt
+	ls: cannot access error/: No such file or directory
+	test/:
+	123.txt
+	data
+	
+	下面两种写法也可以，规律是: 先定向到具体某个文件,再重定向到标准输入或输出, "1>"可以简写为">"
+	[root@localhost ~]#ls error/ test/ 2>all3.log 1>&2
+	[root@localhost ~]#ls error/ test/ 2>all3.log >&2
+	
+	//这种写法不可以，顺序不能反, 标准错误已经产生, 当代码运行"2>&1"时,程序只知道标准错误重定向到标准输出,还不知道后面把标准输出重定向到了文件,
+	[root@localhost ~]#ls test/ error/ 2>&1 > all2.txt
+	ls: cannot access error/: No such file or directory
+	[root@localhost ~]#cat all2.txt							
+	test/:
+	123.txt
+	data
+	
+	方式2:  使用"&>" 或 ">&" 表示把标准输出和标准错误输出都重定向到同一个文件
+	[root@localhost ~]#ls test/ error/ &> all4.txt
+	[root@localhost ~]#cat all4.txt
+	ls: cannot access error/: No such file or directory
+	test/:
+	123.txt
+	data
+	
+	[root@localhost ~]#ls test/ error/ >& all4.txt
+	
+	
+"/dev/null"是系统自带的设备,是个字符设备,这个设备经常用来作为垃圾箱使用，在运行命令的时候经常会在屏幕上显示一些结果,但有时候就不想让它显示。
+尤其写脚本,有些命令运行时信息太多,不想让别人看
+	这样命令就会默默运行,不会打印出信息,达到一个隐藏的效果
+	[root@localhost ~]#yun -y install sl &> /dev/null
+	
+6.3 标准输入重定向  < 或 0< ,  需要标准输入的命令(标准输入命令就是运行命令后等待输入的命令，ll敲了就出结果，所以这不是标准输入命令) bc、cat、mailx、postfix
+	
+	[root@localhost ~]#cat > bc.log
+	2*6
+	^C
+	// 文件当作输入,避免手工完成, < 是 0< 的缩写
+	[root@localhost ~]#bc < bc.log
+	12
+	
+	[root@localhost ~]#seq -s+ 10
+	1+2+3+4+5+6+7+8+9+10
+	[root@localhost ~]#seq -s+ 10 > bc.log
+	[root@localhost ~]#bc < bc.log
+	55
+
+6.4 安装 mailx、postfix 实现邮件通信
+	yum -y install mailx postfix
+	
+	root用户
+		给当前机器上的用户发邮件
+		mail -s hello aaron				// hell是邮件主题
+		hello							// 手动输入
+		
+	aaron用户
+		mail
+		输入邮件编号
+		
+	root用户
+		给当前机器上的用户发邮件
+		mail -s hello aaron < mail.txt	 // 使用标准输入重定向减少手工输入量
+		mail -s hello 其它用户 < mail.txt
+		
+	给互联网中的用户发邮件, 用途: 邮件报警
+		(0). centOS7和8要初始话配置
+			关闭防火墙
+				systemctl disable --now  firewalld
+			关闭 SELinux	
+				vim /etc/selinux/config
+					SELINUX=disabled
+		
+		(1). 获取到自己邮箱的stmp信息
+		
+		(2). 把下面信息配置到 /etc/mail.rc
+			set from = 123456@qq.com
+			set stmp = xx.xx.com
+			set stmp-auth-user= 123456@qq.com
+			set stmp-auth-password=xxxxxxxxxxxxx
+		
+		(3).运行如下命令
+			mail -s 这是邮件标题  xxx@xxx.com  < /etc/text.txt
+
+	
+单行重定向:	回车一次,重定向一次
+	[root@localhost ~]#cat > f1.txt
+	lineq
+	lineq2
+	^C
+	
+	[root@localhost ~]#cat f1.txt
+	lineq
+	lineq2
+
+
+多行重定向: 写了多行,作为一个整体提交
+	使用 << 符号实现多行重定向, << 后面的字符可以是任意的,但是以什么字符开始,就要以什么字符结束,不能多一个空格,也不能少爷给空格,通常使用EOF(end of file)或!
+	[root@localhost ~]#cat > f2.txt <<EOF
+	> line1
+	> line2
+	> line3
+	> EOF
+	
+	[root@localhost ~]#cat f2.txt
+	line1
+	line2
+	line3
+
+6.5 管道 | , 左边命令的标准输出作为管道符号右侧命令的标准输入
+	使用管道的条件, 左边的命令要有标准输出,右边要有标准输入
+		标准输出就是敲了命令后有正确的输出
+		标准输入就是敲了命令后会等待输入, 重点是等待输入
+	
+	[root@localhost ~]#seq -s+ 10
+	1+2+3+4+5+6+7+8+9+10
+	[root@localhost ~]#seq -s+ 10 | bc
+	55
+	
+	// 这样为什么不行? bc 把 `seq -s+ 10` 当成了一个文件
+	[root@localhost ~]# bc `seq -s+ 10`
+	File 1+2+3+4+5+6+7+8+9+10 is unavailable.
+	// 这样是可以的
+	[root@localhost ~]#bc bc.log
+	bc 1.06.95
+	Copyright 1991-1994, 1997, 1998, 2000, 2004, 2006 Free Software Foundation, Inc.
+	This is free software with ABSOLUTELY NO WARRANTY.
+	For details type `warranty'.
+	55
+	^C
+	
+	cat /root/test.txt | mail -s 邮件标题 xxxx@xxx.com
+	
+	
+6.6 转换和删除字符 tr
+	
+	[root@localhost ~]#tr '123' 'xyz'
+	1a2b3c
+	xaybzc
+	1c2b
+	xcyb
+	^C
+	
+	用途,小写转大写
+	[root@localhost ~]#tr 'a-z' 'A-Z'
+	asdfasdfasdfa
+	ASDFASDFASDFA
+	^C
+	
+	[root@localhost ~]#cat /etc/centos-release | tr 'a-z' 'A-Z'
+	CENTOS LINUX RELEASE 7.9.2009 (CORE)
+	
+	删除字符 -d
+	[root@localhost ~]#tr -d 'a-c'
+	abcdefg
+	defg
+	^C
+	
+	压缩 -s , 把相同的连续的字符压缩为一个字符
+	[root@localhost ~]#tr -s 'a'
+	aaaaaaaaabcdd
+	abcdd
+	
+	把windows的文件转化为linux文件
+	tr  -d '\r' < win.txt > linux.txt
+	file linux.txt
+	
+	取出分区利用率的数字,先把所有空格压缩为一个空格
+	df | tr -s ' '
+	
+6.7 既希望重定向又希望在窗口中打印, 使用 tee 命令, tee 在写脚本的时候偶尔用一下, 输出重定向到其它文件, 但有时候也需要看下信息
+	[root@localhost ~]#ls | tee ls.log
+	anaconda-ks.cfg
+	bc.log
+	f1.txt
+	f2.txt
+	test
+	
+	[root@localhost ~]#cat ls.log
+	anaconda-ks.cfg
+	bc.log
+	f1.txt
+	f2.txt
+	test
+	
+	[root@localhost ~]#who | tee ls.log
+	root     pts/0        2022-10-17 14:37 (192.168.32.1)
+	
+	// 再次用会被覆盖
+	[root@localhost ~]#cat ls.log
+	root     pts/0        2022-10-17 14:37 (192.168.32.1)
+	
+	// 加上 -a, 就变成了追加
+	[root@localhost ~]#hostname | tee -a ls.log
+	localhost.localdomain
+	[root@localhost ~]#cat ls.log
+	root     pts/0        2022-10-17 14:37 (192.168.32.1)
+	localhost.localdomain
+	
+	
+6.8 重定向中的 - 符号，- 重定向到当前终端,而不是定向到文件,  和 > 的效果相反
+		
+	下载文件不改名
+	wget   http://xxx.xxx.xxx/yyy.txt
+	
+	把下载的文件改名为 xxx.txt 
+	wget -O xxx.txt  http://xxx.xxx.xxx/yyy.txt
+
+	把文件内容打印在当前终端,不保存文件。也就是把输出文件重定向到输出终端 
+	wget -O -  http://xxx.xxx.xxx/yyy.txt
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 用户和组管理初步
+
+7.1 
+Linux 安全模型 3A , 当用户登录成功时，系统会自动分配令牌 token，包括：用户标识和组成员等信息
+	Authentication：认证，验证用户身份
+	Authorization：授权，不同的用户设置不同权限
+	Accouting|Audition：审计(记录登录后干的事情)
+	
+市面上最常见的认证方式:
+	用户名和密码
+	双因子:2个验证门槛，比如 用户名密码、手机
+	多因为验证:多个验证门槛，比如 用户名密码、手机、生物验证(人脸、指纹)等
+	
+Linux中每个用户是通过 User Id （UID）来唯一标识的, 不是看用户名, 所以显示的root用户不一定是真正的root用户
+	管理员：root, 0
+	普通用户：1-60000 自动分配
+		系统用户：1-499 （CentOS 6以前）, 1-999 （CentOS 7以后）
+			对守护进程获取资源进行权限分配
+		登录用户：500+ （CentOS6以前）, 1000+（CentOS7以后）
+			给用户进行交互式登录使用
+		
+	[ec2-user@ip-172-31-32-113 ~]$ sudo -i
+	[root@ip-172-31-32-113 ~]# id
+	uid=0(root) gid=0(root) groups=0(root)
+	
+	// 查看 UID
+	[root@ip-172-31-32-113 ~]# id -u
+	0
+	
+	// 查看其它用户UID
+	[root@ip-172-31-32-113 ~]# id -u ec2-user
+	1000
+
+Linux中可以将一个或多个用户加入用户组中，用户组是通过Group ID（GID） 来唯一标识的。
+	管理员组：root, 0
+	普通组：
+		系统组：1-499（CentOS 6以前）, 1-999（CentOS7以后）, 对守护进程获取资源进行权限分配
+		普通组：500+（CentOS 6以前）, 1000+（CentOS7以后）, 给用户使用
+		
+	用户的主要组(primary group)：
+		用户必须属于一个且只有一个主组，默认创建用户时会自动创建和用户名同名的组，做为用户的主要组，由于此组中只有一个用户，又称为私有组
+	用户的附加组(supplementary group)： 
+		一个用户可以属于零个或多个辅助组，附属组
+	
+	// groups 表示这个用户属于哪些组
+	[root@ip-172-31-32-113 ~]# id ec2-user
+	uid=1000(ec2-user) gid=1000(ec2-user) groups=1000(ec2-user),4(adm),10(wheel),190(systemd-journal)
+	
+	// 安装了 postfix 会自动创建一个名为 postfix 的用户以及组
+	[root@ip-172-31-32-113 ~]# id postfix
+	uid=89(postfix) gid=89(postfix) groups=89(postfix),12(mail)
+
+	windows中创建一个账号默认加到User组中,不会新加一个组
+	
+
+7.2 安全上下文
+	Linux安全上下文Context：运行中的程序，即进程 (process)，以进程发起者的身份运行，进程所能够访问资源的权限取决于进程的运行者的身份
+	比如：分别以root 和 普通用户 的身份运行 "cat /etc/shadow" ，得到的结果是不同的，资源能否能被访问，是由运行者的身份决定，非程序本身
+	
+	// 普通用户查看
+	[ec2-user@ip-172-31-32-113 ~]$ cat /etc/shadow
+	cat: /etc/shadow: Permission denied
+	
+	// root 用户查看
+	[root@ip-172-31-32-113 ~]# cat /etc/shadow
+	root:*LOCK*:14600::::::
+	bin:*:18313:0:99999:7:::
+	daemon:*:18313:0:99999:7:::
+	adm:*:18313:0:99999:7:::
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+生产案例：
+	1. 提示空间满 No space left on device，但 df 可以看到空间很多，为什么？
+	   节点编号用完了，解决方法是删除没用的小文件
+	
+	2. 提示空间快满，使用 rm 删除了很大的无用文件后，df 仍然看到空间不足，为什么？如何解决？
+		方法1：使用lsof查看是否正在被使用，如果进程不重要，可以kill杀死进程
+		方法2：如果进程重要不可断开，先把大文件清零cat  /dev/null  >  /boot/big清空正在使用的文件，释放空间

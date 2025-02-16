@@ -1,0 +1,214 @@
+1 LVS的跨网段实现
+	LVS 和 RS 在物理上是一个网段，但逻辑上是两个网段，vip是一个网段， DIP和RIP处于另一个网段 
+
+1.1 LVS的跨网段实现案例：	
+	环境：五台主机, 客户端到路由器网络连接使用"仅主机模式", 路由器 到 交换机 网络连接使用"NAT模式"， LVS 和 RS 连接交换机
+		
+		一台：客户端 eth0:仅主机 192.168.10.6/24 GW:192.168.10.200
+		
+		一台：ROUTER , 启用 IP_FORWARD
+			eth0 :NAT 10.0.0.200/24		eth0:1 172.16.0.200/24	# 如果是多网段，路由器上需要多加一个路由
+			eth1: 仅主机 192.168.10.200/24
+				hostnamectl set-hostname router.example.com
+				exit
+				nmcli connection reload
+				nmcli connection			
+				nmcli connection {网卡name}
+				# 开启ip_forward，输入内容 net.ipv4.ip_forward=1
+				vim /etc/sysctl.conf
+				# 一个网卡可以有多个IP地址，将 172.16.0.200/24 添加欸eth0网卡
+				ip a a 172.16.0.200/24 dev eth0 label eth0:1
+				
+		一台：LVS
+			eth0:NAT:DIP:10.0.0.8/24  GW:10.0.0.200	
+			lo:172.16.0.100/32										# VIP
+				yum -y install ipvsadm
+				ifconfig lo:1 10.0.0.100/32
+				ipvsadm -A -t 10.0.0.100:80 -s rr				
+				ipvsadm -a -t 10.0.0.100:80 -r 10.0.0.7 -g	
+				ipvsadm -a -t 10.0.0.100:80 -r 10.0.0.17 -g	
+				ipvsadm -Ln
+				
+		两台RS：
+			RS1：
+				eth0:NAT:10.0.0.7/24 	GW：10.0.0.200
+				lo:172.16.0.100/32									# VIP
+					echo 1 > /proc/sys/net/ipv4/conf/all/arp_ignore
+					echo 2 > /proc/sys/net/ipv4/conf/all/arp_announce
+					echo 1 > /proc/sys/net/ipv4/conf/lo/arp_ignore	  
+					echo 2 > /proc/sys/net/ipv4/conf/lo/arp_announce
+					ifconfig lo:1 10.0.0.100/32
+			
+			RS2：
+				eth0:NAT:10.0.0.17/24 	GW：10.0.0.200	
+				lo:172.16.0.100/32									# VIP
+					echo 1 > /proc/sys/net/ipv4/conf/all/arp_ignore	
+					echo 2 > /proc/sys/net/ipv4/conf/all/arp_announce
+					echo 1 > /proc/sys/net/ipv4/conf/lo/arp_ignore
+					echo 2 > /proc/sys/net/ipv4/conf/lo/arp_announce
+					ifconfig lo:1 10.0.0.100/32
+	
+	搭建后进行测试：
+		while :;do curl 10.0.0.100;sleep 0.5;done	
+
+
+1.2 注意事项：
+	RS的VIP必须要绑定在LO(回环)网卡上，LVS的VIP可以不用绑定在LO(回环)网卡！ 
+		原因参见："32 企业级调度器lvs2-LVS" --> 7.2 注意事项 --> 注意事项_1
+		
+	VIP如果配置在LO网卡上，必须使用32bit子网掩码，如果VIP绑定在eth0上，可以是其它netmask! 
+		原因参见："32 企业级调度器lvs2-LVS" --> 7.2 注意事项 --> 注意事项_2
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 LVS的防火墙标记和持久连接及高可用实现
+	
+2.1 LVS 的 TUN 隧道模式理论基础
+
+	隧道模式可以使 LVS 和 RS 之间可以跨路由器、跨城市、跨地区，隧道模式 = DR模式 + 隧道
+	
+		DR模式：数据在传输的时候只修改数据链路层
+		
+		隧道模式：
+			数据在传输的时候只修改数据链路层，数据包由LVS传输到RS的时候，包前面再加一层源地址和目标地址，源地址就是LVS的IP，目标地址就是RS的IP
+			不但修改数据链路层，而且还加上了网络层的报文，所以可以跨路由
+			
+			
+2.2 LVS 的 TUN 隧道模式理论案例
+	
+	环境：五台主机, 客户端到路由器网络连接使用"仅主机模式", 路由器 到 交换机 网络连接使用"NAT模式"，LVS连接到交换机，LVS 和 RS 通过 TUN 隧道连接
+	
+		一台：客户端 eth0:仅主机 192.168.10.6/24 GW:192.168.10.200
+		
+		一台：ROUTER , 启用 IP_FORWARD
+			eth0 :NAT 10.0.0.200/24
+			eth1: 仅主机 192.168.10.200/24
+				hostnamectl set-hostname router.example.com
+				exit						
+				nmcli connection reload	 	
+				nmcli connection			
+				nmcli connection {网卡name} 
+				vim /etc/sysctl.conf		
+				
+		一台：LVS
+			# DIP, 网关可以随便配,但不能没有,因为没有网关就没有路由,包就不会往下转,如果有网关就会尝试往下转包.如果LVS要连外网，需要正确配网关
+			eth0:NAT:DIP:10.0.0.8/24  GW:10.0.0.200	
+			tunl0:10.0.0.100/32								# VIP					
+				ifconfig tunl0 10.0.0.100 netmask 255.255.255.255 up  	# 创建一个名为tunl0的虚拟网卡并配置VIP，注意设备名必须为tunl0
+				lsmod |grep ipip										# tunl0网卡创建后会自动加载ipip模块 
+				yum -y install ipvsadm
+				ipvsadm -A -t 10.0.0.100:80 -s rr				
+				ipvsadm -a -t 10.0.0.100:80 -r 10.0.0.7 -i
+				ipvsadm -a -t 10.0.0.100:80 -r 10.0.0.17 -i	
+				ipvsadm -Ln
+				
+		两台RS：
+			RS1：
+				eth0:NAT:10.0.0.7/24 	GW：10.0.0.200
+				tunl0:10.0.0.100/32							# VIP
+					# 如果LVS和RS之间由路由器不用运行下面四条命令
+					echo "1" > /proc/sys/net/ipv4/conf/tunl0/arp_ignore
+					echo "2" > /proc/sys/net/ipv4/conf/tunl0/arp_announce
+					echo "1" > /proc/sys/net/ipv4/conf/all/arp_ignore
+					echo "2" > /proc/sys/net/ipv4/conf/all/arp_announce
+					# 创建一个名为tunl0的虚拟网卡并配置VIP，注意设备名必须为tunl0
+					ifconfig tunl0 10.0.0.100 netmask 255.255.255.255 up
+					# 防止做地址校验，也就是防止对旧的路径做检查， 导致流量包反向回去
+					echo "0" > /proc/sys/net/ipv4/conf/tunl0/rp_filter
+					echo "0" > /proc/sys/net/ipv4/conf/all/rp_filter					
+					# 启动web服务
+			RS2：
+				eth0:NAT:10.0.0.17/24 	GW：10.0.0.200	
+				tunl0:10.0.0.100/32							# VIP
+					ifconfig tunl0 10.0.0.100 netmask 255.255.255.255 up
+					# 如果LVS和RS之间由路由器不用运行下面四条命令
+					echo "1" > /proc/sys/net/ipv4/conf/tunl0/arp_ignore
+					echo "2" > /proc/sys/net/ipv4/conf/tunl0/arp_announce
+					echo "1" > /proc/sys/net/ipv4/conf/all/arp_ignore
+					echo "2" > /proc/sys/net/ipv4/conf/all/arp_announce
+					# 创建一个名为tunl0的虚拟网卡并配置VIP，注意设备名必须为tunl0					
+					ifconfig tunl0 10.0.0.100 netmask 255.255.255.255 up
+					# 防止做地址校验，也就是防止对旧的路径做检查， 导致流量包反向回去
+					echo "0" > /proc/sys/net/ipv4/conf/tunl0/rp_filter
+					echo "0" > /proc/sys/net/ipv4/conf/all/rp_filter					
+					# 启动web服务
+	
+	搭建后进行测试：
+		while :;do curl 10.0.0.100;sleep 0.5;done
+
+
+2.3 防火墙标记
+	有两个LVS负载均衡规则，当同时访问这两个负载均衡的时候，因为是各调度各的，请求可能会同时调度到一台后端机器上。如下
+		[root@centos8 ~]#ipvsadm -Ln
+		IP Virtual Server version 1.2.1 (size=4096)
+		Prot LocalAddress:Port Scheduler Flags
+		-> RemoteAddress:Port Forward Weight ActiveConn InActConn
+		TCP 10.0.0.100:80 rr						# LVS负载均衡-1				
+			-> 10.0.0.7:80 Tunnel 1 0 0
+			-> 10.0.0.17:80 Tunnel 1 0 0
+		TCP 10.0.0.100:443 rr						# LVS负载均衡-2
+			-> 10.0.0.7:443 Tunnel 1 0 0
+			-> 10.0.0.17:443 Tunnel 1 0 0	
+
+	如何实现即使有两个或多个LVS负载均衡，当同时访问时，也实现负载均衡？相当于把多个负载均衡合为一个负载均衡实现统一调度
+	使用防火墙标记功能，可以把多个端口贴上同一个标签，这样就能实现统一调度
+	
+	# 贴标签，mangle是防火墙中的一个表，这个表支持了贴标签的功能
+	iptables -t mangle -A PREROUTING -d 172.16.0.100 -p tcp -m multiport --dports 80,443 -j MARK --set-mark 10
+	# 查看标签
+	iptables -vnL -t mangle
+	# 清空 LVS 规则，重新添加
+	ipvsadm -C
+	ipvsadm -A -f 10 -s rr					# -f 表示使用防火墙标签，不再根据端口号调度，根据标签调度
+	ipvsadm -a -f 10 -r 10.0.0.7 -g
+	ipvsadm -a -f 10 -r 10.0.0.17 -g
+	ipvsadm -Ln
+	
+	#客户端机器测试
+	curl -k https://10.0.0.100;curl http://10.0.0.100
+	
+	
+	注：httpd实现https
+		yum -y install httpd
+		yum -y install mod_ssl # 装了这个模块后，httpd就支持https
+	
+	
+2.4 LVS 持久连接
+	session 绑定：对共享同一组RS的多个LVS负载均衡服务，需要统一进行绑定
+		RR(轮询)算法不可以实现
+		sh(源IP地址hash)可以实现，但是很多用户都是公用一个公网IP，所以这种算法并不好
+	
+	解决办法：RR(轮询)算法 + 持久连接
+	
+	持久连接(lvs persistence)模板：实现无论使用任何调度算法，在一段时间内(默认360s)，能够实现将来自同一个地址的请求始终发往同一个RS
+		# 加上-p参数表示开启持久连接，如果没有指定时间，默认 360s
+		ipvsadm -A -t 10.0.0.100:80 -s rr -p
+		
+		# 开启持续连接，并且持续连接的时间是 3600s
+		ipvsadm -A -t 10.0.0.100:80 -s rr -p 3600s
+
+		# 查看连接情况
+		ipvsadm -Lnc
+
+2.5 LVS 高可用性实现
+	Director不可用，整个系统将不可用，SPoF(Single Point of Failure). 
+		解决方案：高可用，使用：keepalived、heartbeat/corosync
+	
+	RS 不可用时：
+		某RS不可用时，Director依然会调度请求至此RS
+		解决方案： 由Director对各RS健康状态进行检查，失败时禁用，成功时启用
+	
+	常用解决方案：
+		keepalived
+		heartbeat/corosync (早期，现在不用了)
+		ldirectord
+		
+	检测方式：
+		网络层检测：icmp
+		传输层检测：端口探测
+		应用层检测：请求某关键资源
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+

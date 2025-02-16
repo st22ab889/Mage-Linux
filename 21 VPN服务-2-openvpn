@@ -1,0 +1,487 @@
+
+2 open-v-p-n介绍和环境准备
+
+	专用网：
+		专用网就是在两个网络（例如，北京和广州）之间架设一条专用线路，但是它并不需要真正地去铺设光缆之类的物理线路。
+		虽然没有亲自去铺设，但是需要向电信运营商申请租用专线，在这条专用的线路上只传输自己的信息,所以安全稳定,同时也费用高昂
+	
+	VPN(Virtual Private Network，虚拟私有网络)：又称为虚拟专用网络，用于在不安全的线路上安全的传输数据。	
+		
+	VPN优点：节约成本，加密安全传输	
+	
+	其它相关概念：
+		如果两个公司的网络通过vpn连起来，连接两个网络的vpn称为"站点对站点(site to site)"!
+		个人通过vpn连接到远程网络称之为"peer to site"	
+		
+	OpenVPN也支持站点对站点，如果是组织之间的长期连接(比如两个分公司和总公司连接)，最好用硬件VPN(企业级的防火墙一般都附带vpn功能)，比较稳定!
+	
+
+2.1 OpenVPN 介绍
+	
+	功能：
+		让用户通过广域网(互联网)连接到公司的内部网络，OpenVPN 适合个人出差用户
+		OpenVPN也支持站点对站点，如果是组织之间的长期连接(比如两个分公司和总公司连接)，最好用硬件VPN(企业级的防火墙一般都附带vpn功能)，比较稳定!
+		OpenVPN 既有免费版和商业版，商业版用起来更易用，功能可能更丰富！
+		
+	所处位置：OpenVPN 处在内网和外网的边界，类似于防火墙的所处的位置
+	
+	注意事项：一旦建立连接，就和在内网中一样，所以vpn在连接的时候要验证身份，使用 "用户名密码+证书" 的方式进行身份验证！ 
+	
+	OpenVPN 使用的端口是 TCP/1194 或 UDP/1194，说明 OpenVPN 支持 TCP 和 UDP 两种协议！
+		OpenVPN 默认使用TCP协议，工作中推荐使用TCP协议，更稳定！
+		UDP协议效率高，但是在跨网络通讯的时候可能存在丢包，没有tcp稳定！
+		
+	
+	阿里云主机申请：
+		城市里面的可用区(可用区相当于机房)，相同城市的不同可用区的机器可以相通，不同城市的机器不可以互通！
+		交换机就相当于划分子网
+		安全组就相当于防火墙
+		
+
+实践：		
+	基础设施：
+		阿里云三台主机(CentOS 8.2)，在同一个城市的同一个可用区，这三台主机在同一内网中！
+			
+			主机1(OpenVPN Server)：用来作为跳板机，因为这台机器分配了公网地址，这个地址无法自行指定
+				39.101.189.5 		# 这个公网地址也不是直接分配给主机，相当于阿里云防火墙上的公网地址，通过DNAT连接到内网的主机
+				172.30.0.1/24
+				
+			主机2(httpd)：
+				172.30.0.100/24
+			
+			主机3(httpd)：
+				172.30.0.200/24 
+			
+		Windows 本地客户端：远程操作
+			Windows 10	
+		
+	软件环境：
+		主机1(OpenVPN Server)：
+			yum info openvpn			# Ubuntu 使用"apt show openvpn" 查看 openvpn 信息
+			
+			// easy-rsa 用来管理证书(openSSL也可以管理证书,但easy-rsa更方便)。openvpn要用到大量证书，服务端和客户端(每个用户)要用到证书
+			yum -y install openvpn easy-rs
+	
+			rpm -ql openvpn
+			
+			rpm -ql easy-rsa
+			
+		主机2：
+			yum -y install httpd
+			echo Web host 2 : 172.30.0.100  > /var/www/html/index.html
+			systemctl start httpd
+			
+		主机3：
+			yum -y install httpd
+			echo Web host 3 : 172.30.0.200  > /var/www/html/index.html
+			systemctl start httpd	
+			
+			
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 OpenVPN 实现CA证书
+
+	详见 PDF "2.3 准备证书相关文件" 章节 ！
+	
+	注意：
+		CA可以单独使用一个主机，但是为了节约云主机，所以和OpenVPN使用同一台机器
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 OpenVPN 服务和客户端实现
+
+	详见 PDF "2.4 ~ 2.8" 章节 ！
+
+	
+	OpenVPN 服务端配置注意事项：
+	
+		[root@centos8 ~]#grep -Ev "^#|^$" /etc/openvpn/server.conf				// server.conf文件中以#或;开头的行都为注释
+		;proto tcp 		# 协议,生产推荐使用TCP
+		proto udp 		# 默认协议
+		# 创建一个以太网隧道，以太网使用tap,一个tap设备允许完整的以太网帧通过Openvpn隧道，可提供非ip协议的支持，
+		# 比如IPX协议和AppleTalk协议,tap等同于一个以太网设备，它操作第二层数据包如以太网数据帧。
+		;dev tap 		# tap 工作在以太网二层，也就是数据链路层
+		# 创建一个路由IP隧道，生产推存使用tun.互联网使用tun,一个tun设备大多时候，被用于基于IP协议的通讯。tun模拟了网络层设备，操作第三层数据包比如IP数据封包。
+		dev tun 		# tun 工作在网络层
+		server 10.8.0.0 255.255.255.0 	# 客户端连接后分配IP的地址池，服务器默认会占用第一个IP，10.8.0.1将做为客户端的网关
+		ifconfig-pool-persist ipp.txt 	#为客户端分配固定IP，不需要配置,建议注释. 客户端的地址一般不需要固定
+		;push "route 192.168.10.0 255.255.255.0" 	#给客户端生成的到达服务器后面网段的静态路由，下一跳为openvpn服务器的 10.8.0.1
+		;push "route 192.168.20.0 255.255.255.0" 	#推送路由信息到客户端，以允许客户端能够连接到服务器背后的其它私有子网
+		;client-config-dir ccd 						#为指定的客户端添加路由，此路由通常是客户端后面的内网，网段而不是服务端的，也不需要设置
+		;duplicate-cn 	#多个用户共用一个证书(这种情况如果不开启支持多用户，新连接建立后，旧连接就会掉线)，一般用于测试环境，生产环境都是一个用户一个证书,无需开启
+		......省略
+		
+		
+		// 关键配置说明：
+			
+			server 10.8.0.0 255.255.255.0		// server 指定虚拟网络使用的网段：
+				当OpenVPN客户端和服务端启动后，都会生成一个虚拟的网卡，客户端和服务端都会获取一个 IP 绑定到虚拟网卡，这个IP属于server指定的网段！
+				当OpenVPN客户端和服务端连接后，这两台机器相当于都在同一个小网络中(这个网络是虚拟的网络)!
+			
+			push "route 192.168.10.0 255.255.255.0	// push 给客户端生成的到达服务器后面网段的静态路由：
+				请求经OpenVPN连接进入内网，内网里面还分的有网段，需要给客户端指明这些网段，指明后这些网段会同步到客户端生成静态路由，
+				当客户端请求这些网段的地址，请求就会自动路由到OpenVPN连接！
+				用户需要访问到的网段，都需要通过 push 指定。
+				
+			client-config-dir ccd 	
+				如果是"站点对站点(site to site)"形式的OpneVPN连接，就需要配置客户端后面的内网，给服务器生成到达客户端后面网段的静态路由
+				如果是"个人对站点"形式的OpneVPN连接，不需要配置！
+		
+	
+	
+	OpenVPN 客户端配置注意事项：
+		
+		[root@centos8 ~]#grep '^[[:alpha:]].*' /usr/share/doc/openvpn/sample/sample-
+		config-files/client.conf
+		client 						#声明自己是个客户端
+		dev tun 					#接口类型，必须和服务端保持一致
+		proto udp 					#协议类型，必须和服务端保持一致
+		remote my-server-1 1194 	#server端的ip和端口，可以写域名但是需要可以解析成IP
+		resolv-retry infinite 		#如果是写的server端的域名，那么就始终解析，如果域名发生变化，会重新连接到新的域名对应的IP
+		nobind 						#本机不绑定监听端口，客户端是随机打开端口连接到服务端的1194
+		persist-key
+		persist-tun
+		ca ca.crt
+		cert client.crt
+		key client.key
+		remote-cert-tls server		#指定采用服务器证书校验方式
+		tls-auth ta.key 1
+		cipher AES-256-CBC
+		verb 3						#此值不能随意指定,否则无法通信	
+	
+
+	
+		
+4.1 OpenVPN Server 配置：
+	
+	[root@centos8 ~]#vim /etc/openvpn/server.conf
+	port 1194
+	proto tcp
+	dev tun
+	ca /etc/openvpn/certs/ca.crt
+	cert /etc/openvpn/certs/server.crt
+	key /etc/openvpn/certs/server.key # This file should be kept secret
+	dh /etc/openvpn/certs/dh.pem
+	server 10.8.0.0 255.255.255.0
+	push "route 172.30.0.0 255.255.255.0"	# 当前环境后端私有网段为"172.30.0.0"，加上后客户端才知道后端服务器有哪些网段进行访问，这里配置的网段其实就是起路由作用
+	keepalive 10 120
+	cipher AES-256-CBC
+	compress lz4-v2
+	push "compress lz4-v2"
+	max-clients 2048
+	user openvpn
+	group openvpn
+	status /var/log/openvpn/openvpn-status.log
+	log-append /var/log/openvpn/openvpn.log
+	verb 3
+	mute 20
+		
+		
+	//准备目志相关目录
+	[root@centos8 ~]#getent passwd openvpn
+	openvpn:x:993:990:OpenVPN:/etc/openvpn:/sbin/nologin
+	
+	[root@centos8 ~]#mkdir /var/log/openvpn; chown openvpn.openvpn /var/log/openvpn			// 注意这里要改权限
+	
+	[root@centos8 ~]#ll -d /var/log/openvpn
+	drwxr-xr-x 2 openvpn openvpn 6 Aug 3 23:07 /var/log/openvpn	
+	
+	
+	// 在服务器开启ip_forward转发功能
+	[root@centos8 ~]#echo net.ipv4.ip_forward = 1 >> /etc/sysctl.conf
+	[root@centos8 ~]#sysctl -p
+	net.ipv4.ip_forward = 1
+	
+	
+	// 添加SNAT规则。注意:
+	//	(1) 这里客户端相当于内网，服务器相当于外网，所以要配置SNAT，对于后端内网中的主机来说，是"OpenVPN Server"这台主机发起的请求，这台主机相当于代理
+	//  (2) MASQUERADE 表示地址伪装，下列规则表示：如果是从"10.8.0.0/24"这个VPN虚拟网络过来的请求，这里源地址要伪装成"OpenVPN Server"内网的网卡地址!
+	[root@centos8 ~]#echo 'iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j MASQUERADE' >> /etc/rc.d/rc.local		
+	[root@centos8 ~]#chmod +x /etc/rc.d/rc.local
+	[root@centos8 ~]#/etc/rc.d/rc.local	
+
+	
+	[root@centos7 ~]#rpm -ql openvpn|grep systemd
+	/usr/lib/systemd/system/openvpn-client@.service
+	/usr/lib/systemd/system/openvpn-server@.service
+	/usr/lib/systemd/system/openvpn@.service					// centos8 缺这个文件
+	/usr/share/doc/openvpn-2.4.9/README.systemd
+	
+	// CentOS8 缺失unit文件,从CentOS7复制文件
+	[root@centos8 ~]#rpm -ql openvpn|grep systemd
+	/usr/lib/systemd/system/openvpn-client@.service				// centos8的这两个service文件不符合要求
+	/usr/lib/systemd/system/openvpn-server@.service
+	/usr/share/doc/openvpn/README.systemd	
+
+	
+	[root@centos8 ~]#ip a
+	......省略
+	2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP
+	group default qlen 1000
+		link/ether 00:0c:29:8a:51:21 brd ff:ff:ff:ff:ff:ff
+		inet 172.30.0.1/24 brd 172.30.0.255 scope global noprefixroute eth0	 // 对于内网中的主机来说，是"172.30.0.1"发起的访问请求，因为配置了SNAT，做了MASQUERADE(地址转换)
+			valid_lft forever preferred_lft forever
+		inet6 fe80::20c:29ff:fe8a:5121/64 scope link
+			valid_lft forever preferred_lft forever
+	3: tun0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc fq_codel state  UNKNOWN 	// 这里多了一个名为"tun0"的虚拟网卡，这个网卡就是由 OpenVPN 创建的
+	group default qlen 100
+		link/none
+		inet 10.8.0.1 peer 10.8.0.2/32 scope global tun0				// "10.8.0.1"是OpenVPN的服务端地址，peer表示"点对点接口的远程端点的地址"
+			valid_lft forever preferred_lft forever
+		inet6 fe80::c8db:a8ca:b492:a3e0/64 scope link stable-privacy
+			valid_lft forever preferred_lft forever	
+	
+	
+	注意，"peer 10.8.0.2/32" 表示的意思：
+		peer ADDRESS，点对点接口的远程端点的地址。同样，地址后面可以是斜杠和十进制数，编码网络前缀长度。
+		如果指定了对等地址，则本地地址不能具有前缀长度。网络前缀与对等端相关联，而不是与本地地址相关联。
+		参考资料：https://blog.51cto.com/u_9888479/5251432
+	
+
+
+4.2  OpenVPN 客户端配置：
+	
+	// 生成客户端文件,文件名后缀必须为".ovpn",因为windows的OpenVPN客户端才能识别,配置文件后缀为".ovpn"在多个OpenVPN客户端也能通用
+	[root@centos8 ~]#grep '^[[:alpha:]].*' /usr/share/doc/openvpn/sample/sample-config-files/client.conf > /etc/openvpn/client/wangxiaochun/client.ovpn
+	
+	// 修改配置文件,内容如下
+	[root@centos8 ~]#vim /etc/openvpn/client/wangxiaochun/client.ovpn
+	[root@centos8 ~]#cat /etc/openvpn/client/wangxiaochun/client.ovpn
+	client
+	dev tun
+	proto tcp
+	remote 39.101.189.5 1194 	#生产中为OpenVPN公网IP
+	resolv-retry infinite
+	nobind
+	#persist-key
+	#persist-tun
+	ca ca.crt
+	cert wangxiaochun.crt
+	key wangxiaochun.key
+	remote-cert-tls server
+	#tls-auth ta.key 1
+	cipher AES-256-CBC
+	verb 3 					#此值不能随意指定,否则无法通信
+	compress lz4-v2 		#此项在OpenVPN2.4.X版本使用,需要和服务器端保持一致,如不指定,默认使用comp-lz压缩	
+	
+	
+4.3 Windows 配置部署 OpenVPN 客户端
+	详见 PDF "2.8" 章节 ！
+	
+	
+下面命令在Windows的CMD终端中运行：	
+	
+	
+	// 客户端生成了一个虚拟网卡，网卡绑定的IP属于OpenVPN虚拟网段，这样客户端和服务端就在同一个(虚拟的)网络中
+	C:\Users\Aaron J WU>ipconfig/all
+	......省略
+	未知适配器 本地连接:					// 在Windows中，适配器指的是网卡、蓝牙设备等，统称为适配器
+
+	   连接特定的 DNS 后缀 . . . . . . . :
+	   本地链接 IPv6 地址. . . . . . . . : fe80::e9c0:ee8f:c336:99bc%37
+	   IPv4 地址 . . . . . . . . . . . . : 10.8.0.6
+	   子网掩码  . . . . . . . . . . . . : 255.255.255.252
+	   默认网关. . . . . . . . . . . . . :
+	......省略
+	
+	
+	// 在Windows启动OpenVPN客户端连接成功后，查看路由信息：
+	C:\Users\Aaron J WU>route print
+	......省略
+	IPv4 路由表
+	===========================================================================
+	活动路由:
+	网络目标        网络掩码          网关        接口   	   跃点数
+	......省略
+	172.30.0.0      255.255.255.0     10.8.0.5    10.8.0.6     25		# 服务端推了一个"172.30.0.0"网段路由过来，这样客户端就知道到达"172.30.0.0"网段应该走OpenVPN
+	......省略
+	
+	
+	C:\Users\Aaron J WU>ping 172.30.0.100
+	
+	正在 Ping 172.30.0.100 具有 32 字节的数据:
+	来自 172.30.0.100 的回复: 字节=32 时间=2063ms TTL=63			
+	来自 172.30.0.100 的回复: 字节=32 时间<1ms TTL=63		
+	来自 172.30.0.100 的回复: 字节=32 时间<1ms TTL=63	# OpenVPN相当于打通了网络，让客户端和服务端在同一个网段，因为"OpenVPN server"也相当于是一个路由器,所以TTL是63
+	......省略
+	
+	为什么是63，TTL值为63，好像感觉中间经过了1个路由器，
+
+	// 在Windows中打开浏览器，访问如下地址：
+	http://172.30.0.100			# 访问远程内网中的主机	
+	http://172.30.0.200			# 访问远程内网中的主机	
+	https://www.baidu.com/		# 不影响访问其它互联网站点，只有访问"172.30.0.0"这个网段才会走OpenVPN连接，因为路由表有这个网段的路由，会把请求路由到OpenVPN的虚拟网关
+	
+	
+总结：使用 OpenVPN 访问远程私有网络过程如下
+	(1)客户端发起一个请求，如果请求的目标地址属于远程私有网段，因为客户端有私有网段的路由信息，这个请求就会通过 OpenVPN 创建的虚拟网卡发送到 OpenVPN 的虚拟网关！ 
+	(2)OpenVPN拿到这个请求，就会对请求进行包装，包装后通过公网发送到 OpenVPN server
+ 	(3)OpenVPN server收到这个包后，就会进行拆包，拆包后将请求转发给内部私有网络
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 OpenVPN 高级管理功能
+
+5.1 故障排错
+	1) explicit-exit-notify 可以支持在UDP协议时,OpenVPN重启后,客户端自动重新连接
+		
+		[root@centos8 ~]#vim /etc/openvpn/server.conf
+		proto udp					#在udp模式下开启通知
+		explicit-exit-notify 1		#在tcp模式下开启通知，会导致 OpenVPN 无法启动。tcp模式下会自动通知，也就是说OpenVPN重启后,客户端自动重新连接
+		......省略
+	
+	2) 压缩算法错误导致连接失败
+		OpenVPN 2.4.x 客户端支持更新的压缩算法lz4-v2, 而comp-lzo是为老版本兼容使用,两者不要在一起混用,否则可能会导致连接失败
+		
+		// 开启兼容的压缩功能
+		[root@centos8 ~]#vim /etc/openvpn/server.conf
+		compress lz4-v2
+		push "compress lz4-v2"
+		......省略
+		
+	3) 工作模式错误
+		OpenVPN两种工作模式:TUN和TAP,都可以支持TCP和UDP协议,但如果服务器和客户工作模式不同,比如服务器为TAP,客户端为TUN,会导致连接失败
+
+		[root@centos8 ~]#vim /etc/openvpn/server.conf
+		dev tun					# 服务端为tun，那么客户端也应该为tun
+		;dev tap				# 服务端为tap，那么客户端也应该为tap
+		
+		
+		
+5.1 高级功能。OpenVPN的高级功能,主要关于安全加强及客户端的管理功能,比如:员工入职、离职涉及到的创建账户与吊销账户证书。
+	
+	1) 启用安全增强功能	
+		启用防止DoS攻击(拒绝服务，把网络资源消耗殆尽)的安全增强配置
+		为了避免DoS攻击，在 OpenVPN 中建议生成一个专门的安全增强的密钥(key)，让 OpenVPN 能够基于这个key来实现tls的身份验证功能，增强防止DoS攻击的能力！
+		
+		详见 PDF "4.1" 章节 ！
+
+	
+	2) 设置客户端的私钥密码增强安全性
+		新建一个账户magedu，并且设置证书密码，提高证书及登录VPN的安全性。
+		
+		详见 PDF "4.2" 章节 ！
+
+	3) 证书自动过期
+		过期时间以服务器时间为准，如果过期,需要重新颁发证书
+		
+		详见 PDF "4.3.1" 章节 ！
+	
+	4) 吊销指定的用户的证书
+		假如用户离职，需要吊销用户的证书
+		
+		详见 PDF "4.3.2.2" 章节 ！
+	
+	5) 账户重名证书签发
+		假如员工离职后，后面新来的员工和之前离职的员工同名。有两种解决方案：
+			方法1：一般的区分办法是在用户名后面加数字
+			方法2：假如还想使用这个账户名签发证书，那么需要删除服务器之前的账户，并删除签发记录和证书，否则新用户的证书无法导入，删除后重新颁发证书
+			
+		详见 PDF "4.3.3.1" 章节 ！	
+			
+			
+	6) 自动化的证书颁发脚本
+		通过脚本实现自动化的证书颁发		
+		
+		详见 PDF "4.3.3.2" 章节 ！
+		
+		
+5.2 生产推荐配置文件
+	server端和client端的生产推荐配置文件
+	
+	详见 PDF "4.4 " 章节 ！
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>			
+
+
+6 阿里云释放资源.pcwl
+
+	因为选择的是"按量付费"(用多少资源就给多少费用)，如果不释放资源会持续扣费！
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+扩展：
+
+	ERP系统是综合软件，有财务模块、有销售的CRM、客户管理模块等，生产中的各种模块都有
+
+	开源软件没有商业软件好用，开源软件配置比较繁琐
+
+	// 显示主机 IP
+	[root@localhost ~]# hostname -I
+	192.168.32.102
+	
+	3389端口是Windows远程桌面的服务端口，通过它可以连接到远程服务器
+
+
+	lrzsz工具
+	
+		// lrzsz是一款在linux里可代替ftp上传和下载的程序，这个命令无法在putty、Windows PowerShell、CMD界面使用
+		yum -y install lrzsz
+		
+		// 下载
+		sz pki/ca.crt
+		
+		// 上传
+		rz
+	
+	
+	DNAT在云主机中的应用：
+	
+		// 16.163.80.7 这个地址相当于AWS防火墙上的公网地址，通过DNAT连接到内网的主机
+		PS C:\Users\Aaron J WU> ssh ec2-user@16.163.80.7
+
+		[ec2-user@ip-172-31-32-113 ~]$ hostname -I
+		172.31.32.113 172.17.0.1						# 172.31.32.113 是局域网地址，172.17.0.1是docker网卡的地址
+
+		[ec2-user@ip-172-31-32-113 ~]$ ip a
+		1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+			link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+			inet 127.0.0.1/8 scope host lo
+			   valid_lft forever preferred_lft forever
+			inet6 ::1/128 scope host
+			   valid_lft forever preferred_lft forever
+		2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP group default qlen 1000
+			link/ether 0e:09:80:55:68:7e brd ff:ff:ff:ff:ff:ff
+			inet 172.31.32.113/20 brd 172.31.47.255 scope global dynamic eth0
+			   valid_lft 3238sec preferred_lft 3238sec
+			inet6 fe80::c09:80ff:fe55:687e/64 scope link
+			   valid_lft forever preferred_lft forever
+		3: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
+			link/ether 02:42:9c:09:ba:78 brd ff:ff:ff:ff:ff:ff
+			inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+			   valid_lft forever preferred_lft forever
+			inet6 fe80::42:9cff:fe09:ba78/64 scope link
+			   valid_lft forever preferred_lft forever
+		......省略
+
+		[ec2-user@ip-172-31-32-113 ~]$
+	
+	
+	
+	linux 命令
+	
+		zip 工具可以压缩文件并加密：
+			zip  -e /root/test.zip  /var/log/nginx/*
+			Enter password:								# 输入密码
+			Verify password:							# 确认密码
+
+		
+		// -f 该参数用于监视File文件增长；"-n Number"显示最后Number行，"-n0"表示显示最后0行，相当于不显示前面已有的内容
+		tail /var/log/nginx/access.log -f -n0
+
+
+		// 把当前系统时间设置为40天后
+		date -s '40 day'
+
+		// 把系统时间和硬件时间同步
+		clock -s
+
+
+	证书：
+		linux上生成的证书吊销列表文件是"crl.pem"，Windows上文件名要改为".crl"后缀(比如"crl.pem.crl")，这样才能打开证书吊销列表文件！
+		

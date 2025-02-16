@@ -1,0 +1,233 @@
+1 ubuntu网络配置
+
+
+1.1 主机名，和centos7、8一样
+	hostnamectl set-hostname ubuntu1804.magedu.org
+	cat /etc/hostname
+
+
+1.2 修改网卡名称，和 centos 不一样
+	
+	第1步：修改配置文件
+		#修改配置文件为下面形式
+		root@ubuntu1804:~#vi /etc/default/grub
+		GRUB_CMDLINE_LINUX="net.ifnames=0"
+		
+		#或者sed修改
+		root@ubuntu1804:~# sed -i.bak '/^GRUB_CMDLINE_LINUX=/s#"$#net.ifnames=0"#' /etc/default/grub
+	
+	
+	第2步：生效新的grub.cfg文件
+		root@ubuntu1804:~# grub-mkconfig -o /boot/grub/grub.cfg
+	
+		#或者
+		root@ubuntu1804:~# update-grub
+		root@ubuntu1804:~# grep net.ifnames /boot/grub/grub.cfg
+	
+	
+	第3步：重启生效
+		root@ubuntu1804:~# reboot
+		root@ubuntu1804:~# ip a
+
+
+	第4步：网络配置
+		网卡配置文件采用YAML格式,必须以 /etc/netplan/XXX.yaml 文件命名方式存放！文件名命名无所谓，但是必须以"XXX.yaml"结尾
+		可以每个网卡对应一个单独的配置文件,也可以将所有网卡都放在一个配置文件里！
+		// 配置自动获取IP
+		root@ubuntu1804:~# cat /etc/netplan/01-netcfg.yaml
+		# This file describes the network interfaces available on your system
+		# For more information, see netplan(5).
+		network:
+			version: 2
+			renderer: networkd
+			ethernets:
+				eth0:
+					dhcp4: yes
+	
+	第5步：修改网卡配置文件后需执行命令生效：
+		root@ubuntu1804:~#netplan apply
+		root@ubuntu1804:~# ip a							# 看到IP地址说明配置成功
+		
+	
+1.3 配置静态IP	
+	root@ubuntu1804:~#vim /etc/netplan/01-netcfg.yaml
+	network:
+		version: 2
+		renderer: networkd
+		ethernets:
+			eth0:
+				addresses: [192.168.8.10/24,10.0.0.10/8]  	#或者用下面两行,两种格式不能混用。这里相当于给一个网卡绑定两个IP地址
+				- 192.168.8.10/24
+				- 10.0.0.10/8
+				gateway4: 10.0.0.2
+				nameservers:
+					search: [magedu.com, magedu.org]	# 这里配置的搜索域会写进"/etc/resolv.conf"文件，centos7的网络配置文件似乎不支持搜索域和DOMAIN域的配置，配置后重启网络也不会写到"/etc/resolv.conf"文件中。
+					addresses: [180.76.76.76, 8.8.8.8, 1.1.1.1]		# DNS 最多可以添加3个, "8.8.8.8"是谷歌的DNS，"1.1.1.1"是Cloudflare的DNS
+	
+	// 使网络配置生效
+	root@ubuntu1804:~#netplan apply
+	
+	// 能看到默认网关就说明配置已经生效
+	root@ubuntu1804:~#route -n
+	
+	// 查看ip和gateway
+	root@ubuntu1804:~#ip addr
+	root@ubuntu1804:~#route -n
+	
+	// 在Ubuntu中，"/etc/resolv.conf"这个文件只可以看到搜索域名，看不到DNS
+	root@ubuntu1804:~#ls -l /etc/resolv.conf
+	
+	// Ubuntu 20.04新命令
+	root@ubuntu2004:~# resolvectl status
+	
+	// 查看 DNS
+	root@ubuntu1804:~# systemd-resolve --status
+	
+	
+1.4 Ubuntu装好后，默认禁止在终端使用用户名和密码通过SSH连接，需要修改配置
+		
+		vim /etc/ssh/sshd_config
+		#PermitRootLogin prohibit-password
+		PermitRootLogin yes						# PermitRootLogin 改为 yes
+		
+		// 改了ssh的配置文件,ssh服务要重新启动
+		systemctl restart sshd
+		
+		// 装好Ubuntu后，默认没有root密码，所以root账号被锁定
+		getent shadow root				 
+		root:!:19283:0:99999:?:::		# ! 说明被锁定
+		
+		// 设置密码
+		passwd				# 如果当前用户已经是root身份
+		sudo passwd root	# 如果当前用户不是root身份	
+		
+		// 然后在终端上使用root账号和root密码就可以连接到Ubuntu主机
+		
+		注意：工作中建议root权限不要这么开放，Ubuntu这样设计就是为了安全，避免使用root身份误操作！建议使用普通用户连，需要root权限操作的时候就使用sudo
+		
+		
+1.5 配置多网卡静态IP和静态路由
+
+配置多网卡静态IP：
+
+	root@ubuntu1804:~#vim /etc/netplan/01-netcfg.yaml
+	network:
+		version: 2
+		renderer: networkd
+		ethernets:
+			eth0:
+				addresses: 					# 这里相当于给一个网卡绑定两个IP地址
+				- 192.168.8.10/24
+				- 10.0.0.10/8
+				gateway4: 10.0.0.2
+				nameservers:
+					search: [magedu.com, magedu.org]
+					addresses: [180.76.76.76, 8.8.8.8, 1.1.1.1]	
+			eth1:
+				addresses: [10.0.0.123/24]	# 第二块网卡配一个IP地址就可以了。一般不会加多个网关
+	
+
+配置静态路由:
+	
+	root@ubuntu1804:~#vim /etc/netplan/01-netcfg.yaml
+	network:
+		version: 2
+		renderer: networkd
+		ethernets:
+			eth0:
+				addresses: 					
+				- 192.168.8.10/24
+				- 10.0.0.10/8
+				gateway4: 10.0.0.2
+				nameservers:
+					search: [magedu.com, magedu.org]
+					addresses: [180.76.76.76, 8.8.8.8, 1.1.1.1]	
+			eth1:													# 哪个网卡是出口，就在哪个网卡下面加 routes
+				addresses: [10.20.0.100/16]
+				routes:
+				- to: 10.30.0.0/16
+				  via: 10.20.0.254									# 网关要和主机的某个网卡的IP地址在同一网段，这样网关IP才能和网卡的IP直连！！网关的作用是数据包发往远程主机的时候，需要通过网关来转发！！
+				- to: 10.40.0.0/16
+				  via: 10.50.0.1									
+	
+	root@ubuntu1804:~#netplan apply
+	
+	root@ubuntu1804:~#route -n
+	Kernel IP routing table
+	Destination 	Gateway 		Genmask 		Flags 	Metric 	Ref 	Use 	Iface
+	0.0.0.0 		10.0.0.2 		0.0.0.0 		UG 		0 		0 		0 		eth0
+	10.0.0.0 		0.0.0.0 		255.255.0.0 	U 		0 		0 		0 		eth0
+	10.20.0.0 		0.0.0.0 		255.255.0.0 	U 		0 		0 		0 		eth1
+	10.30.0.0 		10.20.0.254 	255.255.0.0 	UG 		0 		0 		0 		eth1
+	10.40.0.0 		10.50.0.1 		255.255.0.0 	UG 		0 		0 		0 		eth1
+
+
+	
+1.6 单网卡桥接
+	
+	// 安装网桥工具 bridge-utils
+	root@ubuntu1804:~# apt install -y bridge-utils
+	root@ubuntu1804:~# dpkg -L bridge-utils
+	/sbin/brctl
+	......
+	
+	// 三个网卡配置使用一个配置文件。也可以三个网卡分为三个配置文件。
+	root@ubuntu1804:~# cat /etc/netplan/01-netcfg.yaml
+	# This file describes the network interfaces available on your system
+	# For more information, see netplan(5).
+	network:
+		version: 2
+		renderer: networkd
+		ethernets:
+			eth0:
+				dhcp4: yes
+			eth1:
+				dhcp4: no
+				dhcp6: no
+			eth2:
+				dhcp4: no
+		bridges:
+			br0:
+				dhcp4: no
+				dhcp6: no
+				addresses: [10.0.0.18/16]
+				gateway4: 10.0.0.2
+				nameservers:
+					addresses: [223.6.6.6]
+				interfaces:
+				- eth1
+				- eth2
+	
+	root@ubuntu1804:~# netplan apply
+	
+	root@ubuntu1804:~# ifconfig br0
+	br0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST> mtu 1500
+		inet 10.0.0.18 netmask 255.255.0.0 broadcast 10.0.255.255
+		inet6 fe80::9cbe:1dff:fe85:6601 prefixlen 64 scopeid 0x20<link>
+		ether 9e:be:1d:85:66:01 txqueuelen 1000 (Ethernet)
+		RX packets 158 bytes 19534 (19.5 KB)
+		RX errors 0 dropped 0 overruns 0 frame 0
+		TX packets 10 bytes 796 (796.0 B)
+		TX errors 0 dropped 0 overruns 0 carrier 0 collisions 0
+	
+	// 查看网桥 
+	root@ubuntu1804:~# brctl show
+	
+
+1.7 多网卡桥接
+	详情见PDF！
+
+1.8 双网卡绑定
+	详情见PDF！
+
+1.9 双网卡绑定 + 桥接
+	详情见PDF！
+	
+1.10 网卡的多组绑定
+	详情见PDF！
+	
+1.11 网卡多组绑定+多组桥接
+	详情见PDF！
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>

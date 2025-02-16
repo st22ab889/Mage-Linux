@@ -1,0 +1,1074 @@
+
+1 Linux远程连接和基本操作
+
+1.1  sudo -i
+在使用ubuntu系统时，刚安装的Ubuntu系统无法登陆到root用户，可以使用 sudo - i 命令进入root用户下使用passwd改变root用户密码。
+"sudo -i"是 Linux 终端命令下改变用户对命令使用权限的命令,用来把当前用户切换到root, 切换后可以使用"exit" 退出 root 用户, 适合Ubuntu、centos、aws EC2等Linux系统
+
+centOS, ssh连接, 用户名和密码进行连接,所以在切换时需要用密码验证
+[aaron@localhost ~]$ sudo -i
+[sudo] password for aaron: 
+[root@localhost ~]# exit
+logout
+[aaron@localhost ~]$ 
+
+aws ec2,ssh连接, 使用证书认证,所以切换过程中不需要密码验证
+[ec2-user@ip-172-31-32-113 ~]$ sudo -i
+[root@ip-172-31-32-113 ~]# exit
+logout
+[ec2-user@ip-172-31-32-113 ~]$
+
+参考资料:
+	[su、sudo、sudo su、sudo -i的用法和区别](https://blog.csdn.net/baidu_38172402/article/details/88677290)
+	[禁止用户使用 sudo su 命令进入root 模式 ](https://www.cnblogs.com/liujunjun/p/12247008.html)
+
+
+1.2 centOS图形化界面操作系统
+# 切换到终端界面
+init 3
+
+#查看操作系统运行级别,"5 3"表示从图像化界面切换到终端,3表示当前运行级别是终端
+[root@localhost ~]# runlevel
+5 3
+
+# 切换到图形化界面
+init 5
+
+# 新开一个终端,图像化界面并没有关闭
+ctrl + alt + F2
+
+# 再新开一个终端,图像化界面并没有关闭
+ctrl alt + F3
+
+# 回到图像化界面 
+ctrl alt + F1
+
+# ctrl+alt+f1 (终端1)
+# ctrl+alt+f2 (终端2)
+# ctrl+alt+f3 (终端3)
+# ctrl+alt+f4 (终端4)
+# ctrl+alt+f5 (终端5)
+# ctrl+alt+f6 (终端6)
+# ctrl+alt+f7 (X-window界面)
+# 注意: 如果是图形化界面操作系统,"ctrl alt + F1" 表示图像化界面;如果不是图形化界面操作系统,"ctrl alt + F1" 表示进入系统时的第一个终端!
+
+
+1.3 hostname -I  显示主机所有IP
+# centOS
+[aaron@localhost ~]$ hostname -I
+192.168.32.101
+[aaron@localhost ~]$ ifconfig
+ens33: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.32.101  netmask 255.255.255.0  broadcast 192.168.32.255
+        inet6 fe80::c43d:9a53:ab7e:efdc  prefixlen 64  scopeid 0x20<link>
+        ether 00:0c:29:f9:a9:0f  txqueuelen 1000  (Ethernet)
+        RX packets 4493  bytes 364597 (356.0 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 2832  bytes 297316 (290.3 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10<host>
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 72  bytes 6264 (6.1 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 72  bytes 6264 (6.1 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+运行 docker   
+[aaron@localhost ~]$ systemctl start docker
+==== AUTHENTICATING FOR org.freedesktop.systemd1.manage-units ===
+Authentication is required to manage system services or units.
+Authenticating as: aaron
+Password: 
+==== AUTHENTICATION COMPLETE ===
+
+可以看出 192.168.32.101 是主机的IP, 172.17.0.1 是 docker 网卡 IP
+[aaron@localhost ~]$ hostname -I
+192.168.32.101 172.17.0.1
+[aaron@localhost ~]$ ifconfig
+docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:28:c4:71:2a  txqueuelen 0  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+ens33: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.32.101  netmask 255.255.255.0  broadcast 192.168.32.255
+        inet6 fe80::c43d:9a53:ab7e:efdc  prefixlen 64  scopeid 0x20<link>
+        ether 00:0c:29:f9:a9:0f  txqueuelen 1000  (Ethernet)
+        RX packets 4653  bytes 376569 (367.7 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 2920  bytes 306820 (299.6 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10<host>
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 72  bytes 6264 (6.1 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 72  bytes 6264 (6.1 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+
+# aws ec2, 可以看出 172.31.32.113 是主机的IP, 172.17.0.1 是 docker 网卡 IP
+[ec2-user@ip-172-31-32-113 ~]$ hostname -I
+172.31.32.113 172.17.0.1
+[ec2-user@ip-172-31-32-113 ~]$ ifconfig
+docker0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        inet6 fe80::42:9cff:fe09:ba78  prefixlen 64  scopeid 0x20<link>
+        ether 02:42:9c:09:ba:78  txqueuelen 0  (Ethernet)
+        RX packets 557620  bytes 1047991401 (999.4 MiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 503077  bytes 1029348472 (981.6 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 9001
+        inet 172.31.32.113  netmask 255.255.240.0  broadcast 172.31.47.255
+        inet6 fe80::c09:80ff:fe55:687e  prefixlen 64  scopeid 0x20<link>
+        ether 0e:09:80:55:68:7e  txqueuelen 1000  (Ethernet)
+        RX packets 2024932  bytes 1550054494 (1.4 GiB)
+        RX errors 0  dropped 171  overruns 0  frame 0
+        TX packets 1615249  bytes 1148719106 (1.0 GiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10<host>
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 24  bytes 1944 (1.8 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 24  bytes 1944 (1.8 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+vethaeb73e2: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet6 fe80::8c0d:b5ff:fee2:3416  prefixlen 64  scopeid 0x20<link>
+        ether 8e:0d:b5:e2:34:16  txqueuelen 0  (Ethernet)
+        RX packets 557620  bytes 1055798081 (1006.8 MiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 504125  bytes 1029421912 (981.7 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+
+hostname -i 仅查看主机IP
+[ec2-user@ip-172-31-32-113 ~]$ hostname -i
+172.31.32.113
+
+
+1.4  free -h
+[root@localhost ~]# free
+              total        used        free      shared  buff/cache   available
+Mem:        3861300      288464     3428392       11852      144444     3374640
+Swap:       4063228           0     4063228
+
+# -h 参数
+[root@localhost ~]# free -h
+              total        used        free      shared  buff/cache   available
+Mem:           3.7G        281M        3.3G         11M        141M        3.2G
+Swap:          3.9G          0B        3.9G
+
+
+
+
+1.5 whoami
+#查看登录用户
+[root@localhost ~]# whoami
+root
+
+
+
+
+1.6 tty 查看当前终端设备的名称
+
+# 在系统本机的终端运行
+[root@localhost ~]# tty
+/dev/tty1
+
+# 使用终端工具(xshell、SecureCRT 等)连接远程主机
+[root@localhost ~]# tty
+/dev/pts/1
+
+# tty 表示 teletypewriters
+# pts 表示 pseudo-tty 
+
+
+
+
+
+1.7  who am i
+
+# who am i 相当于 whoami 和  tty 两个命令结合使用
+[root@localhost ~]# who am i
+root     pts/1        2022-10-12 09:46 (192.168.32.1)
+
+# who 后面其实可以跟任意两个参数, 和 "who am i" 效果一样
+[root@localhost ~]# who xx xxx
+root     pts/1        2022-10-12 23:29 (192.168.32.1)
+
+
+
+
+1.8 who 查看谁登录当前主机
+
+[root@localhost ~]# who
+aaron    tty1         2022-10-12 22:08
+aaron    tty2         2022-10-12 22:15
+aaron    tty3         2022-10-12 22:15
+root     pts/0        2022-10-12 22:13 (192.168.32.1)
+root     pts/1        2022-10-12 23:29 (192.168.32.1)
+
+
+
+
+1.9 w 查看登录的人在干什么
+
+[root@localhost ~]# w
+ 23:34:20 up  1:27,  5 users,  load average: 0.00, 0.01, 0.05
+USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT
+aaron    tty1                      22:08    1:10m  0.02s  0.02s -bash
+aaron    tty2                      22:15    1:16m  0.01s  0.01s -bash
+aaron    tty3                      22:15    1:18m  0.00s  0.00s -bash
+root     pts/0    192.168.32.1     22:13    1:16m  0.01s  0.01s -bash
+root     pts/1    192.168.32.1     23:29    4.00s  0.11s  0.00s w
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+2 Linux的终端和运行命令
+
+查看所有进程
+[root@localhost ~]# ps aux
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root       1616  0.0  0.0 115544  2036 pts/0    Ss+  Oct12   0:00 -bash
+
+查看使用的哪个shell
+[root@localhost ~]# echo $SHELL
+/bin/bash
+
+系统当前支持的shell,可以装其他shell
+[root@localhost ~]# cat /etc/shells
+/bin/sh
+/bin/bash
+/usr/bin/sh
+/usr/bin/bash
+
+安装一个其他的shell,csh 是macos默认的shell
+[root@localhost ~]# yum -y install csh
+
+
+[root@localhost ~]# cat /etc/shells
+/bin/sh
+/bin/bash
+/usr/bin/sh
+/usr/bin/bash
+/bin/tcsh
+/bin/csh
+
+
+hostname 可以查看和临时修改主机名(实际上修改的就是内存)
+[root@localhost ~]# hostname
+localhost.localdomain
+
+#临时生效
+[root@localhost ~]# hostname centos.local.host
+[root@localhost ~]# hostname
+centos.local.host
+
+#持久生效,支持CentOS7和Ubuntu18.04以上版本,
+#hostnamectl不检查hostname的合法性,如果设置了一个不合法的主机名,可能会导致有些服务不能正常启动
+hostnamectl set-hostname NAME
+
+#持久生效,实际上是写入到了"/etc/hostname"文件中
+[root@localhost ~]# cat /etc/hostname
+localhost.localdomain
+
+"[root@localhost ~]#" 这个就是命令提示符, root 表示当前登录的用户, localhost表示主机名的第一部分, ~ 表示当前目录, "#"表示root用户, "$"表示普通用户
+命令提示符可以更改,更改"PS1",可以临时修改,也可以永久修改
+[root@localhost ~]# echo $PS1
+[\u@\h \W]\$
+# 临时生效,运行后可以看到效果
+PS1="\[\e[1;5;41;33m\][\u@\h \W]\\$\[\e[0m\]"
+
+nano是文本编辑器
+
+[root@localhost ~]#ll /bin/bash -h
+-rwxr-xr-x. 1 root root 942K Mar 31  2020 /bin/bash
+
+查看shell内部命令
+[root@localhost ~]# enable
+内部命令个数
+[root@localhost ~]# enable | wc -l
+61
+
+type查看命令是外部命令还是内部命令
+显示出路径就是外部内容,一个外部命令就是一个文件
+[root@localhost ~]# type hostname
+hostname is /usr/bin/hostname
+外部命令第一次运行是从"$PATH"路径中找,运行后就把路径加到缓存中,第二次再运行就从缓存中取
+[root@localhost ~]# type who
+who is hashed (/usr/bin/who)
+
+exit 命令后,缓存就没有了
+
+查看缓存的命令路径
+[root@localhost ~]# hash
+hits    command
+   4    /usr/bin/who
+
+删指定
+[root@localhost ~]# hash -d who
+删全部
+[root@localhost ~]# hash -r
+
+
+echo是内部命令
+[root@localhost ~]# type echo
+echo is a shell builtin
+
+[root@localhost ~]# type type
+type is a shell builtin
+
+[root@localhost ~]# echo $PATH
+/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+
+
+type -a 列出外部命令和内部命令
+// 可以看到 type -a 即是内部命令也是外部命令,使用echo时默认使用内部命令,因为内部命令效率高
+[root@localhost ~]# type -a echo
+echo is a shell builtin
+echo is /usr/bin/echo
+
+
+centos 安装图形工具
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 linux命令格式
+
+查看别名：
+[root@localhost ~]# alias
+alias cp='cp -i'
+alias egrep='egrep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias grep='grep --color=auto'
+
+
+定义别名：
+[root@localhost ~]# alias cc='ps aux'
+[root@localhost ~]# cc
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root          2  0.0  0.0      0     0 ?        S    04:10   0:00 [kthreadd]
+
+删除别名：
+[root@localhost ~]# unalias cc
+[root@localhost ~]# cc
+-bash: cc: command not found
+
+查看硬盘
+[root@localhost ~]# lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   40G  0 disk
+├─sda1            8:1    0    1G  0 part /boot
+└─sda2            8:2    0   39G  0 part
+  ├─centos-root 253:0    0 35.1G  0 lvm  /
+  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+sr0              11:0    1 1024M  0 rom
+
+当不断电直接添加一块硬盘后,使用下面的命令能把添加的硬盘扫描出来, host0、host1、host2 表示硬盘总线
+[root@localhost ~]# alias scandisk='echo - - - > /sys/class/scsi_host/host0/scan;echo - - - > /sys/class/scsi_host/host1/scan;echo - - - > /sys/class/scsi_host/host2/scan'
+
+添加一块5G硬盘, scandisk 这个只能扫描出新增加的设备,不能扫描出移除的设备
+[root@localhost ~]# scandisk
+[root@localhost ~]# lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   40G  0 disk
+├─sda1            8:1    0    1G  0 part /boot
+└─sda2            8:2    0   39G  0 part
+  ├─centos-root 253:0    0 35.1G  0 lvm  /
+  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+sdb               8:16   0    5G  0 disk
+sr0              11:0    1 1024M  0 rom
+[root@localhost ~]#
+
+
+alias 也可以持久化, 添加到".bashrc"文件中, ".bashrc"在用户的home目录下(root的home目录是"/root",普通用户的home目录是"/home/用户名"); 别名放在 /etc/bashrc ，对所有用户都生效
+
+[root@localhost ~]# pwd
+/root
+[root@localhost ~]# ls -al
+total 32
+dr-xr-x---.  3 root root  163 Oct 13 01:39 .
+dr-xr-xr-x. 17 root root  224 Aug 20  2021 ..
+-rw-------.  1 root root 1414 Aug 20  2021 anaconda-ks.cfg
+-rw-------.  1 root root 3418 Oct 13 05:47 .bash_history
+-rw-r--r--.  1 root root   18 Dec 28  2013 .bash_logout
+-rw-r--r--.  1 root root  176 Dec 28  2013 .bash_profile
+-rw-r--r--.  1 root root  176 Dec 28  2013 .bashrc
+-rw-r--r--.  1 root root  100 Dec 28  2013 .cshrc
+-rw-------.  1 root root  148 Oct 13 01:39 .history
+drwxr-----.  3 root root   19 Aug 21  2021 .pki
+-rw-r--r--.  1 root root  129 Dec 28  2013 .tcshrc
+[root@localhost ~]#
+
+
+别名和内部命令以及外部命令可以同名， 别名优先级 > 内部命令优先级 > 外部命令优先级
+[root@localhost ~]# alias hostname=who
+[root@localhost ~]# hostname
+root     pts/0        2022-10-13 08:23 (192.168.32.1)
+[root@localhost ~]#
+[root@localhost ~]# type hostname
+hostname is aliased to `who'
+
+加\或''表示不用别名
+[root@localhost ~]# \hostname
+localhost.localdomain
+[root@localhost ~]# 'hostname'
+localhost.localdomain
+[root@localhost ~]# unalias hostname
+
+命令的两个格式:
+COMMAND [OPTIONS...] [ARGUMENTS...]
+ls -al /root
+COMMAND [COMMAND] [COMMAND] ....
+systemctl status docker
+hostnamectl set-hostname 主机名称
+	
+ls -a /root  ==》 "ls" 表示命令, "-a" 表示选项,  "/root"表示操作的对象
+命令三种风格: 每个命令支持的风格不一样
+	ls -a		// unix风格,短选项,如 -a
+	ls --all		// GNU风格, 长选项,如 -all
+	ps  a		// BSD风格, 一个字母, 如a
+
+选项可以写在一起,有些命令不要求顺序,有些命令要求顺序
+ls -al 等价于 ls -la
+iptables -vnL   可以正常运行
+iptables -Lvn   不能运行 
+
+[root@localhost ~]# hostname;who;pwd
+localhost.localdomain
+root     pts/0        2022-10-13 08:23 (192.168.32.1)
+/root
+
+
+[root@localhost ~]# host\
+> name
+localhost.localdomain
+
+ctrl D 正常退出,能正常退出就不要强制退出,强制退出会中断程序
+ctrl C 强制退出
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 Linux常用命令
+4.1
+查看CPU信息,一般任务的数量和cpu内核数量统一,因为任务数量多,cpu会进行切换; 在VMware里面改变cpu参数会及时生效(不用关电脑)
+lscpu
+cat /proc/cpuinfo  分别显示每核CPU的信息
+
+4.2
+free -h
+cat /proc/meminfo
+
+4.3
+lsblk
+cat /proc/partitions
+
+4.4  
+查看centos：
+arch	  查看CPU架构	
+uname -r  查看内核版本
+cat /etc/os-release		查看操作系统版本
+lsb_release -a	        查看操作系统版本 这个命令默认没有,需要额外安装。  yum provides lsb_release
+cat /etc/redhat-release
+
+查看ubuntu发行版本
+cat /etc/os-release
+cat /etc/issue
+lsb_release -a
+
+4.5
+Linux两种时间: 系统时间(由Linux内核通过CPU的工作频率进行的); 硬件时钟(主板时间); 这两个时间默认一样的
+date 查看系统时间
+clock  #查看硬件时间
+hwclock  #查看硬件时间, 实际上就是使用的clock
+	[root@centos8 ~]#ll /usr/sbin/clock
+	lrwxrwxrwx. 1 root root 7 Apr 24 2020 /usr/sbin/clock -> hwclock
+clock -s  #以硬件时钟为准，校正系统时钟
+clock -w  #以系统时钟为准，校正硬件时钟
+
+timedatectl 时区相关
+	[root@localhost ~]# timedatectl status
+		  Local time: Thu 2022-10-13 23:44:40 EDT
+	  Universal time: Fri 2022-10-14 03:44:40 UTC   # 世界时，格林尼治（民用）时;
+			RTC time: Fri 2022-10-14 03:44:40
+		   Time zone: America/New_York (EDT, -0400)
+		 NTP enabled: yes
+	NTP synchronized: yes
+	 RTC in local TZ: no
+		  DST active: yes
+	 Last DST change: DST began at
+					  Sun 2022-03-13 01:59:59 EST
+					  Sun 2022-03-13 03:00:00 EDT
+	 Next DST change: DST ends (the clock jumps one hour backwards) at
+					  Sun 2022-11-06 01:59:59 EDT
+					  Sun 2022-11-06 01:00:00 EST
+
+timedatectl list-timezones   # 列出所有时区
+	[root@localhost ~]# timedatectl list-timezones
+	Africa/Abidjan
+	Africa/Accra
+	Africa/Addis_Abab
+	
+timedatectl set-timezone xxxx  # 设置时区,并没有改时间,实际上根据时区显示时间
+	[root@localhost ~]# timedatectl set-timezone Asia/Shanghai
+	[root@localhost ~]# timedatectl status
+		  Local time: Fri 2022-10-14 11:54:29 CST
+	  Universal time: Fri 2022-10-14 03:54:29 UTC
+			RTC time: Fri 2022-10-14 03:54:28
+		   Time zone: Asia/Shanghai (CST, +0800)
+		 NTP enabled: yes
+	NTP synchronized: yes
+	 RTC in local TZ: no
+		  DST active: n/a	
+	[root@localhost ~]# date
+	Fri Oct 14 11:54:51 CST 2022
+	[root@localhost ~]# clock
+	Fri 14 Oct 2022 11:56:04 AM CST  -0.604200 seconds	
+	# 改了时区后,最终影响会体现在文件上
+	[root@localhost ~]# ll /etc/localtime
+	lrwxrwxrwx. 1 root root 35 Oct 14 11:52 /etc/localtime -> ../usr/share/zoneinfo/Asia/Shanghai
+
+4.6 日历
+cal
+cal 10 2022  # 查看2022年10月日历
+	# 特殊年份
+	[root@localhost ~]# cal 9 1752
+	   September 1752
+	Su Mo Tu We Th Fr Sa
+		   1  2 14 15 16
+	17 18 19 20 21 22 23
+	24 25 26 27 28 29 30
+	
+4.7 其它
+关机
+halt
+poweroff
+
+重启
+reboot	
+  -f: 强制，不调用shutdown
+  -p: 切断电源
+
+关机或重启	// shutdown [OPTION]... [TIME] [MESSAGE]
+shutdown
+	-r: reboot
+	-h: halt
+	-c：cancel
+	TIME：无指定，默认相当于+1（CentOS7）
+	now: 立刻,相当于+0
+	+#: 相对时间表示法，几分钟之后；例如 +3
+	hh:mm: 绝对时间表示，指明具体时间
+
+4.8 用户登录信息查看命令	
+whoami: 显示当前登录有效用户
+who: 系统当前所有的登录会话
+w: 系统当前所有的登录会话及所做的操作
+
+4.9 本本编辑
+nano 工具可以实现文本的编辑，上手容易，适合初学者
+gedit 工具是图形工具
+/etc/motd   #登录后提示文件 ，  https://www.bootschool.net/ascii-art  这个网站可以根据关键字生成各种图形
+	PS C:\Users\Aaron J WU> ssh ec2-user@16.163.80.7
+	Last login: Fri Oct 14 03:18:18 2022 from 125.94.209.191
+
+		   __|  __|_  )
+		   _|  (     /   Amazon Linux 2 AMI
+		  ___|\___|___|
+
+	https://aws.amazon.com/amazon-linux-2/
+	12 package(s) needed for security, out of 17 available
+	Run "sudo yum update" to apply all updates.
+	[ec2-user@ip-172-31-32-113 ~]$
+	[ec2-user@ip-172-31-32-113 ~]$ cat /etc/motd
+
+		   __|  __|_  )
+		   _|  (     /   Amazon Linux 2 AMI
+		  ___|\___|___|
+
+	https://aws.amazon.com/amazon-linux-2/
+	12 package(s) needed for security, out of 17 available
+	Run "sudo yum update" to apply all updates.
+	[ec2-user@ip-172-31-32-113 ~]$
+
+/etc/issue # 登录后提示文件
+	[root@localhost ~]# cat  /etc/issue
+	\S
+	Kernel \r on an \m
+	
+	
+4.10 会话管理
+
+打开一个终端窗口（terminal window，以下简称"窗口"），在里面输入命令。用户与计算机的这种临时的交互，称为一次"会话"（session）
+会话的一个重要特点是，窗口与其中启动的进程是连在一起的。打开窗口，会话开始；关闭窗口，会话结束，会话内部的进程也会随之终止，不管有没有运行完
+为了解决这个问题，会话与窗口可以"解绑"：窗口关闭时，会话并不终止，而是继续运行，等到以后需要的时候，再让会话"绑定"其他窗口
+终端复用器软件就是会话与窗口的"解绑"工具，将它们彻底分离, 类似的终端复用器还有Screen，Tmux
+	（1）它允许在单个窗口中，同时访问多个会话。这对于同时运行多个命令行程序很有用。
+	（2） 它可以让新窗口"接入"已经存在的会话。
+	（3）它允许每个会话有多个连接窗口，因此可以多人实时共享会话。
+	（4）它还支持窗口任意的垂直和水平拆分。
+
+screen的使用
+yum -y install screen
+screen   #开启终端复用
+ping www.baidu.com	
+
+重新打开一个终端,运行如下命令, 可以发现ping命令在运行。然后关闭终端复用窗口,再次查看发现ping命令仍然再运行，并没有随着终端窗口关闭而结束
+[root@localhost ~]# ps aux | grep ping
+root       1624  0.0  0.0 150088  1984 pts/1    S+   15:28   0:00 ping www.baidu.com
+root       1648  0.0  0.0 112808   964 pts/2    S+   15:30   0:00 grep --color=auto ping
+
+显示所有已经打开的screen会话
+[root@localhost ~]# screen -ls
+There are screens on:
+        1689.pts-2.localhost    (Detached)
+        1652.pts-2.localhost    (Detached)
+        1611.pts-0.localhost    (Detached)
+3 Sockets in /var/run/screen/S-root.
+
+加入screen会话
+[root@localhost ~]# screen -x 1689
+
+退出并关闭screen会话
+exit
+
+创建新screen会话,可以指定 SESSION  				==>>  	screen –S [SESSION]
+剥离(关闭)当前screen会话,在当前screen界面运行  	==>> 	Ctrl+a,d                     
+恢复某screen会话,没有任何终端使用这个screen会话时使用,相当于加入screen会话	 ==>>	screen -r [SESSION]
+
+
+tmux的使用,功能更加强大
+	它允许在单个窗口中，同时访问多个会话。这对于同时运行多个命令行程序很有用。
+	它可以让新窗口"接入"已经存在的会话。
+	它允许每个会话有多个连接窗口，因此可以多人实时共享会话。
+	它还支持窗口任意的垂直和水平拆分
+yum -y install tmux
+tmux						#新建会话,第一个启动的 Tmux 窗口，编号是0，第二个窗口的编号是1，以此类推;   新建指定名称的会话 tmux new -s <session-name>
+Ctrl+b , 松收按"			#划分上下两个窗格
+Ctrl+b , 松收按% 			#划分左右两个窗格
+Ctrl+b , 松手按方向键		#切换窗格
+exit 						#退出窗格,如果一个会话中有多个窗格,退出最后一个窗格后,会话结束
+
+列出所有会话: "tmux ls"或"Ctrl+b,松手按s"
+	[root@localhost ~]# tmux ls
+	0: 1 windows (created Fri Oct 14 19:17:46 2022) [156x47] (attached)
+
+加入已存在的会话
+	[root@localhost ~]# tmux attach -t 0
+
+在 Tmux 窗口中，按下"Ctrl+b,松手按d"或者输入"tmux detach"命令，就会将当前会话与窗口分离	
+	[root@localhost ~]#tmux detach
+	
+杀死会话:
+	tmux kill-session -t <session-name>
+	
+切换会话:
+	tmux switch -t <session-name>
+	
+除了将一个窗口划分成多个窗格, Tmux 也允许新建多个窗口
+	tmux new-window	
+	
+新建一个指定名称的窗口
+	tmux new-window -n <window-name>
+
+切换窗口
+	tmux select-window -t <window-number>		#切换到指定编号的窗口
+	tmux select-window -t <window-name>			#切换到指定名称的窗口
+	
+列出所有快捷键，及其对应的 Tmux 命令	
+	tmux list-keys
+	
+列出所有 Tmux 命令及其参数
+	tmux list-commands
+	
+	
+4.11 输出信息, 脚本经常会使用
+
+echo "Hello World"
+echo $PATH				# 打印变量的值  
+echo $SHELL
+echo $PS1
+echo -e '\a'			# 警告声,-e 表示启用\字符的解释功能
+echo					# 换行
+echo -n					# 不慌行
+echo -e 'a\tb'			# \t 表示tab键
+echo -e '\E[1;31mLinux\E[0m'		# 让打印出的字体带颜色
+echo -e '\E[1;41;31mLinux\E[0m'		# 41-47表示背景颜色
+	
+echo高级功能
+echo -e '\033[2J' 		#清屏, clear,ctrl + L 也可以清屏 
+echo -e '\033[10A'		#光标上移10行
+
+wc -l  文件	  # 查看一个文件有多少行
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 ASCII和Unicode编码及各种符号用法
+
+5.1 ASCII和Unicode编码及各种符号用法
+ASCII只编码了数字和英文和其它符号, 但是要处理中文显然一个字节是不够的，至少需要两个字节，而且还不能和ASCII编码冲突，所以，中国制定了GB2312编码，用来把中文编进去。
+	可以看到的符号
+	不可见字符: 比如换行, linux的换行符号是	/n，也叫LF, windows的换行是 /r/n，也叫CRLF, '\r'是回车,'\n'是换行
+
+dos2unix 转换格式(比如windows上写的sh脚本无法在linux上运行,需要转换) 
+yum -y install dos2unix
+dos2unix 文件名		   # win 转 linux
+hexdump -C 文件名      # 转换后发现没有了 0d, 0d就是windowns上编辑文件的回车符 /r
+unix2dos 文件名	       # linux 转 win, 就是在文件中又加上回车符
+
+以十六进制查看一个文件:
+	hexdump -C 文件名
+	
+为了表示世界上所有语言中的所有字符。每一个符号都给予一个独一无二的编码数字，所以有了Unicode， Unicode是一个很大的集合，现在的规模可以容纳100多万个符号
+Unicode 仅仅只是一个字符集，规定了每个字符对应的二进制代码，至于这个二进制代码如何存储则没有规定, UTF-8、UTF-16、UTF-32是Unicode编码方式
+网络中传输的文本是Unicode编码
+	String a = "\u4f18\u79c0";	   # "\u"表示Unicode编码
+	System.out.println(a);
+Unicode编码方案：
+	UTF-8：变长，1到4个字节,UTF-8是在互联网上使用最广的一种Unicode编码方式,
+	UTF-16：变长，2或4个字节
+	UTF-32：固定长度，4个字节
+
+windown查看版本
+	winver
+
+linux 查看编码:
+	[root@localhost ~]# echo $LANG
+	en_US.UTF-8								// en_US表示提示的信息是英语
+	
+
+5.2 命令的互相引用,  `` 和  $() 作用是等价的, `` 不支持嵌套, $()支持嵌套
+	 
+[root@localhost ~]# echo "My hostname is `hostname`"
+My hostname is localhost.localdomain
+	
+[root@localhost ~]# echo "My hostname is $(hostname)"
+My hostname is localhost.localdomain	
+
+[root@localhost ~]# echo "today is `date +%F`"
+today is 2022-10-14
+
+创建文件
+	[root@localhost ~]# touch `date +%F`.log
+	[root@localhost ~]# ll
+	total 4
+	0 -rw-r--r--. 1 root root    0 Oct 14 22:29 2022-10-14.log		// 中间的0表示文件占用0kb
+	
+	[root@localhost ~]# touch `hostname`_$(date +%F).log
+	[root@localhost ~]# ll
+	total 4
+	-rw-r--r--. 1 root root    0 Oct 14 22:29 2022-10-14.log
+	-rw-r--r--. 1 root root    0 Oct 14 22:31 localhost.localdomain_2022-10-14.log
+
+ll `echo `date +%F`.txt`  		// 错误嵌套
+ll  $(echo $(date +%F).txt) 	// 正确嵌套
+ll `echo $(date +%F).txt`		// 正确嵌套
+ll $(echo `date +%F`.txt)		// 正确嵌套
+
+	
+5.3 {} 可以把各种符号进行重复表示
+	[root@localhost ~]# echo {1,a,3}
+	1 a 3
+	
+	[root@localhost ~]# echo {1..6}
+	1 2 3 4 5 6
+	
+	[root@localhost ~]# echo host{1..3}
+	host1 host2 host3
+	
+	[root@localhost ~]# echo host{1,2,3}
+	host1 host2 host3
+	
+	[root@localhost ~]# ll /sys/class/scsi_host/host{0..2}/scan
+	--w-------. 1 root root 4096 Oct 14 22:42 /sys/class/scsi_host/host0/scan
+	--w-------. 1 root root 4096 Oct 14 22:42 /sys/class/scsi_host/host1/scan
+	--w-------. 1 root root 4096 Oct 14 22:42 /sys/class/scsi_host/host2/scan
+
+	echo host{1..3}
+	touch host{a..z}	// 创建26个文件，hosta到hostz
+	touch host{A..Z}	// 创建26个文件，hostA到hostZ
+	
+	以2为步进显示
+	[root@localhost ~]# echo host{1..10..2}
+	host1 host3 host5 host7 host9
+
+	以3为步进显示
+	[root@localhost ~]# echo host{20..10..3}
+	host20 host17 host14 host11
+	
+	实际上就是安装 ASCII码的顺序在打印
+	[root@localhost ~]# echo {A..a}
+	A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [  ] ^ _ ` a
+	
+5.4
+tab键补全(命令补全和文件名补全), 需要安装 bash-completion 这个包
+yum -y install bash-completion
+	
+	输到 ifco, 按tab就可以补全命令
+	[root@localhost ~]# ifconfig
+
+查看曾经运行过的命令
+	[root@localhost ~]# history
+    1  exit
+    2  rpm -aq|grep openssh
+
+添加一个文件,文件名任意,但后缀一定要是"env.sh",添加后重新打开一个终端就生效。 HISTTIMEFORMAT 就是用来改变history的显示格式，可以看到显示出了时间
+	[root@localhost ~]#cat /etc/profile.d/env.sh
+	PS1='\[\e[1;36m\][\u@\h \W]\$\[\e[0m\]'
+	export HISTTIMEFORMAT="%F %T "	
+	
+	[root@localhost ~]#history
+    1  2022-10-14 23:23:10 exit
+    2  2022-10-14 23:23:10 rpm -aq|grep openssh
+    3  2022-10-14 23:23:10 service iptables status
+    4  2022-10-14 23:23:10 ls
+    5  2022-10-14 23:23:10 pwd
+	
+	!5 表示重复调用 history 保存的第5条(顺数)命令
+	[root@localhost ~]#!5
+	pwd
+	/root
+	
+	!-3 表示重复调用 history 保存的倒数第3条命令
+	[root@localhost ~]#!-3
+	
+	!* 把前一个命令的参数给到现在这个命令用
+	[root@localhost ~]#ll /etc/issue /etc/motd
+	-rw-r--r--. 1 root root 23 Oct 23  2020 /etc/issue
+	-rw-r--r--. 1 root root  0 Jun  7  2013 /etc/motd
+	[root@localhost ~]#cat !*
+	cat /etc/issue /etc/motd
+	\S
+	Kernel \r on an \m
+	
+	
+	把前一个命令的最后一个参数给到现在这个命令用
+		!$ 表示前一个命令中最后一个参数
+		Esc, . 点击Esc键后松开，然后点击 . 键
+		Alt+ . 按住Alt键的同时点击 . 键
+	[root@localhost ~]#ll !$
+	ll /etc/motd
+	-rw-r--r--. 1 root root 0 Jun  7  2013 /etc/motd
+	
+在命令历史中根据关键字搜索命令,从后往前找,显示出后直接回车,不用把命令敲完整. 
+	ctrl-r		#在命令历史中搜索命令
+	Ctrl+g		#从历史搜索模式退出	
+
+
+!首字母 表示运行最近以这个首字母开头的命令
+	[root@localhost ~]#!h		//运行最近以h字母开头的命令
+
+
+5.5  bash 快捷键
+	Ctrl + l 清屏，相当于clear命令
+	Ctrl + u 从光标处删除至命令行首
+	Ctrl + k 从光标处删除至命令行尾
+	Alt + r 删除当前整行
+	Ctrl + s 阻止屏幕输出，锁定。 虽然锁定显示了，但还是能运行命令，只是不显示
+	Ctrl + q 允许屏幕输出，解锁
+	
+	注意：Alt 组合快捷键经常和其它软件冲突，要在终端软件中启动alt键避免这种情况
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+6 linux查看帮助用法
+
+6.1 获取帮助
+
+显示命令的简短描述
+	新安装的系统第一次打开运行这个命令没有作用,要等一会才才有(系统需要下载安装). 也可以运行 mandb 生成 wahtis 数据库, cendos6 之前用 makewhatis 生成 wahtis 数据库
+	[root@localhost ~]#whatis ls
+	ls (1)               - list directory contents
+	
+"help 内部命令" 列出内部命令的帮助说明
+	[root@localhost ~]#help type
+	type: type [-afptP] name [name ...]   		//[]说明这个可有可无
+	
+	[root@localhost ~]#help enable
+	[root@localhost ~]#help hash
+	
+"外部命令 --help" 列出外部命令的帮助说明, 一般来说外部命令都支持 "--help"
+	[root@localhost ~]#hostname --help
+	[root@localhost ~]#ls --help
+	[root@localhost ~]#date --help
+	[root@localhost ~]#date +%F_%T
+	2022-10-15_11:02:24
+	[root@localhost ~]#date -d 'yesterday'
+	Fri Oct 14 11:05:42 CST 2022
+	
+	[root@localhost ~]#date -d '-2 day'			// 前天
+	Thu Oct 13 11:11:41 CST 2022
+	
+	[root@localhost ~]#date -d '-1 day' +%F		// 昨天
+	2022-10-14
+	
+	[root@localhost ~]#date -d '1 day'			// 明天
+	Sun Oct 16 11:12:17 CST 2022
+	
+	[root@localhost ~]#touch `date -d '-1 day' +%F`.log
+	[root@localhost ~]#ls -l
+	total 4
+	-rw-r--r--. 1 root root    0 Oct 14 22:31 localhost.localdomain_2022-10-14.log
+	
+	[root@localhost ~]#systemctl restart chronyd	// Linuxt 重启时间同步服务
+
+6.2 man
+外部命令还有一个更加详细查看帮助的用法, man 命令显示的帮助信息更加全面， man 就是 manual 的意思, 每一个外部命令都有一个man帮助
+	[root@localhost ~]#man date		// 按"/"键可以根据关键字搜索，'n'往下搜, 'N'网上搜,'q'退出
+	
+	[root@localhost ~]#whereis date
+	date: /usr/bin/date /usr/share/man/man1/date.1.gz		// man帮助就是从'/usr/share/man/man1/date.1.gz'这里读出来的
+	
+	man 页面分组，不同类型的帮助称为不同的“章节”，统称为Linux手册，man 1 man
+		1：用户命令
+		2：系统调用
+		3：C库调用
+		4：设备文件及特殊文件
+		5：配置文件格式
+		6：游戏
+		7：杂项
+		8：管理类的命令
+		9：Linux 内核API
+	
+	[root@localhost ~]#whatis rm
+	rm (1)               - remove files or directories		// 1 代表用户命令帮助
+	rm (1p)				 - remove directory entries			// 带p的表示开发文档
+	
+	// "whatis rm"查出命令有哪些章节后,就可以指定章节查看帮助,不指定默认查看1章节(如果没有1章节,有5和8章节,那默认查看顺数的第一个章节,就是5章节)
+	[root@localhost ~]#man 1 rm
+	
+	
+	[root@localhost ~]#whatis date
+	date (1)             - print or set the system date and time		//"date (1)"里面的1就代表 用户命令
+	
+	[root@localhost ~]#man date
+	DATE(1)                                             User Commands                                             DATE(1)		// "DATE (1)"里面的1就代表 用户命令
+	
+	[root@localhost ~]#whatis adduser
+	adduser (8)          - create a new user or update default new user information
+	
+	[root@localhost ~]#man adduser		//默认查看8章节
+	
+	[root@localhost ~]#man 1 adduser
+	No manual entry for adduser in section
+	
+	"man -f keyword" 相当于 "whatis date"
+	[root@localhost ~]#man -f date
+	date (1)             - print or set the system date and time
+			
+	搜索man手册
+		man -k  keyword
+	
+	打印man帮助文件的路径
+		man -w [章节] keyword
+	
+
+6.3 info
+info也可以列出命令的帮助, 用的不多, q 退出	
+	 info ls
+	
+6.4 其它
+官方文档
+	# 帮助文档所在的位置
+	[root@localhost ~]#ls /usr/share/doc	
+	
+	# 具体某个服务和工具的文档位置,统一放在"/usr/share/doc"这个路径下
+	[root@localhost ~]#ls /usr/share/doc/docker-ce-cli-20.10.8/
+	LICENSE  MAINTAINERS  NOTICE  README.md
+	
+服务的官方在线文档查看帮助
+	
+Linux官方在线文档和知识库
+
+红帽全球技术支持服务
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>	
+	
+7 Linux的目录结构和文件类型
+	
+7.1 文件系统和目录结构
+linux中的 / 叫正斜线   
+	cd /    // Linux回到根目录
+windows中的 \ 叫反斜线   
+	cd \    // windows回到根目录
+
+
+linux内核文件	
+[root@localhost ~]#ll /boot/vmlinuz-3.10.0-1160.el7.x86_64 -h
+-rwxr-xr-x. 1 root root 6.5M Oct 20  2020 /boot/vmlinuz-3.10.0-1160.el7.x86_64	
+	
+[root@localhost ~]#lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   40G  0 disk
+├─sda1            8:1    0    1G  0 part /boot
+└─sda2            8:2    0   39G  0 part
+  ├─centos-root 253:0    0 35.1G  0 lvm  /
+  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+sr0              11:0    1 1024M  0 rom
+[root@localhost ~]#ll /dev/sda
+brw-rw----. 1 root disk 8, 0 Oct 15 13:49 /dev/sd
+
+/etc 放的linux 配置文件
+
+目录操作：
+	cd ~     进入用户主目录 
+	cd -      返回进入此目录之前所在目录 
+	cd ..     返回上一级目录 
+	cd ../..  返回上两级目录 
+	cd !$    把上个命令的参数作为cd 参数使用 
+	cd /      进入根目录
+	cd .      当前目录
+	ls	/
+
+/var 放变化的内容,比如日志, 网站页面
+
+/proc 放内存中正在运行的进程信息
+
+/sys 用于输出当前系统上硬件设备相关信息虚拟文件系统
+
+蓝色是文件夹
+白色是普通文件
+绿色是可运行文件
+红色是打包文件
+浅蓝色是衔接文件
+
+这个文件定义了文件的颜色,修改后退出来,再重新登录后生效
+[root@localhost ~]#cat /etc/DIR_COLORS
+
+7.2 Linux下的文件类型，普通文件、目录文件、符号链接文件是用的最多的
+- 普通文件
+d 目录文件directory
+l 符号链接文件link
+b 块设备block， 比如访问硬盘的时候，不是以字符(字节)为单位访问，而是以块为单位访问,比如 1k 这样去访问，相当于批量访问
+c 字符设备character， 以字符(字节)单位方位,字符设备是指在I/O传输过程中以字符为单位进行传输的设备，例如键盘，打印机等。
+p 管道文件pipe， 管道文件是单向的，一段固定写，一段固定读
+s 套接字文件socket， socket也是管道文件，是双向管道，每端都可以读写
+
+
+字符文件
+[root@localhost ~]#ll /dev/zero
+crw-rw-rw-. 1 root root 1, 5 Oct 15 13:49 /dev/zero
+
+管道文件
+[root@localhost ~]#ll /run | grep "prw"
+prw-------.  1 root   root      0 Oct 15 13:49 dmeventd-client
+prw-------.  1 root   root      0 Oct 15 13:49 dmeventd-server
+
+管道文件和套接字文件都不是人为创建的,是程序自动生成的

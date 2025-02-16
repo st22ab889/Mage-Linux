@@ -1,0 +1,99 @@
+1 haproxy的四层代理和https实现
+
+1.1 HAProxy 四层负载
+
+	使用 listen 对 MySQL 服务实现四层负载
+		listen magedu_mysql
+			bind 10.0.0.7:3306
+			mode tcp							# 这里mode一点过要改为tcp
+			balance leastconn
+			server mysql1 10.0.0.17:3306 check
+			server mysql2 10.0.0.27:3306 check 	# 如果不写端口号，可以转发，但无法check状态
+	
+	使用 frontend 和 backend 对 MySQL 服务实现四层负载，注意：一定在 frontend 和 backend 段中都指定mode tcp
+		frontend mysql
+			bind :3306
+			mode tcp					# 必须指定tcp模式
+			default_backend mysqlsrvs
+		backend mysqlsrvs
+			mode tcp 					# 必须指定tcp模式
+			balance leastconn
+			server mysql1 10.0.0.17:3306
+			server mysql2 10.0.0.27:3306
+	
+	详见PDF ===>> "5.10.1 四层负载示例"
+	
+1.2 ACL示例-四层访问控制
+	详见PDF ===>> "5.10.2 ACL示例-四层访问控制"
+	
+1.3 HAProxy https 实现	
+	
+	方案1：
+		HAProxy使用http协议，客户端和HAProxy通信用https，HAProxy和后端服务器通信用http，HAProxy起到了终止SSL的作用。
+		由于HAProxy参与SSL加解密，会消耗HAPRoxy服务器性能。如果请求比较多，服务器压力会比较大！
+		
+	方案2：
+		HAProxy使用TCP协议，客户端和HAProxy通信用TCP，HAProxy和后端服务器通信用tcp。
+		HAProxy只转发包，不参与SSL加解密过程，对HAPRoxy服务器性能没有多余的消耗。
+		基于性能考虑,生产中证书都是在后端服务器比如nginx上实现！nginx和后端服务使用http协议通信，终止SSL的作用转移到Nginx。
+
+	
+	生成证书：利用Centos7自带的Makefile文件生成自签名证书
+		[root@localhost /]# ll /etc/pki/tls/certs/
+		total 12
+		lrwxrwxrwx. 1 root root   49 Aug 20  2021 ca-bundle.crt -> /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+		lrwxrwxrwx. 1 root root   55 Aug 20  2021 ca-bundle.trust.crt -> /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
+		-rwxr-xr-x. 1 root root  610 Aug  8  2019 make-dummy-cert
+		-rw-r--r--. 1 root root 2516 Aug  8  2019 Makefile
+		-rwxr-xr-x. 1 root root  829 Aug  8  2019 renew-dummy-cert
+		
+		[root@localhost /]# vim /etc/pki/tls/certs/Makefile
+		......
+		%.key:
+        umask 77 ; \
+		        #/usr/bin/openssl genrsa -aes128 $(KEYLEN) > $@		# 注释掉这行
+				/usr/bin/openssl genrsa $(KEYLEN) > $@		# 移除"-aes128",否则生成私钥需要输入密码，后面服务每次启动都要求输入这个密码
+		......
+		
+		[root@localhost /]# mkdir /etc/haproxy/certs/
+		
+		[root@localhost /]# cd /etc/pki/tls/certs
+		
+		[root@localhost certs]# make /etc/haproxy/certs/haproxy.crt
+		
+		[root@localhost certs]# cd /etc/haproxy/certs/
+		
+		[root@localhost certs]# ls
+		haproxy.crt  haproxy.key
+		
+		[root@localhost certs]# cat haproxy.key haproxy.crt > haproxy.pem
+		
+		[root@localhost certs]# ls 
+		haproxy.crt  haproxy.key  haproxy.pem
+		
+		[root@localhost certs]# cat haproxy.pem		# 可以看到证书文件和私钥文件合在一起了
+		......
+
+	方案1配置示例：
+		frontend magedu_http_port
+			mode http
+			bind 10.0.0.100:80
+			# 如果客户端访问不是走的https协议，就重定向到https。也就是把80端口的请求重向定到443
+			redirect scheme https if !{ ssl_fc } 
+			# haproxy.pem 这个证书需要同时包含证书和所有私钥。可以使用命令"cat haproxy.key haproxy.crt > haproxy.pem"实现
+			bind 10.0.0.100:443 ssl crt /etc/haproxy/certs/haproxy.pem 
+			# IP 透传
+			http-request set-header X-forwarded-Port %[dst_port]
+			#向后端传递用户请求的协议和端口
+			http-request add-header X-forwarded-Proto https if { ssl_fc }
+			
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展：
+	面试题：比较LVS,HAProxy,Nginx三者的特性和调度算法区别?
+
+
+
+
+
+

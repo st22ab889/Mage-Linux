@@ -1,0 +1,96 @@
+
+1 ubunut软件管理
+
+Linux主要有三大派系:
+	红帽子派系(Redhat、Centos、OracleLinux)
+	Debian派(Ubuntu、Kali)
+	SUSE派系(SuSe、OpenSUSE)等
+
+Debian软件包通常为预编译的二进制格式的扩展名".deb"，类似rpm文件，因此安装快速，无需编译软件。包文件包括特定功能或软件所必需的文件、元数据和指令
+	dpkg：package manager for Debian，类似于rpm， dpkg是基于Debian的系统的包管理器。可以安装，删除和构建软件包，但无法自动下载和安装软件包或其依赖项
+	apt：Advanced Packaging Tool，功能强大的软件管理工具，甚至可升级整个Ubuntu的系统，基于客户/服务器架构，类似于yum
+
+总结
+	dpkg 相当于 rpm
+	apt  相当于 yum
+
+
+1.1 dpkg常用命令，dpkg 主要用来查询
+
+	// 列出当前已安装的包，类似rpm -qa
+	dpkg -l 
+
+	// 显示该包的简要说明,包的名字要完全匹配
+	dpkg -l gzip
+
+	
+	// 列出该包的状态，包括详细信息，类似rpm –qi
+	dpkg -s packag
+	
+	// 查看文件来自于哪个包,前提是这个包已经安装在系统中，类似rpm –qf
+	dpkg -S /etc/os-release
+
+
+	// 列出包安装后在硬盘上生成的文件列表 , 类似rpm –ql
+	dpkg -L  packag
+
+
+
+1.2 apt 相关命令
+
+	/etc/apt/sources.list 是包管理工具 apt 所用的记录软件包仓库位置的配置文件，同样的还有位于 /etc/apt/sources.list.d/*.list 的各文件。
+		sources.list 文件格式说明； https://www.cnblogs.com/yahuian/p/apt-sources-list.html
+	
+
+	// 更新索引，缓存的数据可能是过时的, 在ubuntu系统中安装软件之前习惯性更新下，这是ubuntu的一个特性，centos一般不需要更新
+	apt update
+	
+	// 在ubuntu中,httpd的名称为apache2，配置文件路径为：/etc/apache2/apache2.conf 
+	apt install apache2
+	
+	//查看某个安装包的详细信息
+	apt show apache2
+	
+	// 只删除程序文件，保留配置文件, 这里和yum有区别
+	apt remove apache2 -y
+	
+	
+	// 删除软件以及配置文件
+	apt purge apache2 -y
+
+	
+	// 列出本地仓库中所有的软件包名
+	apt list
+
+
+	// 从本地仓库中查找指定的包名，支持通配符，比如"apt list zlib*“就能列出以zlib开头的所有包名
+	apt list [package]
+
+	
+	// apt-file 相当于 yum provides，不过 apt-file 需要单独安装
+	apt -y install apt-file
+	apt update
+	apt-file --help
+	// -x 使用正则表达式
+	apt-file search -x '/sl$'
+	// -F 指定文件名搜索
+	apt-file search -F /usr/games/sl
+	
+	
+	//显示系统安装包的统计信息,可以统计已经安装包的数量，大小，占用空间等
+	apt-cache stats
+
+	//显示xxx包的信息,可以看到某个包的源、版本等信息
+	apt-cache show xxx 			#更详细
+	apt show xxx
+
+
+	
+	// 查看仓库中的指定软件的所有版本
+	apt-cache madison xxxxxx
+ 
+
+1.3 其它命令
+	
+	//挂载光盘
+	mount /dev/sr0 /mnt

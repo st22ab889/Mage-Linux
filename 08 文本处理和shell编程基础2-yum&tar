@@ -1,0 +1,869 @@
+5 文件查找
+
+5.1 在文件系统上查找符合条件的文件，文件查找两种方式：
+	非实时查找(数据库查找)：locate
+	实时查找：find
+
+
+5.2 locate (了解): 适合搜索相对固定的文件
+	locate 查询系统上预建的文件索引数据库 /var/lib/mlocate/mlocate.db 
+	索引的构建是在系统较为空闲时自动进行(周期性任务)，执行updatedb可以更新数据库
+	索引构建过程需要遍历整个根文件系统，很消耗资源
+	locate和updatedb命令来自于mlocate包
+	
+mlocate.db 这个数据库默认并不存在,只有当系统运行一段时间后才有，或者使用 updatedb 命令主动触发生成
+	updatedb 命令这个命令会从根目录开始建立索引,如果服务器上文件很多，运行这个命令会造成IO飙升,如果业务服务器本身很忙，IO突然飙升就会影响业务,甚至宕机。
+	所以要在用户访问量最少的时段运行 updatedb 命令。
+	文件新创建和删除,无法马上更新locate数据库,需要更新数据库才能搜索到(等系统更新或者手动运行 updatedb 命令)
+
+工作特点:
+	查找速度快
+	模糊查找
+	非实时查找
+	搜索的是文件的全路径，不仅仅是文件名
+	可能只搜索用户具备读取和执行权限的目录
+
+格式:
+	locate [OPTION]... [PATTERN]...
+	选项:
+		-i 不区分大小写的搜索
+		-n N 只列举前N个匹配项目
+		-r 使用基本正则表达式
+
+
+	// 模糊搜索, 搜索名称或路径中包含“conf”的文件
+	locate passwd
+	
+	#使用Regex来搜索以“.conf”结尾的文件
+	locate -r '\.conf$'
+	
+总结: local 速度块，但不是实时更新
+
+
+5.3 find , find 是实时查找工具，通过遍历指定路径完成文件查找, 搜索条件、方式更加丰富, 不依赖数据库
+    工作特点:
+		查找速度略慢
+		精确查找
+		实时查找
+		查找条件丰富
+		可能只搜索用户具备读取和执行权限的目录
+		
+格式:
+	find [OPTION]... [查找路径] [查找条件] [处理动作]
+	查找路径：指定具体目标路径；默认为当前目录
+	查找条件：指定的查找标准，可以文件名、大小、类型、权限等标准进行；默认为找出指定路径下的所有文件
+	处理动作：对符合条件的文件做操作，默认输出至屏幕
+
+选项:
+	
+	1)指定搜索目录层级
+		-maxdepth level 最大搜索目录深度,指定目录下的文件为第1级
+		-mindepth level 最小搜索目录深度
+		
+		// 只搜索第二层目录
+		find /etc -maxdepth 2 -mindepth 2
+
+	2)对每个目录先处理目录内的文件，再处理目录本身
+		-depth
+		-d 		#warning: the -d option is deprecated; please use -depth instead, because the latter is a POSIX-compliant feature
+		
+		// depth 先处理目录内的文件，再处理目录本身; 默认是先处理目录,再处理文件
+		find /data/test -depth
+		
+	3) 根据文件名和inode查找
+		-name "文件名称" 	#支持使用glob，如：*, ?, [], [^],通配符要加双引号引起来
+		-iname "文件名称" 	#不区分字母大小写
+		-inum n 			#按inode号查找
+		-samefile name 		#相同inode号的文件
+		-links n 			#链接数为n的文件
+		-regex “PATTERN” 	#以PATTERN匹配整个文件路径，而非文件名称
+		
+	4) 根据属主、属组查找
+		-user USERNAME 	#查找属主为指定用户(UID)的文件
+		-group GRPNAME 	#查找属组为指定组(GID)的文件
+		-uid UserID 	#查找属主为指定的UID号的文件
+		-gid GroupID 	#查找属组为指定的GID号的文件
+		-nouser 		#查找没有属主的文件
+		-nogroup 		#查找没有属组的文件
+		
+	5) 根据文件类型查找
+		-type TYPE
+		
+		TYPE可以是以下形式：
+		f: 普通文件
+		d: 目录文件
+		l: 符号链接文件
+		s：套接字文件
+		b: 块设备文件
+		c: 字符设备文件
+		p: 管道文件
+	
+	6)	空文件或目录
+		-empty
+		// 查找 /app 目录下的空目录
+		find /app -type d -empty
+		
+	7) 组合条件
+		
+		-a		#与, 默认多个条件是与关系
+		-o		#或
+		!		#非, -not 
+		
+		[ec2-user@ip-172-31-32-113 ~]$ find /etc/ -type d | wc -l
+		179
+		[ec2-user@ip-172-31-32-113 ~]$ find /etc/ -type l | wc -l
+		110
+		// 统计etc下的目录和文件共多少个 -o
+		find /etc/ -type d -o -type l |wc -l
+		289
+		
+		//  -type d -o -type l -ls 表示是文件就运行 -ls 命令，相当于于  -type d -o -type l -a -ls 
+		// 可以看出 -a 比 -0 的优先级高
+		find /etc/ -type d -o -type l -ls |wc -l
+		110
+		find /etc/ -type d -o -type l -a -ls |wc -l
+		100
+		
+		// 使用() 改变优先级
+		find /etc/ \( -type d -o -type l \) -ls |wc -l
+		289
+		
+	8) 排除目录
+		#查找/etc/下，除/etc/security目录的其它所有.conf后缀的文件
+		find /etc -path '/etc/security' -a -prune -o -name "*.conf"
+		
+		#查找/etc/下，除/etc/security和/etc/systemd,/etc/dbus-1三个目录的所有.conf后缀的文件
+		find /etc \( -path "/etc/security" -o -path "/etc/systemd" -o -path "/etc/dbus-1" \) -a -prune -o -name "*.conf"
+		
+		#排除/proc和/sys目录
+		find / \( -path "/sys" -o -path "/proc" \) -a -prune -o -type f -a -mmin -1
+
+	9) 根据文件大小来查找
+		-size [+|-]			#UNIT #常用单位：k, M, G，c（byte）,注意大小写敏感
+		#UNIT: 				#表示(#-1, #],如：6k 表示(5k,6k]
+		-#UNIT 				#表示[0,#-1],如：-6k 表示[0,5k]
+		+#UNIT 				#表示(#,∞),如：+6k 表示(6k,∞)
+		
+		[root@ip-172-31-32-113 ~]# find / -size 219M
+		/var/cache/yum/x86_64/2/amzn2-core/gen/primary_db.sqlite
+		/var/tmp/yum-ec2-user-Eq8f6G/x86_64/2/amzn2-core/gen/primary_db.sqlite
+		
+		// 查找大于 10G 的文件
+		find / -size +10G
+		
+	10) 根据时间戳
+		//以“天”为单位
+		-atime [+|-]#
+			# 	#表示[#,#+1)
+			+# 	#表示[#+1,∞]
+			-# 	#表示[0,#)
+
+		-mtime
+		-ctime
+		
+		//以“分钟”为单位
+		-amin
+		
+		-mmin
+		-cmin
+		
+	11) 根据权限查找
+		-perm [/|-]MODE
+			MODE 		#精确权限匹配
+			/MODE 		#任何一类(u,g,o)对象的权限中只要能一位匹配即可，或关系，+ 从CentOS 7开始淘汰
+			-MODE 		#每一类对象都必须同时拥有指定权限，与关系
+			0 			表示不关注
+		
+		说明：
+			find -perm 755 会匹配权限模式恰好是755的文件
+			只要当任意人有写权限时，find -perm /222就会匹配
+			只有当每个人都有写权限时，find -perm -222才会匹配
+			只有当其它人（other）有写权限时，find -perm -002才会匹配
+		
+	12) 正则表达式
+		-regextype type
+		-regex pattern
+		
+		// -regextype 指定使用扩展表达式还是基本表达式
+		find /you/find/dir -regextype posix-extended -regex "regex"
+
+	13) 处理动作
+		-print						：默认的处理动作，显示至屏幕
+		-ls							：类似于对查找到的文件执行"ls -dils"命令格式输出
+		-fls file					：查找到的所有文件的长格式信息保存至指定文件中，相当于 -ls > file
+		-delete						：删除查找到的文件，慎用！
+		-ok COMMAND {} \; 			对查找到的每个文件执行由COMMAND指定的命令，对于每个文件执行命令之前，都会交互式要求用户确认
+		-exec COMMAND {} \; 		对查找到的每个文件执行由COMMAND指定的命令
+		{}							: 用于引用查找到的文件名称自身
+		
+		
+		#备份配置文件，添加.orig这个扩展名, {} 相当于占位符,表示前面查到的文件
+		find -name ".conf" -exec cp {} {}.orig \;
+		
+		#提示删除存在时间超过３天以上的joe的临时文件
+		find /tmp -ctime +3 -user joe -ok rm {} \;
+		
+		#在主目录中寻找可被其它用户写入的文件
+		find ~ -perm -002 -exec chmod o-w {} \;
+		
+		#查找/data下的权限为644，后缀为sh的普通文件，增加执行权限
+		find /data –type f -perm 644 -name "*.sh" –exec chmod 755 {} \;
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 文件打包和压缩
+
+6.1 参数替换 xargs		
+	由于很多命令不支持管道|来传递参数，xargs用于产生某个命令的参数，xargs 可以读入 stdin 的数据，并且以空格符或回车符将 stdin 的数据分隔成为参数
+	另外，许多命令不能接受过多参数，命令执行可能会失败，xargs 可以解决
+	
+	注意文件名或者是其他意义的名词内含有空格符的情况
+	
+	//大部分命令不支持标准输入, xargs 可以接收键盘的标准输入, 把输入的结果用xargs传给xargs后面的命令,作为命令的参数
+	//相当于 xargs 生成了命令的参数, 参数变为动态的了, 从而增强了命令的功能
+	[root@localhost ~]#xargs
+	a						// 输入
+	b						// 输入
+	c						// 输入
+	a b c					// ctrl + D 结束输入
+	
+	// 直接输 xargs, 等价于 xargs echo
+	[root@localhost ~]#xargs echo
+	a
+	b
+	c
+	a b c
+	[root@localhost ~]#
+	
+	// xargs 生成了动态的参数
+	[root@localhost ~]#xargs ls -l
+	/etc/issue
+	/etc/passwd
+	-rw-r--r--. 1 root root  23 Oct 23  2020 /etc/issue
+	-rw-r--r--. 1 root root 986 Oct 19 16:45 /etc/passwd
+	
+	
+	// 直接使用 xargs, 相当于使用 xargs echo
+	[root@localhost ~]#echo {1..10} | xargs
+	1 2 3 4 5 6 7 8 9 10
+	
+	[root@localhost ~]#seq 4
+	1
+	2
+	3
+	4
+	
+	// 多行合成一行
+	[root@localhost ~]#seq 4 | xargs
+	1 2 3 4
+	
+	// -n1 表示用打印1列
+	[root@localhost ~]#seq 4 | xargs -n1
+	1
+	2
+	3
+	4
+	
+	// -n表示打印成2列
+	[root@localhost ~]#seq 4 | xargs -n2
+	1 2
+	3 4
+	
+	// 删除文件
+	ls f* | xargs rm
+	
+	
+	// 批量创建3个用户
+	[root@localhost ~]#echo user{1..3} | xargs -n1 useradd
+	[root@localhost ~]#cat /etc/passwd | grep user
+	user1:x:1003:1003::/home/user1:/bin/bash
+	user2:x:1004:1004::/home/user2:/bin/bash
+	user3:x:1005:1005::/home/user3:/bin/bash
+	
+	// 批量删除用户
+	[root@localhost ~]#echo user{1..3} | xargs -n1 userdel -r
+	
+
+find 经常和 xargs 命令进行组合,形式如下：
+	find | xargs COMMAND	
+	
+	xargs常用选项:
+		加-i 参数直接用 {}就能代替管道之前的标准输出的内容；
+		加 -I 参数 需要事先指定替换字符
+	
+	
+	// 查找有特殊权限的文件，并排序。7代表特殊权限, / 表示或 , /7 表示或有SUID、SGID、STICKY
+	find /bin/ -perm /7000 | xargs ls -Sl
+
+
+	#以字符nul分隔
+	[root@localhost test]#touch 'a b'
+	[root@localhost test]#ls
+	a b
+	// 删除失败,因为并没有把"a b"当成一个文件,而是认为a是文件,b是一个文件。默认是把"a b"中间的空格当成切割文件名的切割符
+	// 这时就要通知系统不要用空格作为文件名的切割符,就要指定另外一个切割符, 用ascii码中的0作为切割符, ascii码中的0就是真正的0
+	[root@localhost test]#find -type f | xargs  rm
+	rm: cannot remove ‘./a’: No such file or directory
+	rm: cannot remove ‘b’: No such file or directory
+	
+	// -print0就是用ascii中的0作为切割元素的分隔符，-0 表示指定 0 作为切割文件名的分隔符。这样就规避了空格带来的问题
+	[root@localhost test]#find -type f -print0 | xargs -0 rm
+	
+	
+	// ascii的0代表 NUL ;  ascii的060代表数字0
+	[ec2-user@ip-172-31-32-113 ~]$ man ascii
+	   Oct   Dec   Hex   Char                        Oct   Dec   Hex   Char
+       ────────────────────────────────────────────────────────────────────────
+       000   0     00    NUL '\0'                    100   64    40    @
+	   060   48    30    0                           160   112   70    p
+
+
+	#并发执行多个进程
+	seq 100 |xargs -i -P10 wget -P /data http://10.0.0.8/{}.html
+	
+	
+	#并行下载bilibili视频
+	yum install python3-pip -y
+	pip3 install you-get
+	// 加-i 参数直接用 {}就能代替管道之前的标准输出的内容; -P3表示并发运行3个进程(同时下载三个)
+	seq 10 | xargs -i -P3 you-get https://www.bilibili.com/video/BV1HZ4y1p7Bf?p={}
+
+
+
+6.2  压缩和解压缩，压缩的目标是节约磁盘空间
+	 选择适合压缩的文件, 比如文本文件适合， MP4、MP3等就不适合压缩！
+	
+
+(了解) compress 和 uncompress ,	压缩比比较查!!
+	此工具来自于ncompress包,此工具目前已经很少使用,对应的文件是 .Z 后缀
+
+	格式
+		compress Options [file ...]
+		uncompress file.Z 				#解压缩
+		zcat file.Z 					#zcat file.Z 不显式解压缩的前提下查看文本文件内容，范例： zcat file.Z >file
+		
+	常用选项
+		-d 解压缩，相当于uncompress
+		-c 结果输出至标准输出,不删除原文件
+		-v 显示详情
+	
+
+gzip和gunzip，来自于 gzip 包，对应的文件是 .gz 后缀
+	格式:
+		gzip [OPTION]... FILE ...
+	
+	常用选项：
+		-k 		keep, 保留原文件,CentOS 8 新特性
+		-d 		解压缩，相当于gunzip
+		-c 		结果输出至标准输出，保留原文件不改变
+		-# 		指定压缩比，#取值为1-9，值越大压缩比越大
+	
+	// 压缩文件,压缩成功后删除原文件
+	gzip FILE
+	// 压缩文件,压缩成功后不删除原文件
+	gzip -k FILE
+	// 把命令运行的结果进行压缩生成一个文件(常用)
+	cat messages | gzip > m.gz
+	
+	
+	// 解压缩
+	gzip -d FILE.gz
+	gunzip FILE.gz
+	
+bzip2和bunzip2，来自于 bzip2 包，对应的文件是 .bz2 后缀
+	格式:
+		bzip2 [OPTION]... FILE ...
+
+	常用选项
+		-k 		keep, 保留原文件
+		-d 		解压缩，相当于  bunzip2
+		-c 		结果输出至标准输出，保留原文件不改变
+		-# 		1-9，压缩比，默认为9
+	
+	范例：
+		bzip2 FILE				压缩
+		bzip2 -d file.bz2 		解压缩
+		bunzip2 file.bz2 		解压缩
+		bzcat file.bz2 			不显式解压缩的前提下查看文本文件内容
+
+xz 和 unxz，来自于 xz 包，对应的文件是 .xz 后缀
+	格式
+		xz [OPTION]... FILE ...
+		
+	常用选项
+		-k keep, 保留原文件
+		-d 解压缩
+		-c 结果输出至标准输出，保留原文件不改变
+		-# 压缩比，取值1-9，默认为6
+	范例：
+		xz	FILE			#压缩
+		unxz file.xz 		#解压缩
+		xzcat file.xz 		#不显式解压缩的前提下查看文本文件内容
+
+
+zip 和 unzip，zip 可以实现打包目录和多个文件成一个文件并压缩，但可能会丢失文件属性信息，如：所有者和组信息，一般建议使用 tar 代替
+	分别来自于 zip 和 unzip 包，对应的文件是 .zip 后缀
+	
+	// 压缩文件夹 比如加-r, -r表示递归
+	zip -r etc.zip /etc
+	
+	// 解压缩
+	unzip etc.zip
+
+	// 交互式加密和解密,运行命令后需要手动输入密码, *代表当前目录下的文件
+	zip -e example.zip *
+	unzip example.zip
+	
+	// 非交互式加密和解密，-P指定密码
+	zip -P 123456 example.zip *
+	unzip -P 123456 example.zip
+	
+	
+总结:
+	gz的压缩比不是最高的，但是效率高，综合效果好!
+	gz和bzip2相对用的更普及
+	xz虽然压缩比高,但是时间太慢!
+	压缩比越高,压缩花费的时间越多
+	compress 用的较少, gzip、bzip2、xz 单独用的比较少, 要配合tar用
+	zip能压缩文件和文件夹,用的较多
+	gzip、bzip、xz、zip、tar 都支持管道
+	
+6.3 打包和解包
+	compress、gzip、bzip2、xz 只能处理单个文件,不能处理文件夹
+	zip 能处理文件夹,但可能会丢失文件属性信息
+	所以一般将 gzip、bzip2、xz 配合 tar 使用, tar 能打包多个文件或文件夹, 然后再用压缩文件将包压缩
+	tar 打包文件或文件夹后占用的空间不变,只是把多个文件变成了一个文件
+	
+tar，tar 即 Tape ARchive 磁带归档，可以对目录和多个文件打包一个文件，并且可以压缩，保留文件属性不丢失，常用于备份功能，推荐使用
+	对应的文件是 .tar 后缀
+	
+	格式:
+		tar [OPTION...] [FILE]...
+	
+	常用选项
+		c  打包
+		f  打包成一个文件
+		z  代表gzip，自动会调用gzip命令来压缩
+		j  代表bzip2,自动调用bzip2来对包进行压缩
+		J  代表xz, 自动调用xz来对包进行压缩
+		t  预览
+		v  显示解压过程中的详细信息(每个文件的大小属性)
+		x  解包
+		--exclude 	表示排除
+		-T 	选项指定输入文件
+		-X 	选项指定包含要排除的文件列表
+	
+	打包压缩
+		// 打包
+		tar cf etc.tar /etc/
+		// 打包, 并使用gzip压缩包
+		tar zcf etc.tar.gz /etc/
+
+		// 打包, 并使用bzip2压缩包
+		tar jcf etc.tar.gz2 /etc/
+
+		// 打包, 并使用xz压缩包
+		tar Jcf etc.tar.xz /etc/
+
+	预览、解包、解压缩
+		//预览包里面有什么文件，t 预览，v显示解压过程中的详细信息，f表示使用文件,
+		tar tvf etc.tar
+		
+		// 解包, x 解包, v 显示解压过程中的详细信息, 默认解压到当前路径
+		tar xvf etc.tar
+		
+		// -C 指定解压的目标路径
+		tar xvf etc.tar -C /tmp
+		
+		// 使用 gzip 解压缩, 然后解包
+		tar xvzf etc.tar.gz -C /tmp
+		
+	
+	tar 支持排除
+		// 打包 /app 文件夹,但是排除 /app/host1 和 /app/host2 这两个文件夹， --exclude 表示排除
+		tar zcvf /root/a.tgz --exclude=/app/host1 --exclude=/app/host2 /app
+		
+		// includefilelist 这个文件中列出的文件才打包, excludefilelist 中的文件不打包
+		tar zcvf mybackup.tgz -T /root/includefilelist -X /root/excludefilelist
+
+		
+split，分割一个文件为多个文件
+	有些服务器对上传的包有大小限制,就可以通过这种方法将一个大包分割成多个小文件上传
+	
+	常用选项:
+		-b 指定大小
+		-d 切出来的文件自动加数字, 不加此参数, 切出来的文件编号就是 aa ab ac 等形式		
+	
+	// 加-d,切割出来的文件名为 bigfile-00、bigfile-01、bigfile-02、......
+	split -b 1M -d bigfile /opt/bigfile-
+	
+	// 不加-d,切割出来的文件名为 bigfile-aa、bigfile-ab、bigfile-ac、......
+	split -b 1M  bigfile /opt/bigfile-
+
+	// 将切割的文件组合成源文件
+	cat bigfile-** > bigfile2
+	
+	
+cpio(了解)，现在基本上不太用，很少见
+	cpio文件类似于tar文件,就是一个打包文件
+	
+	// 在linux中,有些地方能看到cpio格式文件
+	[root@localhost ~]#file /boot/initramfs-3.10.0-1160.el7.x86_64.img
+	/boot/initramfs-3.10.0-1160.el7.x86_64.img: ASCII cpio archive (SVR4 with no CRC)	
+	
+	#内容预览
+	cpio –tv < /boot/initramfs-3.10.0-1160.el7.x86_64.img
+	
+	#解包文件,解到当前目录
+	cpio –idv < /boot/initramfs-3.10.0-1160.el7.x86_64.img
+		
+	#解包到指定目录
+	cd /tmp/; cpio –idv < /boot/initramfs-3.10.0-1160.el7.x86_64.img
+
+
+扩展；
+	在生产环境中, 如果目录下文件太多，慎用ls，会导致死机
+	find / -delete 相当于 rm -rf /*
+
+	// 统计这个文件夹的大小
+	du -sh /etc
+
+	本节重要命令:
+		find xargs
+		gzip、bzip2、tar
+		zip	 
+
+
+7 文本处理三剑客之sed ， sed 即 Stream EDitor，和 vi 不同，sed是行编辑器
+	sed 既能查看文本也能修改文本,sed命令通常用在脚本中修改配置文件
+	sed 支持标准输入、重定向、管道
+	
+	// 查看帮助
+	sed --help
+	
+	// 入门用法:
+		// 如果不写脚本,默认的行为是读什么打印什么,相当于内置打印功能
+		[ec2-user@ip-172-31-32-113 ~]$ sed ''
+		adc
+		adc
+		^C
+		
+		// 相当于cat /etc/fstab
+		sed '' /etc/fstab
+		cat /etc/fstab | sed ''
+	
+	
+格式:
+	sed [OPTION]... {script-only-if-no-other-script} [input-file]...
+		这里script是sed自己的script
+	
+	选项:
+		-n 不输出模式空间内容到屏幕，即不自动打印
+		-e 多点编辑
+		-f FILE 从指定文件中读取编辑脚本
+		-r, -E 使用扩展正则表达式
+		-i.bak 备份文件并原处编辑
+		-s 将多个文件视为独立文件，而不是单个连续的长文件流
+		
+		参数组合说明:
+			-ir 不支持
+			-i -r 支持
+			-ri 支持
+			-ni 会清空文件
+		
+	script格式：
+		'地址命令'
+		
+	地址格式：
+		1. 不给地址：对全文进行处理
+		2. 单地址：
+			#				  	指定的行，$：最后一行
+			/pattern/			被此处模式所能够匹配到的每一行
+		3. 地址范围：
+			#,# 				#从#行到第#行，3，6 从第3行到第6行
+			#,+# 				#从#行到+#行，3,+4 表示从3行到第7行
+			/pat1/,/pat2/
+			#,/pat/
+			/pat/,#
+		4. 步进：~
+			1~2 奇数行
+			2~2 偶数行
+	
+	命令：
+		p 			打印当前模式空间内容，追加到默认输出之后
+		Ip 			忽略大小写输出
+		d 			删除模式空间匹配的行，并立即启用下一轮循环
+		a [\]text 	在指定行后面追加文本，支持使用\n实现多行追加
+		i [\]text 	在行前面插入文本
+		c [\]text 	替换行为单行或多行文本
+		w file 		保存模式匹配的行至指定文件
+		r file 		读取指定文件的文本至模式空间中匹配到的行后
+		= 			为模式空间中的行打印行号
+		! 			模式空间中匹配行取反处理
+		q 			结束或退出sed
+	
+	
+	查找替代(sed的核心用法):
+		s/pattern/string/修饰符 		查找替换,支持使用其它分隔符，可以是其它形式：s@@@，s###
+		替换修饰符：
+			g 行内全局替换
+			p 显示替换成功的行
+			w /PATH/FILE 将替换成功的行保存至文件中
+			I,i 忽略大小写
+	
+	
+-n 选项和 p 命令
+	
+	// sed 有打印功能, p也有打印功能,所以打印了两次
+	[root@localhost ~]#seq 3 | sed 'p'
+	1
+	1
+	2
+	2
+	3
+	3
+	// -n 表示关闭自带的打印功能
+	[root@localhost ~]#seq 3 | sed -n 'p'
+	1
+	2
+	3
+	// 只打印第三行
+	[root@localhost ~]#seq 3 | sed -n '3p'
+	3
+	
+	// 实践
+	[root@localhost ~]#ifconfig ens33 | sed -n 2p
+        inet 192.168.32.101  netmask 255.255.255.0  broadcast 192.168.32.255
+
+
+/正则表达式/ 
+	//  正则表达式和p命令连用, 相当于 "grep root /etc/passwd"
+	[root@localhost ~]#sed -n '/root/p' /etc/passwd
+	root:x:0:0:root:/root:/bin/bash
+	operator:x:11:0:operator:/root:/sbin/nologin
+	
+	// 打印第一个正则表达式匹配的行和第二个正则表达式匹配的行的中间的行
+	// 如果一个文本中有多个区间满足, 那么会把所有满足条件的区间都打印出来
+	// 如果匹配到了第一个正则表达式,第二个正则表达式一直到文本末尾都没有匹配,那么区间范围就是第一个正则表达式匹配到的行到文本末尾
+	sed -n '/^b/,/^f/p' /etc/passwd
+	
+	
+	// 匹配到"^r"的行, 如果此行小于3, 打印出区间行。如果后面的行还能匹配到"^r", 那么打印出这些匹配到的行
+	sed -n '/^r/,3p' /etc/passwd
+	
+	
+	// 面试题: 筛选出一个时间段的日志
+
+
+指定行范围
+	// 打印出第三到第六行
+	seq 100 | sed -n '3,6p'
+	
+	// 打印出第三到第七行
+	seq 100 | sed -n '3,+4p'
+	
+
+步进:
+	[root@localhost ~]#seq 10 | sed -n '5~2p'
+	5
+	7
+	9
+	[root@localhost ~]#seq 10 | sed -n '6~2p'
+	6
+	8
+	10
+	
+d 命令 和  "-i.bak"选项
+	// 删除第2行, 第二行不是真正的删除 
+	[root@localhost ~]#seq 3 | sed '2d'
+	1
+	3
+	
+	[root@localhost ~]#seq 6 | sed  '2~3d'
+	1
+	3
+	4
+	6
+
+	[root@localhost ~]#seq 10 > test.txt
+	// 在文件上修改, 可以备份原文件,后缀名可以自定义,
+	[root@localhost ~]#sed -i.bakup '2~2d' test.txt
+	[root@localhost ~]#cat test.txt
+	1
+	3
+	5
+	7
+	9
+	[root@localhost ~]#ll test.txt.bakup; cat test.txt.bakup
+	-rw-r--r--. 1 root root 21 Oct 24 16:47 test.txt.bakup
+	1
+	2
+	3
+	4
+	5
+	6
+	7
+	8
+	9
+	10
+
+	// 删除文件中 # 开头的行
+	cat /etc/fstab | sed '/^#/d'
+
+
+	// "sed -i"经常用于修改配置文件,尤其在脚本中使用,批量改脚本
+	
+	 
+	
+
+a 命令表示追加, 追加也常用来改配置文件
+	[root@localhost ~]#seq 3 | sed '2aHeheHaha'
+	1
+	2
+	HeheHaha
+	3
+	
+	// 如果要空格抬头,加\, \ 表示后面的内容全是追加的内容
+	[root@localhost ~]#seq 3 | sed '2a\  HeheHaha'
+	1
+	2
+	  HeheHaha
+	3
+	
+	[root@localhost ~]#seq 3 | sed '2a\  Hehe\nHaha'
+	1
+	2
+	  Hehe
+	Haha
+	3
+	
+	// 在配置文件中添加别名
+	sed -i '3alias x=ls' .bashrc
+	
+
+i 命令表示在前面追加, 追加也常用来改配置文件
+	[root@localhost ~]#seq 3 | sed '2iHeHe'
+	1
+	HeHe
+	2
+	3
+	
+	
+
+c 命令表示替换第几行
+	[root@localhost ~]#seq 3 | sed '2cHeHe'
+	1
+	HeHe
+	3
+	
+	// 把U开头的行替换为HAHA
+	sed /^U/cHAHA /etc/fstab
+
+r 命令表示读
+	// 把文件中的内容读出来放到第2行后面
+	[root@localhost ~]#seq 3 | sed '2r /etc/issue'
+	1
+	2
+	\S
+	Kernel \r on an \m
+
+	
+	// 把文件中的内容读出来放到偶数行后面
+	seq 10 | sed '2~2r /etc/issue'
+	
+	
+	// 把偶数行挑出来写到文件中
+	[root@localhost ~]#seq 3 | sed '2~2w a.txt'
+	1
+	2
+	3
+	[root@localhost ~]#cat a.txt
+	2
+	[root@localhost ~]#
+
+= 命令加行号
+	// 给第二行加上行号
+	[root@localhost ~]#seq 3 | sed '2='
+	1
+	2											// 这个是行号 
+	2
+	3
+
+!命令取反
+	// 1~2 表示取奇数行, ！表示取反,那就是取偶数行
+	[root@localhost ~]#seq 5 | sed -n '1~2!p'
+	2
+	4
+
+查找替代(sed的核心用法)
+	// 替换, 如果一行有多个可以匹配，默认只处理第一个
+	[root@localhost ~]#sed 's/root/admin/' /etc/passwd | grep "admin"
+	admin:x:0:0:root:/root:/bin/bash
+	operator:x:11:0:operator:/admin:/sbin/nologin
+	
+	// 替换所有, 处理匹配到的所有字符串, 使用命令 g
+	[root@localhost ~]#sed 's/root/admin/g' /etc/passwd | grep "admin"
+	admin:x:0:0:admin:/admin:/bin/bash
+	operator:x:11:0:operator:/admin:/sbin/nologin
+	
+	// 把 r..t 变为 r..ter, 使用 & 符号, & 符号相当于一个变量, 保存着 r..t 匹配到的字符串
+	[root@localhost ~]#sed 's/r..t/&er/g' /etc/passwd | grep ter
+	rooter:x:0:0:rooter:/rooter:/bin/bash
+	operator:x:11:0:operator:/rooter:/sbin/nologin
+	ftp:x:14:50:FTP User:/var/fterp:/sbin/nologin
+	
+	
+分组(核心用法)：
+		
+	// 使用()进行分组,把匹配到的字符串分块,然后可以对块分别处理
+	[root@localhost ~]#echo xyz123abc | sed -r 's/(xyz)(123)(abc)/\1/'
+	xyz
+	[root@localhost ~]#echo xyz123abc | sed -r 's/(xyz)(123)(abc)/\2/'
+	123
+	[root@localhost ~]#echo xyz123abc | sed -r 's/(xyz)(123)(abc)/\1\3/'
+	xyzabc
+	
+	// 分隔符可以自定义,比如可以用 s///,也可以用s@@@、s### 格式
+	[root@localhost ~]#ifconfig ens33 | sed -rn '2s/.*inet ([0-9.]+)  netmask.*/\1/p'
+	192.168.32.101
+	[root@localhost ~]#ifconfig ens33 | sed -rn '2s/.*inet ([0-9.]+)  .*/\1/p'
+	192.168.32.101
+
+	[root@localhost ~]#echo /etc/sysconfig/network-scripts/ifcfg-ens33 | sed -nr 's@^(.*)/([^/]+)@\1@p'
+	/etc/sysconfig/network-scripts
+	[root@localhost ~]#echo /etc/sysconfig/network-scripts/ifcfg-ens33 | sed -nr 's@^(.*)/([^/]+)@\2@p'
+	ifcfg-ens33
+	
+	
+	//替换配置文件
+	[root@localhost ~]#cat test.txt
+	SELINUX=enforcing
+	[root@localhost ~]#sed -ri 's/^(SELINUX=).*/\1disabled/' test.txt
+	[root@localhost ~]#cat test.txt
+	SELINUX=disabled
+	
+	
+-e 多点编辑,同时修改多处
+	
+	[root@localhost ~]#cat test.config
+	port: 8080
+	#ServiceName www.examaple.com
+	
+	// port: 8080 改为 port: 80 ， 第二行前面的#去掉
+	// -e 同时修改多处
+	[root@localhost ~]#sed -i -r -e 's/port: 8080/port: 80/'  -e 's/^#(ServiceName.*)/\1/' test.config
+	[root@localhost ~]#cat test.config
+	port: 80
+	ServiceName www.examaple.com
+	
+	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	
+	// 注意参数 ir 位置的写法 ， -ir 这种写法会报错
+	// 能成功
+	sed -ri -e 's/port: 8080/port: 80/'  -e 's/^#(ServiceName.*)/\1/' test.config
+	sed -i -r -e 's/port: 8080/port: 80/'  -e 's/^#(ServiceName.*)/\1/' test.config
+	sed -r -i -e 's/port: 8080/port: 80/'  -e 's/^#(ServiceName.*)/\1/' test.config
+	
+	// 不能成功
+	sed -ir -e 's/port: 8080/port: 80/'  -e 's/^#(ServiceName.*)/\1/' test.config

@@ -1,0 +1,1664 @@
+
+2 Linux进程和内存管理
+
+2.1 什么是进程(Process)：运行中的程序的一个副本，是被载入内存的一个指令集合，是资源分配的单位
+	
+	多实例：一个程序生成多个副本，每个副本在内存中独立运行。有些程序支持多实例，有些程序不支持。比如记事本能打开多个，说明支持多实例。
+	
+	进程的特征：
+		进程ID（Process ID，PID）号码被用来标记各个进程
+		UID、GID、和SELinux语境决定对文件系统的存取和访问权限
+		通常从执行进程的用户来继承
+		存在生命周期
+	
+	进程创建：
+		init：第一个进程，从 CentOS7 以后为systemd
+		进程：都由其父进程创建，fork()，父子关系， CoW(Copy On Write 写时复制)：数据没更新父进程和子进程就共用一块内存，如果数据变化了，就会copy父进程的空间，然后子进程指向这个空间！！
+
+	
+	进程相关概念：
+		Page Frame(页框): 用来存储页面数据，一个page为4k。也就是说，进程在内存中占用的大小，是以4k为单位进行分配。page是给进程分配内存空间的单位!!
+		
+		// 查看页大小
+		[root@localhost ~]#getconf -a | grep -i size
+		PAGESIZE                           4096
+		PAGE_SIZE                          4096
+		......省略
+
+	物理地址空间和虚拟地址空间
+		MMU(Memory Management Unit)：负责虚拟地址转换为物理地址，MMU是cpu里面的一块芯片，是个硬件！！
+
+	
+	// 查看进程和线程
+	[root@localhost ~]#pstree -p
+	systemd(1)─┬─NetworkManager(699)─┬─{NetworkManager}(745)			# init是第一个进程，从 CentOS7 以后为名称改为systemd
+			   │                     └─{NetworkManager}(747)
+			   ├─VGAuthService(673)
+			   ├─agetty(711)
+			   ├─auditd(647)───{auditd}(648)
+			   ├─automount(1002)─┬─{automount}(1012)					# automount 进程有5个线程(automount进程本身有一个主线程，其余四个线程是子线程)
+			   │                 ├─{automount}(1013)
+			   │                 ├─{automount}(1096)
+			   │                 └─{automount}(1104)
+			   ├─chronyd(682)
+			   ├─crond(709)	
+
+	
+	// init是第一个进程，从 CentOS7 以后为名称改为systemd	
+	[root@localhost ~]#ll /sbin/init
+	lrwxrwxrwx. 1 root root 22 Aug 20  2021 /sbin/init -> ../lib/systemd/systemd
+	
+	
+	// "/proc/"目录下有很多以数字命名的目录，这个数字就是进程的编号
+	ls /proc/
+	
+
+	// 查看1002这个进程的相关信息
+	[root@localhost ~]#cat /proc/1002/status
+	Name:   automount
+	Umask:  0022
+	Threads:        5							#可以看到，1002这个进程里面有5个线程 
+	SigQ:   1/14989	
+	......省略	
+	
+	
+2.2 进程可能存在的内存问题
+	
+	内存泄漏(Memory Leak)：指程序中用malloc或new申请了一块内存，但是没有用free或delete将内存释放，导致这块内存一直处于占用状态
+	内存溢出(Memory Overflow)：指程序申请了10M的空间，但是在这个空间写入10M以上字节的数据，就是溢出
+	内存不足(OOM,Out Of Memory)：内存用完了，不够使用
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 进程状态和相关概念
+
+3.1 进程的状态
+	
+	进程的基本状态：
+		创建状态
+		就绪状态
+		执行状态
+		阻塞状态
+		终止状态
+	
+	进程更多的状态：
+		运行态：running
+		就绪态：ready
+		睡眠态：分为两种，可中断：interruptable，不可中断：uninterruptable
+		停止态：stopped，暂停于内存，但不会被调度，除非手动启动。总结一句话，就是占着内存空间，但是不运行！！
+		僵死态：zombie，僵尸态，结束进程，父进程结束前，子进程不关闭，杀死父进程可以关闭僵死态的子进程。一般出现僵死态进程的情况很少！！
+				僵死态就是进程已经挂了，本身已经不占内存了，但是还能看到进程信息，说明只是占了很少的内存，但没有什么大问题，只是看着别扭，实际上不占内存
+				子进程的空间是父进程来回收的，如果父进程是停止态，这时结束子线程，这时父进程不能回收子线程，子线程就处于僵死态！！
+				解决僵死态进程的两种方法：
+					恢复父进程就好了
+					杀掉父进程，这时系统会把父进程和子进程的空间都回收掉
+				
+				注意：并不是所有的僵死态进程都可以通过上面的方法处理，如下：
+				
+				[root@localhost ~]#pstree -p
+				systemd(1)─┬─systemd-journal(496)  	# 假如 NetworkManager 这个进程是僵死态，父进程是systemd，因为这个进程不可能是停止态，那么也不能杀掉这个进程。那么只能重启机器！
+				   │                     
+				
+
+	实践：
+	
+		// 查看进程状态
+		[root@localhost ~]#ps aux
+		USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND   # vsz 虚拟内存；RSS 实际物理内存占的空间；STAT表示进程状态
+		root          1  0.0  0.1 125484  3876 ?        Ss   21:42   0:01 /usr/lib/systemd/systemd --switched-root --system --de
+		root          2  0.0  0.0      0     0 ?        S    21:42   0:00 [kthreadd]
+		root       1668  0.0  0.0      0     0 ?        S    22:48   0:00 [kworker/u256:1]
+		......省略
+		
+			"ps aux" 中的 stat 的参数意义如下：
+				D 不可中断 Uninterruptible（usually IO）
+				R 正在运行，或在队列中的进程
+				S 处于休眠状态
+				T 停止或被追踪
+				Z 僵尸进程
+				W 进入内存交换（从内核2.6开始无效）
+				X 死掉的进程
+				< 高优先级
+				n 低优先级
+				s 包含子进程
+				+ 位于后台的进程组
+
+		[root@localhost ~]#ping www.baidu.com
+		PING www.a.shifen.com (14.215.177.38) 56(84) bytes of data.
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=1 ttl=128 time=24.7 ms
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=2 ttl=128 time=13.7 ms
+		^Z																						# 这里按下"Ctrl+z"，使进程进入停止态		
+		[1]+  Stopped                 ping www.baidu.com	
+	
+		[root@localhost ~]#pstree -p
+		systemd(1)─┬─NetworkManager(698)─┬─{NetworkManager}(746)
+				   │                     └─{NetworkManager}(748)
+				   ├─rsyslogd(999)─┬─{rsyslogd}(1051)
+				   │               └─{rsyslogd}(1056)
+				   ├─sshd(997)───sshd(1530)───bash(1532)─┬─ping(1742)							# 这里可以看到ping的进程ID为1742
+				   │                                     └─pstree(1752)		
+				   ├─systemd-journal(496)		
+	
+		[root@localhost ~]#ps aux | grep 1742
+		root       1742  0.0  0.0 148780  1736 pts/0    T    23:12   0:00 ping www.baidu.com	# 可以看到进程的状态是T,说明状态处于停止态
+		
+		// jobs 可以看到后台停止的进程，编号为1
+		[root@localhost ~]#jobs
+		[1]+  Stopped                 ping www.baidu.com
+		
+		// fg 指令用于将后台运行的或挂起的任务（或作业）切换到前台运行，"fg 1"就是把编号为1的挂起的进程切换到前台运行。fg 恢复到前台，bg 恢复到后台。
+		[root@localhost ~]#fg 1
+		ping www.baidu.com
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=3 ttl=128 time=19.2 ms
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=4 ttl=128 time=13.4 ms
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=5 ttl=128 time=13.9 ms
+		^C																						# "ctrl+c"结束进程
+		--- www.a.shifen.com ping statistics ---
+		5 packets transmitted, 5 received, 0% packet loss, time 74458ms
+		rtt min/avg/max/mdev = 12.771/15.028/19.154/2.306 ms
+		[root@localhost ~]# 
+	
+		// 查看当前进程
+		[root@localhost ~]#echo $BASHPID
+		1532
+		
+		
+	总结：程序状态的切换方法
+		"Ctrl + z" 使进程进入停止态，相当于命令"kill -19 进程PID"
+		恢复一个进程"kill -18 进程PID"
+		"ctrl +c"结束一个进程, 相当于命令"kill -9 进程PID"。
+		
+		扩展: "ctrl+d"不是发送信号，而是表示一个特殊的二进制值，表示 EOF。EOF是一个计算机术语，为End Of File的缩写,通常在文本的最后存在此字符表示资料结束。
+	
+
+3.2 LRU 算法
+　　Least Recently Used 近期最少使用算法（喜新厌旧），释放内存
+	
+	
+3.3 IPC（Inter Process Communication 进程间通信） 	
+	
+	同一主机：
+		pipe 管道,单向传输
+		socket 套接字文件,双工通信
+		Memory-maped file 文件映射,将文件中的一段数据映射到物理内存，多个进程共享这片内存。就是把把文件的内容放到内存中！！
+		shm shared memory 共享内存
+		signal 信号
+		Lock 对资源上锁，如果资源已被某进程锁住，则其它进程想修改甚至读取这些资源，都将被阻塞，直到锁被打开。一旦枷锁就不能并行运行，性能会降低
+		semaphore 信号量，一种计数器。实现进程之间的信号控制
+	
+	
+	不同主机：socket=IP和端口号
+		RPC remote procedure call
+		MQ 消息队列，生产者和消费者，如：Kafka，RabbitMQ，ActiveMQ
+	
+	
+	实践1：pipe 管道, 有匿名管道和命名管道文件
+		// 匿名管道
+		[root@localhost ~]#echo test | cat
+		test
+		
+		// 命名管道文件,
+		[root@centos8 ~]#mkfifo /data/test.fifo
+		[root@centos8 ~]#cat > /data/test.fifo
+		magedu													# 注意：这里输入数据，回车后并没有退出
+		
+		#在另一个终端可以从文件中读取数据
+		[root@centos8 ~]#ll /data/test.fifo
+		prw-r--r-- 1 root root 0 May 6 14:32 /data/test.fifo	# 这里写了数据到文件种，为什么这里只占用0字节,因为数据在内存里，两个进程通过内存空间通讯
+		
+		[root@centos8 ~]#cat /data/test.fifo
+		magedu													# 这里从管道文件中读出数据，读完了就没了，上面输入会自动退出。
+																# 同理，如果这里是先读数据，同样会等待，等另一个终端往文件输入数据后，这里才能自动退出！
+	
+		总结：命名管道文件是一读一写，单向通讯，同一时间，只能一个写一个读！！
+	
+	
+	
+	实践2：
+	// 查找socket文件
+	[root@localhost ~]#find / -type s -ls
+	  1630    0 srw-rw-rw-   1 root     root            0 Nov 15 21:42 /dev/log
+	......省略
+	
+	[root@localhost ~]#ll /dev/log
+	srw-rw-rw- 1 root root 0 Nov 15 21:42 /dev/log
+	
+	实践3：
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        255M        3.3G         11M        183M        3.2G			# 这里的 shared 内存就是 "shm shared memory (共享内存)"
+	Swap:          3.9G          0B        3.9G
+	[root@localhost ~]#	
+	
+
+3.3 进程优先级：优先级越高，CPU会优先分配，最终表现为进程运行的快些
+	优先级范围：数字越小，优先级越高
+		0-99		实时进程，一些特殊的系统进程的优先级在0-99这个范围
+		100-139		非实时进程，大部分进程的优先级在100-139这个范围
+	
+	centOS优先级：
+		==================================================================================
+		/					0						 99	 100		 120		 139     /
+		/	系统优先级		|------------------------|---|-----------|-----------|       /
+		/	                                                                             /
+		/					99						 0                                   /
+		/	realtime优先级	|------------------------|                                   /
+		/	                                                                             /
+		/												-20			 0			 19      /
+		/	nice优先级								 	 |-----------|-----------|       /
+		/	                                                                             /
+		/					RT						 RT	 0		     20		     39      /
+		/	top(PR)			|------------------------|---|-----------|-----------|       /
+		==================================================================================
+	
+	优先级在很多命令中都会有优先级的设置，但是对应的数字表示范围和"0~139"这个范围不一定是一致的。比如 nice 这个命令，设置的优先级范围是"-20 ~ 19", 对应系统优先级"100-139"
+	默认进程启动用的优先级是nice的0，相当于系统优先级的120
+	有些命令能调整系统优先级
+	top命令显示的"0-39"之间的优先级，如果是实时优先级就不显示了，就只显示RT(realtime),RT就是实时优先级的意思！！
+	命令不一样，显示优先级的范围不一样！！
+	
+	// nice 命令可以动态设置某一个进程的实时优先级
+	[root@localhost ~]#ps axo pid,cmd,ni | grep ping
+	3860 grep --color=auto ping        0
+	
+	
+	实践1：
+		[root@localhost ~]#ps axo pid,cmd,ni | grep ping			# ni 代表nice，这条命令也可以写为"ps axo pid,cmd,nice"
+		  3860 grep --color=auto ping        0						# ping 默认的nice优先级为0
+		  
+		[root@localhost ~]#nice -n -10 ping www.baidu.com			# 指定ping命令以nice为10的优先级运行
+		PING www.a.shifen.com (14.215.177.38) 56(84) bytes of data.
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=1 ttl=128 time=14.3 ms
+		......省略
+		
+		// 下面命令在另一个终端上运行
+		[root@localhost ~]#ps axo pid,cmd,ni | grep ping		
+		  3994 ping www.baidu.com          -10
+		  4042 grep --color=auto ping        0
+		
+		[root@localhost ~]#renice -n 5 3994					# renice 可以改变正在运行的进程的优先级
+		3994 (process ID) old priority -10, new priority 5
+		
+		[root@localhost ~]#ps axo pid,cmd,ni | grep ping
+		  3994 ping www.baidu.com            5
+		  4077 grep --color=auto ping        0
+		
+		[root@localhost ~]#renice -n -30 3994				# 如果指定的优先级超出范围，会自动设置为最靠近的那个最大或最小值优先级。比如设为30，会自动设为19；设为 -29，会自动设为 -20
+		3994 (process ID) old priority 5, new priority -20
+		
+		[root@localhost ~]#ps axo pid,cmd,ni | grep ping
+		  3994 ping www.baidu.com          -20
+		  4112 grep --color=auto ping        0	
+	
+	
+	实践2：
+		[root@localhost ~]#ps axo pid,cmd,nice,pri			# 帮助上对pri的解释，Higher number means lower priority.
+		   PID CMD                          NI PRI
+		  4328 [kworker/0:3]                 0  19			
+		  4368 ping www.baidu.com          -20  39			# 从nice的角度来说，-20是最高的优先级，这里的pri优先级是39，和文档说的不符合，所以有时候文档也不准确
+	
+	
+	实践3：显示实时优先级
+		[root@localhost ~]#ps axo pid,cmd,nice,pri,rtprio
+		   PID CMD                          NI PRI RTPRIO	
+			13 [migration/1]                 - 139     99			# 这里实时优先级是99，PRI优先级是139，所以对于PRI优先级来说，数字越大，优先级越大
+		  4368 ping www.baidu.com          -20  39      -			# 因为实时优先级和nice优先级没有交叉点，所以这实时优先级显示 -
+	
+	
+	CPU会优先运行优先级较高的进程：原理是使用队列实现, 系统中各有140个运行队列和过期队列 !!
+	
+	
+3.4 进程分类
+	
+	操作系统分类：
+		协作式多任务：：早期 windows 系统使用，即一个任务得到了 CPU 时间，除非它自己放弃使用CPU ，否则将完全霸占 CPU。缺点是如果占用CPU的这个进程挂掉了，就会导致死机！！
+		抢占式多任务：Linux内核，CPU的总控制权在操作系统手中，操作系统会轮流询问每一个任务是否需要使用 CPU 
+		
+	进程类型：
+		守护进程: daemon,在系统引导过程中启动的进程，和终端无关进程
+		前台进程：跟终端相关，通过终端启动的进程
+		注意： 守护进程和前台进程两者可相互转化
+		
+	按进程资源使用的分类：
+		CPU-Bound：CPU 密集型，非交互
+		IO-Bound：IO 密集型，交互
+		
+	
+3.5 (了解)调度算法：极少数场景下，有的时候要针对业务做优化要改算法，不过这都是内核的功能，一般默认算法就已经够用！！
+	在LINUX 2.6中有四种关于IO的调度算法:
+		NOOP：NOOP算法的全写为No Operation。该算法实现了最简单的FIFO队列，所有IO请求大致按照先来后到的顺序进行操作。
+		CFQ：CFQ算法的全写为Completely Fair Queuing。该算法的特点是按照IO请求的地址进行排序，而不是按照先来后到的顺序来进行响应。
+		Deadline scheduler：DEADLINE在CFQ的基础上，解决了IO请求饿死的极端情况。
+		Anticipatory scheduler：ANTICIPATORY的在DEADLINE的基础上，为每个读IO都设置了6ms 的等待时间窗口。如果在这6ms内OS收到了相邻位置的读IO请求，就可以立即满足。
+	
+	// 查看IO调度算法
+	[root@localhost ~]#cat /sys/block/sda/queue/scheduler
+	noop [deadline] cfq
+	[root@localhost ~]#
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 进程管理工具
+
+	Linux系统状态的查看及管理工具：
+		pstree
+		ps
+		pidof
+		pgrep
+		top
+		htop
+		glance
+		pmap
+		vmstat
+		dstat
+		kill
+		pkill
+		job
+		bg
+		fg
+		nohup
+
+4.1 pstree 进程树，可以用来显示进程的父子关系，以树形结构显示
+	格式：pstree [OPTION] [ PID | USER ]
+	常用选项：
+		-p 显示PID，显示子进程，包括线程的情况
+		-T 不显示线程thread,默认显示线程
+		-u 显示用户切换
+		-H pid 高亮显示指定进程及其前辈进程
+
+	// 显示某个进程的信息
+	pstree -p  PID
+	
+	// 高亮显示指定进程及其前辈进程
+	pstree -pH  PID
+	
+	
+4.2 ps 进程信息， ps 即 process state，可以进程当前状态的快照，默认显示当前终端中的进程，Linux系统各进程的相关信息均保存在/proc/PID目录下的各文件中
+	
+	ps格式：ps [OPTION]...
+	
+	支持三种选项：
+		UNIX选项 如: -A -e
+		GNU选项 如: --help
+		BSD选项 如: a
+	
+	常用选项：
+		a 选项包括所有终端中的进程
+		x 选项包括不链接终端的进程
+		u 选项显示进程所有者的信息
+		f 选项显示进程树,相当于 --forest
+		k|--sort 属性 对属性排序,属性前加 - 表示倒序
+		o 属性… 选项显示定制的信息 pid、cmd、%cpu、%mem
+		L 显示支持的属性列表
+		-C cmdlist 指定命令，多个命令用，分隔
+		-L 显示线程
+		-e 显示所有进程，相当于-A
+		-f 显示完整格式程序信息
+		-F 显示更完整格式的进程信息
+		-H 以进程层级格式显示进程相关信息
+		-u userlist 指定有效的用户ID或名称
+		-U userlist 指定真正的用户ID或名称
+		-g gid或groupname 指定有效的gid或组名称
+		-G gid或groupname 指定真正的gid或组名称
+		-p pid 显示指pid的进程
+		--ppid pid 显示属于pid的子进程
+		-t ttylist 指定tty,相当于 t
+		-M 显示SELinux信息，相当于Z		
+	
+	
+	// PS 默认只显示本终端开启的进程
+	[root@localhost ~]#ps
+	   PID TTY          TIME CMD
+	  1508 pts/0    00:00:00 bash
+	  1645 pts/0    00:00:00 ps	
+	
+	// 显示所有终端开启的进程。注意："ps a" 和 "ps -a"显示的内容不一样，因为 a 是 BSD 选项，"-a"是 UNIX 选项
+	[root@localhost ~]#ps a
+	   PID TTY      STAT   TIME COMMAND
+	   696 tty1     Ss+    0:00 /sbin/agetty --noclear tty1 linux
+	  1508 pts/0    Ss     0:00 -bash
+	  1653 pts/0    R+     0:00 ps a	  
+	  
+	// x 参数表示显示有有进程，和终端有关没关的进程都显示
+	[root@localhost ~]#ps x
+	   PID TTY      STAT   TIME COMMAND
+		 1 ?        Ss     0:01 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+		 2 ?        S      0:00 [kthreadd]
+		 4 ?        S<     0:00 [kworker/0:0H]
+	......省略
+	
+	
+	
+	// x 选项可以显示出更多信息，比如进程是以谁的身份运行、实际占用的空间等
+	[root@localhost ~]#ps aux
+	USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+	root          1  0.0  0.1 125356  3876 ?        Ss   10:47   0:01 /usr/lib/systemd/systemd --switched-root --system --de
+	root          2  0.0  0.0      0     0 ?        S    10:47   0:00 [kthreadd]
+	root          4  0.0  0.0      0     0 ?        S<   10:47   0:00 [kworker/0:0H]	
+	......省略
+		
+		输出属性解释：
+			VSZ：虚拟内存空间，操作系统承诺分配给进程的空间
+			RSS：物理内存空间，进程实际占用的空间
+			TTY：进程在哪个终端运行，"?"表示和终端无关的进程
+			START：进程开始运行的时间
+			TIME：cpu分给进程的时间片之和。
+			STAT：进程的状态
+				R：running
+				S: interruptable sleeping
+				D: uninterruptable sleeping
+				T: stopped
+				Z: zombie
+				+: 前台进程
+				l: 多线程进程
+				L：内存分页并带锁
+				N：低优先级进程
+				<: 高优先级进程
+				s: session leader，会话（子进程）发起者
+				I：Idle kernel thread，CentOS 8 新特性				
+	
+ 	
+	// k 排序，默认顺序排， "-"倒叙排， 下面的命令表示以CPU的指标为标准倒叙排！！
+	[root@localhost ~]#ps aux  k -%cpu
+	USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+	root         30  0.1  0.0      0     0 ?        S    10:47   0:04 [kworker/0:1]
+	root        680  0.1  0.1 273008  4752 ?        Ssl  10:47   0:07 /usr/bin/vmtoolsd	
+	......省略
+	
+	// o 选项表示给出指定的列显示
+	[root@localhost ~]#ps axo pid,cmd,psr
+	   PID CMD                         PSR
+		 1 /usr/lib/systemd/systemd --   1		# PSR表示在哪个cpu上运行(现在的CPU都是多核CPU) 
+		 2 [kthreadd]                    0
+		 4 [kworker/0:0H]                0
+		 6 [ksoftirqd/0]                 0
+		 7 [migration/0]                 0
+		 8 [rcu_bh]                      0
+	......省略
+	
+		注意：cpu 运行的进程不是固定的，进程在哪个cpu上运行也不是固定的。是根据操作系统来调度的！！
+	
+	
+	
+	// "-ef"也是常用的选项，ef 不如aux全面 ，而且看不到内存的使用
+	[root@localhost ~]#ps -ef
+	UID         PID   PPID  C STIME TTY          TIME CMD
+	root          1      0  0 10:47 ?        00:00:01 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+	root          2      0  0 10:47 ?        00:00:00 [kthreadd]
+	root          4      2  0 10:47 ?        00:00:00 [kworker/0:0H]
+	root          6      2  0 10:47 ?        00:00:00 [ksoftirqd/0]
+		
+		输出属性解释：
+			 ppid：当前进程的父进程
+			 c：cpu的利用率，凑整显示
+			 STIME：进程启动时间
+			 TIME：cpu分给进程的时间片之和
+	
+	
+	
+	// 查看系统运行了多长时间
+	[root@localhost ~]#uptime
+	 12:05:51 up  1:18,  2 users,  load average: 0.02, 0.03, 0.05	
+	
+	
+	
+	实践1：
+			
+		[root@localhost ~]#ps aux  k -%cpu
+		USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+		root       1835  105  0.0 108096   616 pts/0    R+   12:06   0:45 dd if=/dev/zero of=/dev/null		
+		......省略
+	
+		为什么这里CPU利用率可以达到105%，因为是多核多线程CPU。如果CPU是一核二线程，那么CPU利用率可以达到200% ！
+		在运行"dd if=/dev/zero of=/dev/null"命令的终端按下"ctrl + z", 让进程处于停止态，再观察TiME属性，可以看到这个值不再增长！
+		在运行"dd if=/dev/zero of=/dev/null"命令的终端再次运行"fg 1"，让进程恢复，可以可看到TIME属性这里的值继续增长，说明TIME属性的值表示"cpu分给进程的时间片之和" !!
+	
+	
+	实践2：找到未知进程的执行程序文件路径
+		
+		// 首先通过ps命令找到未知进程的PID，假如"1835"就是这个未知程序
+		[root@localhost ~]#ps aux  k -%cpu
+		USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+		root       1835  105  0.0 108096   616 pts/0    R+   12:06   0:45 dd if=/dev/zero of=/dev/null		
+		......省略
+		
+		// "/proc/PID/exe"就指向了实际的程序文件路径
+		[root@localhost ~]#ls -l /proc/1835/exe
+		lrwxrwxrwx 1 root root 0 Nov 16 12:17 /proc/1835/exe -> /usr/bin/dd	
+	
+		// 删除这个文件！实际上病毒文件删除后会自动生成，临时解决办法是，删了后建一个一模一样的空文件，再赋予这个文件特殊权限，来避免被覆盖。然后再找出自动生成病毒文件的根进程，然后将其删除！！
+	
+	
+	实践3：将程序的进程绑定在某一个CPU上运行！！
+		cpu 运行的进程不是固定的，进程在哪个cpu上运行也不是固定的。这样带来一个问题，切换CPU会带来额外的开销，因为CPU里面有一些高速缓存数据。切换CPU就要从内存重新载入这些数据 ！
+		比如 nginx，就可以指定某个进程和某个CPU进行绑定，这样就可以提高效率！！
+		
+		// taskset 命令可以指定进程和CPU进行绑定，但这种绑定关系是临时性的，如果重启进程，这个绑定关系就没有了 ！
+		[root@centos8 ~]#taskset --help
+		Usage: taskset [options] [mask | cpu-list] [pid|cmd [args...]]	
+		
+
+
+4.3 prtstat 查看进程信息 
+	
+	// 查看PID为1的进程信息
+	[root@localhost ~]#prtstat 1
+	Process: systemd                State: S (sleeping)
+	  CPU#:  1              TTY: 0:0        Threads: 1
+	Process, Group and Session IDs
+	  Process ID: 1           Parent ID: 0
+		Group ID: 1          Session ID: 1
+	  T Group ID: -1
+
+	Page Faults
+	  This Process    (minor major):     9603        55
+	  Child Processes (minor major):   392235       220
+	CPU Times
+	  This Process    (user system guest blkio):   0.09   1.38   0.00   0.93
+	  Child processes (user system guest):         1.81   4.68   0.00
+	Memory
+	  Vsize:       128 MB
+	  RSS:         3969 kB                   RSS Limit: 18446744073709 MB
+	  Code Start:  0x558d29b53000            Code Stop:  0x558d29cb65e2
+	  Stack Start: 0x7ffc98d37820
+	  Stack Pointer (ESP): 0x7ffc98d36a90    Inst Pointer (EIP): 0x7fe99e8eef43
+	Scheduling
+	  Policy: normal
+	  Nice:   0              RT Priority: 0 (non RT)
+	
+	
+	// -r 表示以 raw 格式显示
+	[root@localhost ~]#prtstat -r 1
+			 pid: 1                                   comm: systemd
+		   state: S                                   ppid: 0
+			pgrp: 1                                session: 1
+		  tty_nr: 0                                  tpgid: -1
+		   flags: 402100                            minflt: 9604
+		 cminflt: 392235                            majflt: 55
+		 cmajflt: 220                                utime: 9
+		   stime: 138                               cutime: 181
+		  cstime: 468                             priority: 20
+			nice: 0                            num_threads: 1
+	 itrealvalue: 0                              starttime: 3
+		   vsize: 128364544                            rss: 969
+		  rsslim: 18446744073709551615                   startcode: 94064778489856
+		 endcode: 94064779945442                startstack: 140722872481824
+		 kstkesp: 7FFC98D36A90                     kstkeip: 7FE99E8EEF43
+		   wchan: 18446744072120552942                       nswap: 0
+		  cnswap: 18446744072120552942                 exit_signal: 17
+	   processor: 1                            rt_priority: 0
+		  policy: 0                  delayaccr_blkio_ticks: 93
+	  guest_time: 0                            cguest_time: 0	
+	
+	
+	
+4.4 设置和调整优先级
+	进程优先级调整
+		静态优先级：100-139
+		进程默认启动时的nice值为0，优先级为120
+		只有根用户才能降低nice值（提高优先性）
+	
+	nice命令,以指定的优先级来启动进程, 如下命令：
+		nice -n -10 ping www.baidu.com
+
+	renice命令,调整正在执行中的进程的优先级
+		renice -n 5 3994
+	
+	查看nice进程优先级
+		ps axo pid,comm,ni
+		ps axo pid,comm,nice			# nice 也可以缩写为ni
+		
+	
+4.5 搜索进程
+	ps 选项 | grep 'pattern' 灵活
+	pgrep 按预定义的模式
+	/sbin/pidof 按确切的程序名称查看pid
+	
+	实践1：使用grep
+		ps aux | grep dd
+	
+	实践2：使用 pgrep，pgrep 是专门的过滤工具
+		命令格式：pgrep [options] pattern
+		常用选项：
+			-u uid: effective user，生效者
+			-U uid: real user，真正发起运行命令者
+			-t terminal: 与指定终端相关的进程
+			-l: 显示进程名
+			-a: 显示完整格式的进程名
+			-P pid: 显示指定进程的子进程
+
+		[root@localhost ~]#who
+		root     pts/0        2022-11-16 10:48 (192.168.32.1)
+		root     pts/1        2022-11-16 11:43 (192.168.32.1)
+
+		[root@localhost ~]#who am i
+		root     pts/1        2022-11-16 11:43 (192.168.32.1)
+		
+		// -t 以终端为过滤
+		[root@localhost ~]#pgrep -t pts/1
+		1683
+		
+		// -a 显示完整格式的进程名
+		[root@localhost ~]#pgrep -a -t pts/1
+		1683 -bash
+		[root@localhost ~]#pgrep -at pts/1			# 不能写为 pgrep -ta pts/1	
+		1683 -bash
+		
+		
+	实践3：pidof 适用于知道进程名，获取进程编号
+		
+		命令格式：pidof [options] [program [...]]
+		常用选项：-x 按脚本名称查找pid
+		
+		
+		// 获取dd这个进程的PID
+		[root@localhost ~]#pidof dd
+		1835
+		
+		[root@localhost ~]#ll /proc/`pidof dd`/exe		# 如果"pidof dd"过滤出来的结果有多个，那就不能这样用了 ！
+		lrwxrwxrwx 1 root root 0 Nov 16 12:17 /proc/1835/exe -> /usr/bin/dd
+		
+		
+		// 下面例子是按脚本名称查找pid
+		[root@localhost ~]#cat test2.sh					# 脚本的第一行"#!/bin/bash"就是shebang机制，shebang机制指明了用什么程序来运行脚本
+		#!/bin/bash
+		ping www.baidu.com
+		
+		// 给 test2.sh 加上x 权限
+		[root@localhost ~]#chmod +x test2.sh
+		
+		// 运行脚本
+		[root@localhost ~]#./test2.sh		
+		
+		// -x 按脚本名称查找pid
+		// 通过"pidof -x"查找正在运行的脚本的PID需要满足两个条件：一是脚本必须有shebang机制；二是脚本必须要用"./test2.sh"格式来运行；如果用"bash test2.sh"运行脚本就不能通过"pidof -x"找到PID ！
+		[root@localhost ~]#pidof -x test2.sh	
+		1569
+	
+	
+4.6 uptime 负载查询
+	
+	
+	[root@localhost ~]#uptime
+	 14:22:44 up 14 min,  2 users,  load average: 0.00, 0.01, 0.03
+	
+		uptime命令运行结果解析：
+			14:22:44： 这个时间是当前时间，就是运行 uptime 这个命令的时间
+			14 min： 系统已启动的时间
+			2 users：当前上线人数
+			"load average: 0.00, 0.01, 0.03", 表示 系统平均负载（1、5、15分钟的平均负载，一般不会超过1，超过5时建议警报） 
+				系统平均负载: 系统平均负载: 指在特定时间间隔内运行队列中的平均进程数,通常每个CPU内核的当前活动进程数不大于3，那么系统的性能良好。如果每个CPU内核的任务数大于5，那么此主机的性能有严重问题 ！
+							  如：linux主机是1个双核CPU，当Load Average 为6的时候说明机器已经被充分使用	
+		
+	// w 命令的第一行就是uptime命令的结果	
+	[root@localhost ~]#w
+	 14:27:35 up 19 min,  2 users,  load average: 0.01, 0.03, 0.04
+	USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT
+	root     pts/0    192.168.32.1     14:09    7.00s  0.18s  0.00s w
+	root     pts/1    192.168.32.1     14:09   14:23   0.03s  0.03s -bash			
+		
+	
+	// top 命令的前几行也是显示的这些信息
+	[root@localhost ~]#top
+	top - 14:29:02 up 20 min,  2 users,  load average: 0.00, 0.02, 0.04
+	Tasks: 107 total,   1 running, 106 sleeping,   0 stopped,   0 zombie
+	%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+	KiB Mem :  3861292 total,  3494792 free,   232436 used,   134064 buff/cache
+	KiB Swap:  4063228 total,  4063228 free,        0 used.  3435764 avail Mem
+
+	   PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND
+	  1656 root      20   0       0      0      0 S   0.3  0.0   0:00.06 kworker/1:0
+	  1679 root      20   0  162076   2204   1548 R   0.3  0.1   0:00.03 top	
+	......省略
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 性能相关工具
+
+5.1 mpstat 显示CPU相关统计 
+	
+	[root@localhost ~]#yum install -y sysstat
+	
+	[root@localhost ~]#mpstat
+	Linux 3.10.0-1160.el7.x86_64 (localhost.localdomain)    11/16/2022      _x86_64_        (2 CPU)
+
+	05:34:08 PM  CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest  %gnice   %idle
+	05:34:08 PM  all    0.21    0.00    0.46    0.42    0.00    0.01    0.00    0.00    0.00   98.89	
+		结果属性解释：
+			%usr 表示用户空间占的百分比
+			%sys 表示系统内核
+			%irq 表示中断
+			%soft 表示软中断
+			%steal 表示被盗取的时间，指的是虚拟化，被虚拟机运行进程占用的时间
+			%guest 和虚拟化有关
+			%gnice 虚拟机调整优先级
+			%idle 空闲
+	
+	// 每1秒观察一次，连续观察三次
+	[root@localhost ~]#mpstat 1 3
+
+	
+5.2 top 和 htop 查看进程实时状态
+
+top：动态实时显示进程运行的当前状态，
+
+	[root@localhost ~]#top
+	top - 17:41:52 up 34 min,  1 user,  load average: 0.00, 0.01, 0.05
+	Tasks: 105 total,   1 running, 104 sleeping,   0 stopped,   0 zombie				# Tasks是总的进程个数
+	%Cpu(s):  0.0 us,  0.2 sy,  0.0 ni, 99.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st		# "us"用户空间，"sy"系统空间，"ni"nice优先级，"id"空闲，"wa"等待，"hi"硬中断，"si"软中断，"st"盗取的时间
+	KiB Mem :  3861300 total,  3361568 free,   244968 used,   254764 buff/cache			# Mem内存
+	KiB Swap:  4063228 total,  4063228 free,        0 used.  3386500 avail Mem			# Swap交换内存
+
+	   PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND
+	  1672 root      20   0  162076   2204   1548 R   0.3  0.1   0:00.01 top
+		 1 root      20   0  125488   4000   2592 S   0.0  0.1   0:01.68 systemd
+	......省略
+		
+		结果属性解释：
+			PR：是top命令的优先级
+			NI：nice优先级
+			VIRT：虚拟内存空间
+			RES：实际物理内存占用的空间
+			SHR：共享内存
+			S：进程状态
+			%CPU：cpu利用率
+			%MEM：内存占用
+			TIME：总的运行时间
+		
+		排序：
+			top默认按照CPU的使用率排序
+			输入 P：以占据的CPU百分比,%CPU
+			输入 M：占据内存百分比,%MEM
+			输入 T：累积占据CPU时长,TIME+
+		
+		首部信息显示：
+			uptime信息：l命令，输入l打开，再输入l关闭
+			tasks及cpu信息：t命令，输入t可以切换风格显示，输入一次t就切换一次
+			cpu分别显示：1 (数字)，如果是多核多线程，输入1会切换为分别显示，再次输入1又切换为汇种显示
+			memory信息：m命令，切换显示风格以及隐藏和显示
+		
+		其它命令
+			退出命令：q键
+			修改刷新时间间隔：s键
+			终止指定进程：k键
+			保存文件：W键
+	
+	
+	top 命令选项：
+		-d # 	指定刷新时间间隔，默认为3秒
+		-b 		全部显示所有进程
+		-n # 	刷新多少次后退出
+		-H 		线程模式
+				
+	// 示例：
+	top -H -p `pidof mysqld`
+	
+	
+htop：htop 命令是增强版的TOP命令，来自EPEL源，比top功能更强，显示也更花哨
+	选项：
+		-d #: 			指定延迟时间；
+		-u UserName: 	仅显示指定用户的进程
+		-s COLUME: 		以指定字段进行排序
+	
+	子命令：
+		s：跟踪选定进程的系统调用
+		l：显示选定进程打开的文件列表
+		a：将选定的进程绑定至某指定CPU核心
+		t：显示进程树
+		
+
+5.3 free 内存空间
+	
+	常用选项：
+		-b 以字节为单位
+		-m 以MB为单位
+		-g 以GB为单位
+		-h 易读格式
+		-o 不显示-/+buffers/cache行
+		-t 显示RAM + swap的总和
+		-s n 刷新间隔为n秒
+		-c n 刷新n次后即退出
+	
+	
+	// centos6
+	[root@centos6 ~]#free
+			  total 	  used 		  free 		shared 		buffers 	cached
+	Mem: 	1003020 	177964 		825056 		   240 		  16604 	 59932
+	-/+ buffers/cache: 	101428 		901592			      							# 101428= 177964 - 16604 - 59932， 901592 = 825056 + 16604 + 59932
+	Swap: 	2097148 		 0 	   2097148
+	
+	
+	// centos7
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        225M        3.3G         11M        124M        3.3G
+	Swap:          3.9G          0B        3.9G
+	
+	向/proc/sys/vm/drop_caches中写入相应的修改值，会清理缓存。建议先执行sync（sync 命令将所有未写的系统缓冲区写到磁盘中，包含已修改的 i-node、已延迟的块 I/O 和读写映射文件）。
+	执行echo 1、2、3 至 /proc/sys/vm/drop_caches, 达到不同的清理目的。
+		// 3 表示释放的更彻底，一般在做测试的时候用，一般正常不需要释放，因为释放了又会被进程重新缓存内存中，这个载入的过程也会消耗性能 ！ 
+		echo 3 > /proc/sys/vm/drop_caches		
+	
+		//"/proc/sys/vm/drop_caches"文件默认值是0，生产也不应该随便去改变此值。
+		[root@centos8 ~]#cat /proc/sys/vm/drop_caches
+		0
+	
+	如果应用有像内存泄露、溢出的问题时，从swap的使用情况是可以比较快速判断的，但通过执行free 反而比较难查看。
+	一般情况下，应用在系统上稳定运行，free值也会保持在一个稳定值。当发生内存不足、应用获取不到可用内存、OOM错误等问题时，还是更应该去分析应用方面的原因，否则，清空buffer，强制腾出free的大小，可能只是暂时屏蔽问题。
+	排除内存不足的情况外，除非是在软件开发阶段，需要临时清掉buffer，以判断应用的内存使用情况；或应用已经不再提供支持；如果应用的内存确实有问题，而且无法避免的情况下，才考虑定时清空buffer。
+	
+		// 说明: man 5 proc
+		[root@centos8 ~]#man proc						# 在centos7上面运行的结果不一样
+		......
+		/proc/sys/vm/drop_caches (since Linux 2.6.16)
+		Writing to this file causes the kernel to drop clean caches, dentries, and
+		inodes from memory, causing that memory to become free. This can be useful for
+		memory management testing and performing reproducible filesystem
+		benchmarks.Because writing to this file causes the benefits of caching to be
+		lost, it can degrade overall system performance.
+		
+		To free pagecache, use:
+			echo 1 > /proc/sys/vm/drop_caches
+		To free dentries and inodes, use:
+			echo 2 > /proc/sys/vm/drop_caches
+		To free pagecache, dentries and inodes, use:
+			echo 3 > /proc/sys/vm/drop_caches	
+			
+ 
+5.4 pmap 进程对应的内存映射 
+	
+	格式：pmap [options] pid [...]
+	常用选项
+		-x: 显示详细格式的信息
+	作用：有助于观察某个进程是否出现内存异常，比如内存溢出、不足等现象	
+		
+	[root@localhost ~]#pmap -x 1
+	1:   /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+	Address           Kbytes     RSS   Dirty Mode  Mapping
+	0000557d8e778000    1424    1172       0 r-x-- systemd
+	0000557d8eadc000     140     132     132 r---- systemd
+	0000557d8eaff000       4       4       4 rw--- systemd
+	......省略
+	
+	// 另外一种实现，查看文件"/proc/PID/maps"
+	[root@localhost ~]#cat /proc/1/maps
+	557d8e778000-557d8e8dc000 r-xp 00000000 fd:00 283724                     /usr/lib/systemd/systemd
+	557d8eadc000-557d8eaff000 r--p 00164000 fd:00 283724                     /usr/lib/systemd/systemd
+	557d8eaff000-557d8eb00000 rw-p 00187000 fd:00 283724                     /usr/lib/systemd/systemd
+	......省略
+	
+	
+strace：（了解）跟踪系统调用，跟踪某个命令的运行过程，了解底层工作的具体细节
+	
+	[root@localhost ~]#yum -y install strace
+	[root@localhost ~]#strace ls
+	execve("/usr/bin/ls", ["ls"], 0x7ffe76ebe780 /* 22 vars */) = 0
+	brk(NULL)                               = 0x16e0000
+	mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f0faf112000
+	access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+	open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3	
+	......省略
+
+
+ltrace：跟踪某个程序运行过程中的库调用关系
+	
+	[root@localhost ~]#yum -y install ltrace
+	
+	[root@localhost ~]#ltrace ls
+	__libc_start_main(0x402910, 1, 0x7fffd061ff38, 0x4129a0 <unfinished ...>
+	strrchr("ls", '/')                                                        = nil
+	setlocale(LC_ALL, "")                                                     = "en_US.UTF-8"
+	bindtextdomain("coreutils", "/usr/share/locale")                          = "/usr/share/locale"
+	textdomain("coreutils")                                                   = "coreutils"
+	......省略	
+	
+	
+5.5 vmstat 虚拟内存信息 
+	格式：vmstat [options] [delay [count]]
+	选项：
+		-s 显示内存的统计数据
+		
+	[root@localhost ~]#vmstat
+	procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
+	 r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
+	 1  0      0 3393900   2108 230240    0    0    34     2   38   78  0  0 100  0  0	
+	
+	显示项说明：
+		procs:
+			r：可运行（正运行或等待运行）进程的个数，和核心数有关
+			b：处于不可中断睡眠态的进程个数(被阻塞的队列的长度)
+		memory：
+			swpd: 交换内存的使用总量
+			free：空闲物理内存总量
+			buffer：用于buffer的内存总量
+			cache：用于cache的内存总量
+		swap:
+			si：从磁盘交换进内存的数据速率(kb/s)
+			so：从内存交换至磁盘的数据速率(kb/s)
+		io：
+			bi：从块设备读入数据到系统的速率(kb/s)
+			bo: 保存数据至块设备的速率
+		system：
+			in: interrupts 中断速率，包括时钟
+			cs: context switch 进程切换速率
+		cpu：
+			us:Time spent running non-kernel code
+			sy: Time spent running kernel code
+			id: Time spent idle. Linux 2.5.41前,包括IO-wait time.
+			wa: Time spent waiting for IO. 2.5.41前，包括in idle.
+			st: Time stolen from a virtual machine. 2.6.11前, unknown.		
+	
+		注意： swap 和 io 的读写都是以内存为参照物，比如一个文件读到内存中，对内存来说是in，对磁盘来说是out，因为是以内存为参照物，所以内存的读，对应的是bi的增长 ！
+	
+		
+	// 每秒运行，运行三次
+	[root@localhost ~]#vmstat 1 3
+
+
+5.6 iostat 统计CPU和设备IO信息，iostat 可以提供更丰富的IO性能状态数据，此工具由sysstat包提供
+	常用选项：	
+		-c 只显示CPU行
+		-d 显示设备〈磁盘)使用状态
+		-k 以千字节为为单位显示输出
+		-t 在输出中包括时间戳
+		-x 在输出中包括扩展的磁盘指标
+	
+	
+	[root@localhost ~]#iostat
+	Linux 3.10.0-1160.el7.x86_64 (localhost.localdomain)    11/16/2022      _x86_64_        (2 CPU)
+
+	avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+			   0.05    0.00    0.19    0.02    0.00   99.74
+
+	Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+	scd0              0.07         0.58         0.00       2650          0
+	sda               1.23        48.22         3.75     222106      17278			# 可以观察到硬盘的IO速度
+	dm-0              1.16        41.14         3.31     189507      15230
+	dm-1              0.02         0.48         0.00       2204          0
+	
+	显示项说明：
+		tps：该设备每秒的传输次数（Indicate the number of transfers per second that wereissued to the device.）。"一次传输"意思是"一次I/O请求"。多个逻辑请求可能会被合并为"一次I/O请求"。"一次传输"请求的大小是未知的。
+		kB_read/s：每秒从设备（drive expressed）读取的数据量；
+		kB_wrtn/s：每秒向设备（drive expressed）写入的数据量；
+		kB_read：读取的总数据量；
+		kB_wrtn：写入的总数量数据量；这些单位都为Kilobytes。
+	
+	
+	// 每秒运行一次，连续观察三次
+	[root@localhost ~]#iostat 1 3
+	
+	// -d 指定磁盘，-x 在输出中包括扩展的磁盘指标，输出选项解释见PDF
+	[root@localhost ~]#iostat -d sda 1 3 -x
+	
+
+5.7 iotop 监视磁盘I/O，来自于iotop包
+	iotop命令是一个用来监视磁盘I/O使用状况的top类工具
+	iotop具有与top相似的UI，其中包括PID、用户、I/O、进程等相关信息，可查看每个进程是如何使用IO
+	
+	iotop常用参数：
+		-o, --only只显示正在产生I/O的进程或线程，除了传参，可以在运行过程中按o生效
+		-b, --batch非交互模式，一般用来记录日志
+		-n NUM, --iter=NUM设置监测的次数，默认无限。在非交互模式下很有用
+		-d SEC, --delay=SEC设置每次监测的间隔，默认1秒，接受非整形数据例如1.1
+		-p PID, --pid=PID指定监测的进程/线程
+		-u USER, --user=USER指定监测某个用户产生的I/O
+		-P, --processes仅显示进程，默认iotop显示所有线程
+		-a, --accumulated显示累积的I/O，而不是带宽
+		-k, --kilobytes使用kB单位，而不是对人友好的单位。在非交互模式下，脚本编程有用
+		-t, --time 加上时间戳，非交互非模式
+		-q, --quiet 禁止头几行，非交互模式，有三种指定方式
+		-q 只在第一次监测时显示列名
+		-qq 永远不显示列名
+		-qqq 永远不显示I/O汇总
+	
+	交互按键
+		left和right方向键：改变排序
+		r：反向排序
+		o：切换至选项--only
+		p：切换至--processes选项
+		a：切换至--accumulated选项
+		q：退出
+		i：改变线程的优先级
+	
+
+	[root@localhost ~]#yum -y install iotop
+	
+	// 第一行：Read和Write速率总计
+	// 第二行：实际的Read和Write速率
+	// 第三行：参数如下：线程ID（按p切换为进程ID），优先级，用户，磁盘读速率，磁盘写速率，swap交换百分比，IO等待所占的百分比
+	[root@localhost ~]#iotop	
+	Total DISK READ :       0.00 B/s | Total DISK WRITE :       0.00 B/s
+	Actual DISK READ:       0.00 B/s | Actual DISK WRITE:       0.00 B/s
+	   TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND                                                      1 be/4 root        0.00 B/s    0.00 B/s  0.00 %  0.00 % systemd --switched-root --system --deserialize 22
+		 2 be/4 root        0.00 B/s    0.00 B/s  0.00 %  0.00 % [kthreadd]
+		 4 be/0 root        0.00 B/s    0.00 B/s  0.00 %  0.00 % [kworker/0:0H	
+
+
+5.8 iftop 显示网络带宽使用情况
+	通过EPEL源的 iftop 包
+	
+	[root@localhost ~]#yum -y install iftop
+	
+	// -n 以数字方式显示IP
+	[root@localhost ~]#iftop -n
+	
+	[root@localhost ~]#iftop -ni eth
+	
+	
+
+5.9 nload 查看网络实时吞吐量，nload 是一个实时监控网络流量和带宽使用情况，以数值和动态图展示进出的流量情况,通过EPEL源安装
+	
+	界面操作：
+		上下方向键、左右方向键、enter键或者tab键都就可以切换查看多个网卡的流量情况
+		按 F2 显示选项窗口
+		按 q 或者 Ctrl+C 退出 nload
+	
+	[root@localhost ~]#yum -y install nload
+	
+	// 默认只查看第一个网络的流量进出情况
+	[root@localhost ~]#nload
+
+	#在nload后面指定网卡，可以指定多个,按左右键分别显示网卡状态
+	nload eth0 eth
+	
+	#设置刷新间隔：默认刷新间隔是100毫秒，可通过 -t 命令设置刷新时间（单位是毫秒）
+	nload -t 500 eth0
+
+	#设置单位：显示两种单位一种是显示Bit/s、一种是显示Byte/s，默认是以Bit/s，也可不显示/s
+	#-u h|b|k|m|g|H|B|K|M|G 表示的含义： h: auto, b: Bit/s, k: kBit/s, m: MBit/s, H: auto, B: Byte/s, K: kByte/s, M: MByte/s
+	nload -u M eth0	
+
+
+5.10 ptraf-ng 网络监视工具，功能强大，画面花哨
+	来自于iptraf-ng包,可以进网络进行监控,对终端窗口大小有要求.
+	
+	[root@localhost ~]#yum install -y iptraf-ng
+	
+	// 查看 iptraf-ng 工具的详细信息
+	[root@localhost ~]#yum info iptraf-ng
+	
+	// 对终端窗口大小有要求,如果太小否则无法显示
+	[root@centos8 ~]#iptraf-ng
+
+
+5.11 dstat 系统资源统计, dstat由pcp-system-tools包提供，但安装dstat包即可, 可用于代替 vmstat,iostat功能
+	格式：dstat [-afv] [options..] [delay [count]]
+	常用选项：
+		-c 显示cpu相关信息
+		-C #,#,...,total
+		-d 显示disk相关信息
+		-D total,sda,sdb,...
+		-g 显示page相关统计数据
+		-m 显示memory相关统计数据
+		-n 显示network相关统计数据
+		-p 显示process相关统计数据
+		-r 显示io请求相关的统计数据
+		-s 显示swapped相关的统计数据
+		--tcp
+		--udp
+		--unix
+		--raw
+		--socket
+		--ipc
+		--top-cpu：显示最占用CPU的进程
+		--top-io: 显示最占用io的进程
+		--top-mem: 显示最占用内存的进程
+		--top-latency: 显示延迟最大的进程		
+	
+	[root@localhost ~]#yum -y install dstat
+	
+	// 格式：dstat PID
+	[root@localhost ~]#dstat 1 3								# 3 表示只统计3次
+	You did not select any stats, using -cdngy by default.
+	----total-cpu-usage---- -dsk/total- -net/total- ---paging-- ---system--
+	usr sys idl wai hiq siq| read  writ| recv  send|  in   out | int   csw
+	  1   2  96   0   0   0|1121k   82k|   0     0 |   0     0 | 304   766
+	  0   0 100   0   0   0|   0    78k|  60B  818B|   0     0 | 100   157
+	  0   0 100   0   0   0|   0     0 | 150B  436B|   0     0 | 151   184
+	  1   1  99   0   0   0|   0     0 |  60B  338B|   0     0 | 115   165
+	[root@localhost ~]#
+	
+	结果选项说明：
+		usr 用户空间
+		sys 内核空间
+		idl 空闲
+		wai 等待
+		hiq 
+		siq 
+		read ，writ ：磁盘IO 
+		recv，send：网络IO
+		in，out：内存swap
+		int 中断
+		csw 进程交换
+	
+	
+5.12 glances 综合监控工具，此工具可以通过EPEL源安装,CentOS 8 目前没有提供(已提供,但测试问题)
+	 glances可以进行远程监控，但是要求客户端和服务端使用同一个 glances 版本，注意centos7和centos8的glances版本就不一样。注意: 不同版本的glances不兼容
+	 glances既是个客户端软件，也是服务端软件
+	 
+	格式：glances [-bdehmnrsvyz1] [-B bind] [-c server] [-C conffile] [-p port] [-P password] [--password] [-t refresh] [-f file] [-o output]
+	常用选项：
+		-b: 以Byte为单位显示网卡数据速率
+		-d: 关闭磁盘I/O模块
+		-f /path/to/somefile: 设定输入文件位置
+		-o {HTML|CSV}：输出格式
+		-m: 禁用mount模块
+		-n: 禁用网络模块
+		-t #: 延迟时间间隔
+		-1：每个CPU的相关数据单独显示
+	内建命令：
+		a Sort processes automatically 			||         l Show/hide logs
+		c Sort processes by CPU% 				||         b Bytes or bits for network I/O
+		m Sort processes by MEM% 				||         w Delete warning logs
+		p Sort processes by name 				||         x Delete warning and critical logs
+		i Sort processes by I/O rate 			||         1 Global CPU or per-CPU stats
+		d Show/hide disk I/O stats 				||         h Show/hide this help screen
+		f Show/hide file system stats 			||         t View network I/O as combination
+		n Show/hide network stats 				||         u View cumulative network I/O
+		s Show/hide sensors stats 				||         q Quit (Esc and Ctrl-C also work)
+		y Show/hide hddtemp stats				||
+
+	C/S模式下运行glances命令
+		服务器模式：
+			glances -s -B IPADDR		# IPADDR: 指明监听的本机哪个地址,端口默认为61209/tcp
+			
+		客户端模式：
+			glances -c IPADDR			# IPADDR：要连入的服务器端地址
+	
+实践1：
+	// 主机 192.168.32.100，centos7，用作客户端
+	// 主机 192.168.32.101，centos7，用作服务端
+	// 首先两台主机都安装上 glances 	
+	[root@localhost ~]#yum install -y glances
+
+	// 服务端 192.168.32.101
+	[root@localhost ~]#glances -s
+	Glances server is running on 0.0.0.0:61209
+	
+	// 客户端 192.168.32.100
+	[root@localhost ~]#glances -c 192.168.32.101		# 连到远程主机进行远程监控
+	
+实践2：
+	// 监控本机
+	[root@localhost ~]#glances
+	
+	
+5.13 lsof 查看进程打开文件
+	lsof：list open files，查看当前系统文件的工具。
+	在linux环境下，一切皆文件，用户通过文件不仅可以访问常规数据，还可以访问网络连接和硬件如传输控制协议 (TCP) 和用户数据报协议 (UDP)套接字等，系统在后台都为该应用程序分配了一个文件描述符
+
+	命令选项：
+		-a：列出打开文件存在的进程
+		-c<进程名>：列出指定进程所打开的文件
+		-g：列出GID号进程详情
+		-d<文件号>：列出占用该文件号的进程
+		+d<目录>：列出目录下被打开的文件
+		+D<目录>：递归列出目录下被打开的文件
+		-n<目录>：列出使用NFS的文件
+		-i<条件>：列出符合条件的进程(4、6、协议、:端口、 @ip )
+		-p<进程号>：列出指定进程号所打开的文件
+		-u：列出UID号进程详情
+		-h：显示帮助信息
+		-v：显示版本信息。
+		-n: 不反向解析网络名字
+		
+		
+	// lsof 列出当前所有打开的文件
+	lsof 
+
+	// 查看当前哪个进程正在使用此文件 
+	lsof /var/log/messages
+		
+		
+实践：如果误删除正在被进程使用的文件，可以使用 lsof 命令找回
+	
+	tail -f /var/log/messages
+	
+	// 可以看到这个文件正在被使用
+	lsof | grep /var/log/messages	
+	
+	// 删除文件
+	rm -f /var/log/messages
+	
+	// 找到使用此文件的进程
+	lsof |grep /var/log/messages
+	
+	// 在进程目录中可以查看到文件内容
+	cat /proc/653/fd/6
+	
+	// 把文件内容写入到一个新的文件
+	cat /proc/653/fd/6 > /var/log/messages
+	
+	
+
+5.14 webmin 综合管理平台 
+	Webmin是目前功能最强大的基于Web的Unix系统管理工具。管理员通过浏览器访问Webmin的各种管理功能并完成相应的管理动作。
+	目前Webmin支持绝大多数的Unix系统，这些系统除了各种版本的linux以外还包括：AIX、HPUX、Solaris、Unixware、Irix和FreeBSD等
+	官网:http://www.webmin.com/
+	下载:http://www.webmin.com/download.html
+	
+	[root@localhost ~]#wget http://prdownloads.sourceforge.net/webadmin/webmin-2.000-1.noarch.rpm
+	
+	[root@localhost ~]#yum -y install webmin-2.000-1.noarch.rpm
+	
+	// 启动 webmin 服务
+	[root@localhost ~]#systemctl start webmin.service
+	
+	// 10000的端口就是 webmin 的端口
+	[root@localhost ~]#ss -ntl
+	State       Recv-Q Send-Q                                   Local Address:Port                                                  Peer Address:Port
+	LISTEN      0      128                                                  *:10000                                                            *:*
+	LISTEN      0      128                                                  *:22                                                               *:*
+	LISTEN      0      100                                          127.0.0.1:25                                                               *:*
+	LISTEN      0      128                                               [::]:22                                                            [::]:*
+	LISTEN      0      100                                              [::1]:25                                                            [::]:*	
+	
+	// 浏览器中访问, 只能使用root身份登录，密码就是登录系统的密码
+	https://192.168.32.101:10000
+	
+	// webmin网页提供了终端功能，这个功能很有用，可以通过这个终端直接操作远程主机！
+	
+
+5.15 cockpit 管理平台，centos官方出品，由cockpit包提供,当前Ubuntu和CentOS7也支持此工具
+	centos8如果是图像化安装，就自带此工具，因为centos8光盘中就提供了这个工具。如果最小化安装，不带此工具
+	Cockpit 是CentOS 8的新特性，是一个基于 Web 界面的应用，它提供了对系统的图形化管理
+		监控系统活动（CPU、内存、磁盘 IO 和网络流量）
+		查看系统日志条目
+		查看磁盘分区的容量
+		查看网络活动（发送和接收）
+		查看用户帐户
+		检查系统服务的状态
+		提取已安装应用的信息
+		查看和安装可用更新（如果以 root 身份登录）并在需要时重新启动系统
+		打开并使用终端窗口
+	
+	
+	[root@localhost ~]#yum -y install cockpit
+	
+	[root@localhost ~]#systemctl enable --now cockpit.socket
+	Created symlink from /etc/systemd/system/sockets.target.wants/cockpit.socket to /usr/lib/systemd/system/cockpit.socket.
+	
+	// 9090 端口就是cockpit服务的端口
+	[root@localhost ~]#ss -ntl
+	State       Recv-Q Send-Q                                   Local Address:Port                                                  Peer Address:Port
+	LISTEN      0      128                                                  *:22                                                               *:*
+	LISTEN      0      100                                          127.0.0.1:25                                                               *:*
+	LISTEN      0      128                                               [::]:9090                                                          [::]:*
+	LISTEN      0      128                                               [::]:22                                                            [::]:*
+	LISTEN      0      100                                              [::1]:25                                                            [::]:*	
+	
+	// 打浏览器中访问, root用户和普通用户都可以登录，密码就是登录系统的密码
+	https://192.168.32.100:9090/
+	
+	
+	// cockpit网页也提供了终端功能，这个功能很有用，可以通过这个终端直接操作远程主机！
+	
+	
+总结：
+	对一个服务器来讲，比较关注的是CPU、内存、硬盘、网卡，这几个硬件对系统负载影响很大，使用这些工具就可以监控这些硬件在系统中的性能和负载情况！
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 进程的前后执行和并发执行
+
+6.1 kill：内部命令，可用来向进程发送控制信号，以实现对进程管理,每个信号对应一个数字，信号名称以SIG开头（可省略），不区分大小写
+	
+	//查看帮助
+	man 7 signal
+	
+	// 显示当前系统可用信号：
+	kill -l
+	trap -l					# trap命令可以用来捕获信号
+	
+	常用信号：
+		1) SIGHUP 无须关闭进程而让其重读配置文件
+		2) SIGINT 中止正在运行的进程；相当于Ctrl+c
+		3) SIGQUIT 相当于ctrl+\
+		9) SIGKILL 强制杀死正在运行的进程,可能会导致数据丢失,慎用!
+		15) SIGTERM 终止正在运行的进程，默认信号
+		18) SIGCONT 继续运行
+		19) SIGSTOP 后台休眠		
+	
+	指定信号的方法 :
+		信号的数字标识：1, 2, 9
+		信号完整名称：SIGHUP，sighup
+		信号的简写名称：HUP，hup
+	
+	[root@localhost ~]#trap -l
+	 1) SIGHUP       2) SIGINT       3) SIGQUIT      4) SIGILL       5) SIGTRAP
+	 6) SIGABRT      7) SIGBUS       8) SIGFPE       9) SIGKILL     10) SIGUSR1
+	11) SIGSEGV     12) SIGUSR2     13) SIGPIPE     14) SIGALRM     15) SIGTERM
+	16) SIGSTKFLT   17) SIGCHLD     18) SIGCONT     19) SIGSTOP     20) SIGTSTP
+	21) SIGTTIN     22) SIGTTOU     23) SIGURG      24) SIGXCPU     25) SIGXFSZ
+	26) SIGVTALRM   27) SIGPROF     28) SIGWINCH    29) SIGIO       30) SIGPWR
+	31) SIGSYS      34) SIGRTMIN    35) SIGRTMIN+1  36) SIGRTMIN+2  37) SIGRTMIN+3
+	38) SIGRTMIN+4  39) SIGRTMIN+5  40) SIGRTMIN+6  41) SIGRTMIN+7  42) SIGRTMIN+8
+	43) SIGRTMIN+9  44) SIGRTMIN+10 45) SIGRTMIN+11 46) SIGRTMIN+12 47) SIGRTMIN+13
+	48) SIGRTMIN+14 49) SIGRTMIN+15 50) SIGRTMAX-14 51) SIGRTMAX-13 52) SIGRTMAX-12
+	53) SIGRTMAX-11 54) SIGRTMAX-10 55) SIGRTMAX-9  56) SIGRTMAX-8  57) SIGRTMAX-7
+	58) SIGRTMAX-6  59) SIGRTMAX-5  60) SIGRTMAX-4  61) SIGRTMAX-3  62) SIGRTMAX-2
+	63) SIGRTMAX-1  64) SIGRTMAX	
+	
+	
+向进程发送信号：
+	按PID：
+		kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l [sigspec]
+	
+	按名称：killall 来自于psmisc包
+		killall [-SIGNAL] comm…
+		
+	按模式：
+		pkill [options] pattern
+		常用选项：
+			-SIGNAL
+			-u uid: effective user，生效者
+			-U uid: real user，真正发起运行命令者
+			-t terminal: 与指定终端相关的进程
+			-l: 显示进程名（pgrep可用）
+			-a: 显示完整格式的进程名（pgrep可用）
+			-P pid: 显示指定进程的子进程
+
+示例：kill
+	kill -1 进程的PID		# 有些进程会开启很多子进程，这里的PID不是子进程的PID，是主进程的PID
+
+	kill -9 进程的PID
+	
+	kill 进程的PID			# 默认发15信号
+	
+	// 注意：init进程表面上杀不死，但是会引起未知问题。比如init下面有很多子进程，有些进程删除后会自动再开启。但是杀掉init进程后，杀掉这些进程不再会自动开启！这在centos6上表现的很明显 ！
+	kill  1			# 杀进程，默认发送15信号
+	kill -9 1		# 强制杀进程
+
+
+示例：killall
+	
+	[root@localhost ~]#pidof bash
+	2214 1541
+	
+	// 如果要杀掉所有bash进程，使用kill要运行两遍，这时可以使用killall,根据进程名杀掉进程
+	[root@localhost ~]#killall -9 bash
+	Connection to 192.168.32.100 closed.
+	PS C:\Users\Aaron J WU>						# 杀掉后终端自动退出
+	
+	
+示例：pkill
+	// 使用xiaohong登录，并运行几个进程，比如"tail -f test.txt"
+	[root@localhost ~]#pgrep -u xiaohong		# 查看某个用户开启的进程
+	2330
+	2331
+	2359
+	
+	// 结束某个用户的进程
+	[root@localhost ~]#pkill -u xiaohong 
+	
+	// 有些进程必须要强制结束
+	[root@localhost ~]#pkill -9 -u xiaohong
+	
+	// 可以看到用户进程已经全部结束
+	[root@localhost ~]#pgrep -u xiaohong
+	[root@localhost ~]#
+	
+	
+示例: pkill和pgrep支持正则表达式
+	[root@centos8 ~]#pkill '^p'
+	
+	[root@centos8 ~]#pgrep -a '^p'
+	9278 pickup -l -t unix -u
+	9281 ping 1.1.1.1
+	9311 ping 2.2.2.2		
+	
+	
+示例：查看HUP信号(0信号)
+	#许多服务的支持的reload操作，实际就是发送了HUP信号
+	#service httpd reload 即相当于 killall -1 httpd
+	[root@centos6 ~]#grep -A 10 -w reload -m 1 /etc/init.d/httpd
+	reload() {
+		echo -n $"Reloading $prog: "
+		if ! LANG=$HTTPD_LANG $httpd $OPTIONS -t >&/dev/null; then
+			RETVAL=6
+			echo $"not reloading due to configuration syntax error"
+			failure $"not reloading $httpd due to configuration syntax error"
+	else
+		# Force LSB behaviour from killproc
+		LSB=1 killproc -p ${pidfile} $httpd -HUP
+		RETVAL=$?
+		if [ $RETVAL -eq 7 ]; then
+	[root@centos6 ~]#
+
+
+6.2 0信号
+	0信号不存在，但是在文档中有提到。0信号可以检查这个进程是否正常，在生产中可以用来做服务的健康检查
+	
+	[root@localhost ~]#man kill
+	......省略
+	 If sig is 0, then no signal is sent, but error checking is still performed.
+	......省略
+	
+	[root@localhost ~]#killall -0 ping
+	ping: no process found
+	[root@localhost ~]#echo $?				# 服务正常返回0, 不正常返回非0；因为这里根本没有开启ping进程，所以这里返回非0
+	1
+	
+	
+6.3 自定义信号	
+	
+	// SIGUSR1 和 SIGUSR2就是自定义信号，可以在程序中自定义SIGUSR1和SIGUSR2的功能
+	[root@localhost ~]#kill -l | grep SIGUSR
+	 6) SIGABRT      7) SIGBUS       8) SIGFPE       9) SIGKILL     10) SIGUSR1
+	11) SIGSEGV     12) SIGUSR2     13) SIGPIPE     14) SIGALRM     15) SIGTERM
+	
+	
+	// 在nginx中，就自定义了SIGUSR1和SIGUSR2的功能,如下：
+	[root@centos8 ~]#man nginx
+		SIGUSR1 Reopen log files.
+		SIGUSR2 Upgrade the nginx executable on the fly.
+		SIGWINCH Shut down worker processes gracefully.
+	
+	[root@wang-liyun-pc ~]# cat /etc/logrotate.d/nginx
+	/apps/nginx/logs/*.log {
+		daily
+		rotate 100
+		missingok
+		notifempty
+		nocompress
+		delaycompress
+		create 644 nginx nginx
+		postrotate
+			if [ -f /apps/nginx/logs/nginx.pid ]; then
+				kill -USR1 `cat /apps/nginx/logs/nginx.pid` #发送USR1信号,重新打开日志文件
+			fi
+		endscript
+	}
+	
+
+6.4 作业管理
+	Linux的作业控制
+		前台作业：通过终端启动，且启动后一直占据终端。大部分进程都是前台运行！比如ping是默认前台运行 ！
+		后台作业：可通过终端启动，但启动后即转入后台运行（释放终端）。比如bash是默认后台运行 !
+
+	
+	让作业运行于后台
+		运行中的作业： Ctrl+z
+		尚未启动的作业： COMMAND &
+	
+	后台作业虽然被送往后台运行，但其依然与终端相关；退出终端，将关闭后台作业。如果希望送往后台后，剥离与终端的关系
+		nohup COMMAND &>/dev/null &
+		screen；COMMAND
+		tmux；COMMAND
+	
+	
+实践1：将运行中的进程放在后台
+	
+	[root@localhost ~]#ping 192.168.32.2
+	PING 192.168.32.2 (192.168.32.2) 56(84) bytes of data.
+	64 bytes from 192.168.32.2: icmp_seq=1 ttl=128 time=0.088 ms
+	64 bytes from 192.168.32.2: icmp_seq=2 ttl=128 time=0.153 ms
+	^Z
+	[1]+  Stopped                 ping 192.168.32.2						# 按下 ctrl +Z，注意："ctrl +Z"把进程放到后台，并且程序状态变为stop
+	
+	[root@localhost ~]#ps aux | grep ping
+	root       2554  0.0  0.0 123044  1016 pts/1    T    13:53   0:00 ping 192.168.32.2		# 可以看到这里的状态是T
+	
+	// 查看当前终端所有作业：
+	[root@localhost ~]#jobs
+	[1]+  Stopped                 ping 192.168.32.2
+	
+	// 将后台停止态恢复为后台运行态，格式是"bg 作业编号"。也可以发18信号
+	[root@localhost ~]#bg 1					# "kill -18 %1" 和 "bg 1"是一样的效果！
+	
+	
+	// 将后台运行态变为后台停止，发 19 信号。格式：kill -19 %作业编号
+	[root@localhost ~]#kill -19 %1
+	
+	[root@localhost ~]#jobs
+	[1]+  Stopped                 ping 192.168.32.2	
+	
+	// 发18信号将后台停止态恢复为后台运行态
+	[root@localhost ~]#kill -18 %1			# 等价于 bg 1
+	
+	// 将后台运行恢复为前台运行
+	[root@localhost ~]#fg 1
+
+	
+	// 然后可以使用"ctrl + c" 结束进程
+	
+
+实践2：
+
+	// 后台运行的命令按"Ctrl+C"不能结束，因为"Ctrl+C"是给当前前台运行的进程发信号
+	[root@localhost ~]#ping www.baidu.com &
+	......一直不停打印									# 虽然在不停打印，还是可以输入命令运行，如果被打印覆盖了输入的命令，就继续输，输完按回车，一样能运行
+	
+	// 如果结束？在当前终端或新开一个终端使用kill发信号，如下:
+	[root@localhost ~]killall -2 ping 
+
+
+实践3：nohup 命令实现在进程运行过程不会随着终端关闭而关闭
+	nohup默认是前台运行，但是可以使用 & 让它以后台方式运行！
+	
+	// nohup 命令的缺陷是会把输出结果写入到 ‘nohup.out’文件中
+	[root@localhost ~]#nohup ping 127.1
+	nohup: ignoring input and appending output to ‘nohup.out’
+	^C
+	
+	[root@localhost ~]#cat nohup.out
+	PING 172.1 (172.0.0.1) 56(84) bytes of data.
+
+	--- 172.1 ping statistics ---
+	7 packets transmitted, 0 received, 100% packet loss, time 6053ms
+
+	PING 127.1 (127.0.0.1) 56(84) bytes of data.
+	64 bytes from 127.0.0.1: icmp_seq=1 ttl=64 time=0.015 ms
+	64 bytes from 127.0.0.1: icmp_seq=2 ttl=64 time=0.056 ms
+	64 bytes from 127.0.0.1: icmp_seq=3 ttl=64 time=0.059 ms
+
+	--- 127.1 ping statistics ---
+	3 packets transmitted, 3 received, 0% packet loss, time 9064ms
+	rtt min/avg/max/mdev = 0.015/0.048/0.072/0.017 ms
+	
+	
+	// 希望后台运行，但是不希望把输入结果放在‘nohup.out’文件中。& 表示后台运行
+	[root@localhost ~]#nohup ping 127.1 &> /dev/null
+	
+	
+	// 关掉终端，重新开启一个终端，可以看到ping进程仍然在运行
+	[root@localhost ~]#ps aux | grep ping
+	root       2728  0.0  0.0 123044  1016 ?        S    14:36   0:00 ping 127.1	
+	
+
+
+6.5 并行运行
+	
+	// 比如下面三个命令，只有第一个运行完了，才会运行第二个，第二个运行完了再运行第三个，如果第一个永远不结束，那么第二个和第三个永远都没有机会运行！
+	[root@localhost ~]#ping 127.1;ping172.2;ping172.3
+	
+	
+	前台的进程是按顺序运行，在有些场景下顺序运行的效率很低。解决方法就是利用后台执行，实现并行(并发)功能，即同时运行多个进程，提高效率！
+	// 在每个命令后面加上&符号就可以让进程在后台并行运行
+	[root@localhost ~]#ping 127.1&ping172.2&ping172.3&
+	
+	
+并行运行方法总结：
+	
+	方法1：
+		cat all.sh
+		f1.sh&
+		f2.sh&
+		f3.sh&
+	
+	方法2：
+		(f1.sh&);(f2.sh&);(f3.sh&)
+		
+	方法3：
+		f1.sh&f2.sh&f3.sh&
+		
+
+实践1：多组命令实现并行
+	[root@centos8 ~]#{ ping -c3 127.1; ping 127.2; }& { ping -c3 127.3 ;ping 127.4;}&	
+	
+	
+实践2：探测一个网段中有多少主机可以访问
+	
+	// "{ }"里面的命令表示当成一组命令; "{ }&" 表示这一组命令放在后台运行
+	// "wait"表示所有命令后台运行完成后就退出来。如果不加"wait"不会主动退出，运行完成后，需要按下回车键才会退出
+	[root@localhost ~]#cat checkhost.sh
+	#!/bin/bash
+	net=192.168.32
+	for i in {1..254};do
+			{
+					ping -c1 -W1 $net.$i &> /dev/null && echo $net.$i is up || echo $net.$i is down
+			}&
+	done
+	wait
+	
+	
+	[root@localhost ~]#bash checkhost.sh
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+扩展：
+	
+	// chkconfig命令用于检查，设置系统的各种服务。--list 列出 chkconfig 所知道的所有的服务的情况
+	[root@localhost ~]# chkconfig --list
+
+	Note: This output shows SysV services only and does not include native
+		  systemd services. SysV configuration data might be overridden by native
+		  systemd configuration.
+
+		  If you want to list systemd services use 'systemctl list-unit-files'.
+		  To see services enabled on particular target use
+		  'systemctl list-dependencies [target]'.
+
+	netconsole      0:off   1:off   2:off   3:off   4:off   5:off   6:off
+	network         0:off   1:off   2:on    3:on    4:on    5:on    6:off	
+
+	
+	// If you want to list systemd services use 'systemctl list-unit-files'.
+	[root@localhost ~]#systemctl list-unit-files | grep webmin
+	webmin.service                                enabled
+
+
+	// windows中查看网络连接的方法
+	PS C:\Users\Aaron J WU> netstat -nt
+
+	活动连接
+
+	  协议  本地地址          外部地址        状态           卸载状态
+
+	  TCP    127.0.0.1:443          127.0.0.1:63645        ESTABLISHED     InHost
+	  TCP    127.0.0.1:56759        127.0.0.1:56760        ESTABLISHED     InHost
+	  TCP    127.0.0.1:56760        127.0.0.1:56759        ESTABLISHED     InHost
+
+
+
+
+
+
+
+

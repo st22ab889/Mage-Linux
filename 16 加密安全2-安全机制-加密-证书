@@ -1,0 +1,815 @@
+
+3 安全机制和各种攻击方式实战
+
+3.1 信息安全防护的目标
+	保密性 	Confidentiality，数据隐私性
+	完整性	Integrity，数据是否被篡改过，比如黑客替换系统中可运行的文件，比如替换了ps命令后，用户使用这个命令就显示不出后台运行的病毒程序
+	可用性 	Usability，比如网站，要确保对外可以访问
+	可控制性 Controlability，比如高峰期控制流量，通过限流、降级、熔断等控制行为，防止大流量导致系统崩溃
+	不可否认性 	Non-repudiation，做的事不能否认，并且有证据证明
+
+3.2 安全防护环节
+	物理安全：各种设备/主机、机房环境
+	系统安全：主机或设备的操作系统
+	应用安全：各种网络服务、应用程序
+	网络安全：对网络访问的控制、防火墙规则
+	数据安全：信息的备份与恢复、加密解密
+	管理安全：各种保障性的规范、流程、方法
+
+3.3 常见的安全攻击 STRIDE
+	Spoofing 	假冒，比如假冒身份发邮件
+	Tampering 	篡改
+	Repudiation 否认，做了的事不承认
+	Information Disclosure 	信息泄漏，比如telnet允许用户远程登录，但是很不安全，传输数据是明文，可以用抓包工具获取密码、截获信息
+	Denial of Service 		拒绝服务，早期window有个IGMP(Internet组管理协议)漏洞，只要向windows发送大量的IGMP数据包，Windows就会死机蓝屏
+	Elevation of Privilege 	提升权限，比如通过非正常手段把普通用户权限提升为管理员权限，红帽5版本就有提升权限的漏洞
+
+3.4 安全设计基本原则
+	使用成熟的安全系统：比如Centos8出来再从Centos6升级到Centos7，Centos9出来再从Centos7升级到Centos8
+	以小人之心度输入数据：比如输入恶意的用户名和密码，可能就会绕过用户名和密码检测机制，直接登录到系统。类似的还有SQL注入
+	外部系统是不安全的：企业内部的资源被外部用户访问，要假设外部的访问是危险的，有恶意行为的，所以通常再网络的边界加防火墙
+	最小授权
+	减少外部接口：尽可能减少从外界能访问资源的通道，越少越好
+	缺省使用安全模式：在生产中不要把一些安全的技术关闭，比如防火墙、SELinux，国外要求严格，都会把这些打开，国内大部分工程师都会关闭
+	安全不是似是而非：不要假设不会出现安全问题，要通过具体手段来保证
+	从STRIDE思考：从这些角度思考黑客可能会用哪些方法进行攻击，然后通过技术手段保证各种攻击行为不会发生
+	在入口处检查：
+	从管理上保护好你的系统：管理制度。安全不仅是技术问题，也是一个管理问题，安全问题是个综合问题！
+	
+3.5 常用安全技术：3A + 安全通信
+	认证	Authentication 	，认证身份	
+	授权	Authorization 	，对账号进行权限分配
+	审计	Accouting | Audition ， 监控行为
+	安全通信，加密数据
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+4 对称和非对称算法及单向哈希算法
+
+4.1 加密算法和协议
+	对称加密
+	非对称（公钥）加密
+	单向加密
+	认证协议
+
+
+对称加密算法
+	对称加密：加密和解密使用同一个密钥，比如 WIFI密码就是使用的对称加密技术
+	特性：
+		加密算法公开，密钥不公开
+		加密、解密使用同一个密钥，效率高，速度快
+		将原始数据分割成固定大小的块，逐个进行加密
+	缺陷：
+		密钥过多，比如一个发送者对应多个接受者，就需要多个密钥
+		密钥分发
+		数据来源无法确认
+	常见对称加密算法:
+		DES：Data Encryption Standard，56bits , 56位加密就是把数据以56位为单位切割，然后分别对每个数据小块加密
+		3DES：加密三次，以前属于高科技技术，不出口，英文windows系统才有这个功能，中文windows系统里面才有
+		AES：Advanced (128, 192, 256bits)，高级加密标准，可以选择密钥长度，有128、192、256 bits等等，位数越长，加密效果越好。比如无线路由器就是使用的AES加密
+		Blowfish，Twofish ：商业解决方案，需要花费成本
+		IDEA，RC6，CAST5
+
+
+非对称加密算法
+	非对称加密：密钥是成对出现，加密和解密用的密钥不一样
+		公钥：public key，公开给所有人，主要给别人加密使用
+		私钥：secret key，private key 自己留存，必须保证其私密性，用于自已加密签名
+		特点：用公钥加密数据，只能使用与之配对的私钥解密；反之亦然
+	功能：
+		解决对称加密技术的缺陷
+		数据加密：适合加密较小数据,比如: 加密对称密钥
+		数字签名：主要在于让接收方确认发送方身份
+	缺点：
+		密钥长,算法复杂
+		加密解密效率低下
+	常见算法：
+		RSA：由 RSA 公司发明，是一个支持变长密钥的公共密钥算法，需要加密的文件块的长度也是可变的,可实现加密和数字签名
+			RSA用的非常普及, RSA既可以做数字签名(来源确认)，也能做数据加密	
+		DSA（Digital Signature Algorithm）：数字签名算法，是一种标准的 DSS（数字签名标准）
+			DSA只能做数字签名(来源确认)，不能做数据加密
+		ECC（Elliptic Curves Cryptography）：椭圆曲线密码编码学，比RSA加密算法使用更小的密钥，提供相当的或更高等级的安全
+	说明：
+		公钥和私钥其实就是一个文件，里面的内容经过base64加密！
+		通讯双方各有一把公钥和一把私钥，公钥公开，私钥私有。所以通讯双方共有四把钥匙！
+		公钥加密，必须要用对应的私钥解密；私钥加密，必须要用对应的公钥解密；公钥和私钥成对使用！
+		A给B发消息：
+			用B的公钥加密，只有B的私钥才能解密，实现数据安全！
+			用A的私钥加密，只要拥有A的公钥的用户都能解密。如果能解密数据，这就反过来证明是A的私钥加密，而A的私钥只有A有。这就是数据来源的确认，这种就叫"数字签名"
+			以上两种情况都是在私钥不丢失的情况下，私钥丢失的情况不在这里讨论的范畴内！
+		为了保证私钥的安全，都会设置严格的权限，有时候为了私钥的安全，甚至会用对称密钥再给私钥加密！
+		
+		
+单向哈希(散列)算法
+	哈希算法：也称为散列算法，将任意数据缩小成固定大小的“指纹”，称为digest，即摘要
+	特性：
+		任意长度输入，固定长度输出
+		若修改数据，指纹也会改变，且有雪崩效应，数据的一点微小改变，生成的指纹值变化非常大。
+		无法从指纹中重新生成数据，即不要逆，具有单向性
+	功能：数据完整性
+	常见算法
+		md5: 128bits、sha1: 160bits、sha224、sha256、sha384、sha512
+		md5和sha1已经被破解，
+	常用工具
+		md5sum | sha1sum [ --check ] file
+		openssl、gpg
+		rpm -V
+	说明：
+		单向加密算法，不可逆，不能根据加密结果推算出数据内容本身，加密算出来的结果称为摘要(digest)，也称为"指纹"
+		只要hash算法固定，摘要长度大小就固定；但是摘要值由数据内容决定，只要数据内容有一点不一样，摘要值就不一样！
+		数据传输前和传输后的摘要值如果一样，说明数据没有被篡改或破坏，这就实现了校验数据，确认了数据的完整性！HASH的关键作用就是确认数据的完整性！
+		
+	
+	示例1：计算文件的MD5值
+		
+		// hash结果的位数由hash算法决定，md5的哈希结果得到的摘要值是一个128位的数据！
+		// 计算出来的hash值是以十六进制显示,总共32个十六进制，一个十六进制相当于4位二进制，所以总共占128位
+		[root@localhost ~]#md5sum anaconda-ks.cfg
+		ad6cf6a9973f5be513fdbdd246e3c5bc  anaconda-ks.cfg	 
+		
+		
+	示例2：校验centos7安装光盘：
+		
+		[root@localhost ~]#cat /etc/centos-release
+		CentOS Linux release 7.9.2009 (Core)
+		
+		// 镜像源网站会提供系统光盘的哈希值，centos7光盘镜像的hash值保存在"sha256sum.txt"，centos8光盘镜像的hash值保存在"CHECKSUM"文件中！
+		https://mirrors.tuna.tsinghua.edu.cn/centos/7.9.2009/isos/x86_64/sha256sum.txt
+		......省略
+		07b94e6b1a0b0260b94c83d6bb76b26bf7a310dc78d7a9c7432809fb9bc6194a  CentOS-7-x86_64-Minimal-2009.iso
+		e33d7b1ea7a9e2f38c8f693215dd85254c3a4fe446f93f563279715b68d07987  CentOS-7-x86_64-DVD-2009.iso
+		......省略
+		
+		// 镜像源网站使用的hash算法是 sha256，这里同样使用sha256算法，算出来的hash值和镜像源网站一样，说明数据完整！注意：hash前要先挂载光盘！
+		[root@localhost ~]#sha256sum /dev/sr0
+		e33d7b1ea7a9e2f38c8f693215dd85254c3a4fe446f93f563279715b68d07987  /dev/sr0 
+		
+		// sha256算法得到的hash结果总共有64个十六进制，一个十六进制相当于4位二进制，总共占256位，所以sha256的哈希结果得到的摘要值是一个256位的数据！
+		
+		// centos8镜像源
+		https://mirrors.tuna.tsinghua.edu.cn/centos/8-stream/isos/x86_64/
+		
+	
+	示例3：linux登录密码
+		[root@localhost ~]#cat /etc/shadow
+		......省略
+		xiaoming:$6$EEr3JLeJ$ivB74ULQIDm.CgFsZpydR3YvKWIV95U7btfZanc6rQvPCm6SSDzSRfe0Pgc63twaW/d/a9n9/bdnJFSW5Bs2l0:19283:0:99999:7:::
+		xiaohong:$6$aDxLn4lo$QbcKf3sW1PuP/TDrCJlDpSkb2KXgdKXcTX0bBYAG9QlHYbGMrB1qvFGd9l9bJdLclSZ/SMB4K6Dsp0q60RidI1:19284:0:99999:7:::
+		......省略
+		
+		xiaoming 和 xiaohong 的登录密码都是123456，为什么hash结果不一样？因为加了"salt(盐)"，"盐"是一些随机字符串，相同的数据加不同的盐，hash值不一样！
+		分析linux密码结构：
+			$6表示使用的是"sha512"加密。
+			"$6$"和下一个"$"之间的字符串就是盐。
+			"$6盐$"后面的数据就是hash值
+		
+		// -6 表示使用sha512哈希算法，passwd命令：计算一个密钥的哈希值或者计算列表中的每个密钥的hash值
+		[root@centos8 ~]#openssl passwd -6 -salt "EEr3JLeJ" 123456
+		$6$EEr3JLeJ$ivB74ULQIDm.CgFsZpydR3YvKWIV95U7btfZanc6rQvPCm6SSDzSRfe0Pgc63twaW/d/a9n9/bdnJFSW5Bs2l0		# 和小明的密码hash结果一样
+		
+		// 注意：centos7上的openssl不支持sha512算法
+		[root@centos8 ~]#openssl passwd -6 -salt "aDxLn4lo" 123456
+		$6$aDxLn4lo$QbcKf3sW1PuP/TDrCJlDpSkb2KXgdKXcTX0bBYAG9QlHYbGMrB1qvFGd9l9bJdLclSZ/SMB4K6Dsp0q60RidI1		# 和小红的密码hash结果一样
+
+		结论：只要数据一样，盐一样，hash算法一样，hash值也就一样！
+
+
+对称加密算法和非对称加密算法对比：
+	使用DES加密1G数据，加密5min，解密10m
+	使用RSA加密1G数据，加密1min，解密64h
+	结论：
+		对称密钥加密算法适合加密大数据，因为加密效率高！
+		RSA虽然有加密功能，但不会用它加密大数据，效率太低。加密少量数据没有问题，因为数据量小，对效率影响不大！	
+
+
+在生产中，三种加密方式会进行组合使用，利用各自的优势。 并不是单一用一种加密方式！
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 加密综合应用及证书和CA
+  
+
+5.1算法组合使用有多种实现方案！
+
+	方案1：对称加密算法 + 非对称加密算法
+		A(发送方)和B(接收方)通讯，A先把数据用对称密钥加密，再用B的公钥加密对称密钥！
+		然后把加密完的对称密钥和用对称密钥加密完的数据放在一起发送个对方。
+		数据结构：
+			对称密钥加密{数据} + B的公钥加密{对称密钥} = 要传输的数据
+		优点：
+			虽然公钥加密效率底下，但是对称密钥是个数据量很小的字符串，用公钥加密所带来的性能消耗可以忽略不计。
+			用对称密钥加密数据效率高！
+			实现了对称密钥的交换，解决了对称密钥的传输问题！
+			实现了数据加密！
+		缺点：
+			无法验证数据的来源，可能出现冒充的情况！
+			无法验证数据完整性
+			
+	
+	方案2：对称加密算法 + 非对称加密算法 + 单向哈希(散列)算法
+		A(发送方)和B(接收方)通讯，A用hash算法计算出数据的摘要，摘要放在数据的后面，用A的私钥来签名此摘要(数字签名就是用私钥加密摘要)，然后发给对方！
+		数据结构：
+			数据 + 数据的摘要 + A的数字签名 = 要传输的数据
+		优点：
+			实现了数据来源的确认
+			实现了数据完整性校验
+		缺点：
+			数据明文发送，没有实现数据加密
+	
+	
+	方案3：对称加密算法 + 非对称加密算法 + 单向哈希(散列)算法
+		方法1:
+			A(发送方)和B(接收方)通讯，A用hash算法计算出数据的摘要，用A的私钥来签名此摘要(数字签名就是用私钥加密摘要)，然后在后面附加数据，
+			再用B的公钥加密摘要和数据，，然后发给对方！
+			数据结构：
+				B的公钥加密{A的数字签名+数据} = 要传输的数据
+			优点：
+				实现了数据来源的确认
+			缺点：
+				如果数据量很大，用非对称加密算法加密效率低，性能开销大！
+		方法2：
+			A(发送方)和B(接收方)通讯，A用hash算法计算出数据的摘要，用A的私钥来签名此摘要(数字签名就是用私钥加密摘要)，然后在后面附加数据，
+			然后用对称密钥加密摘要和数据，再用对方的公钥加密对称密钥，然后把两个加密结果合在一起发送给对方！
+			数据结构：
+				对称密钥加密{A的数字签名+数据} + B的公钥加密{对称密钥} = 传输的数据
+			优点：
+				实现了数据来源的确认
+				实现了数据加密
+				实现了数据完整性校验
+			
+	总结：
+		1) 在实际工作中，即要实现数据加密，又要保证数据来源的可靠性、以及数据的完整性！所以方案3的方法2能满足实际需求！
+		2) 在方案1和方案3中有个重大的漏洞：
+			客户端和服务端通信，客户端要校验网站的真伪，会向服务端请求服务端的公钥，假如有个中间人截住了客户端的请求：
+				中间人会冒充服务器，发送了中间人自己的公钥。
+				同时中间人冒充客户端，向服务端请求公钥。
+			客户段如果不做公钥校验，就会拿中间人的公钥加密数据，中间人收到后用自己的私钥就能解密数据！
+			中间人解密数据后可以替换成自己的数据(比如把收款人改为中间人自己)，然后用真的服务端的公钥加密，加密后发送给服务端！
+			中间人两边欺骗，中间人在通讯过程中能截获数据和破解数据，这就会造成数据泄漏以及篡改数据！
+			结论：
+				出现这种情况的原因是，因为任何人都有自己的公钥，且公钥公开，不能确认对方公钥的真实性！
+				要保证公钥公开，但必须确保公钥是真实的，那么如何校验公钥？公钥和身份证一样，需要一个权威机构来证明、验证身份，验证公钥的权威机构称为CA！
+			
+			
+5.2 密钥交换(IKE,Internet Key Exchange )
+	两种方案：
+		公钥加密：用目标的公钥加密对称密钥
+		DH (迪菲-赫尔曼，Deffie-Hellman)：生成对称（会话）密钥，参看：https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange
+	
+	DH 介绍：
+		这个密钥交换方法，由惠特菲尔德·迪菲（Bailey Whitfield Diffie）和马丁·赫尔曼（Martin Edward Hellman）在1976年发表
+		它是一种安全协议，让双方在完全没有对方任何预先信息的条件下通过不安全信道建立起一个密钥，这个密钥一般作为“对称加密”的密钥而被双方在后续数据传输中使用。
+		DH数学原理是base离散对数问题。做类似事情的还有非对称加密类算法，如：RSA。
+		其应用非常广泛，在SSH、VPN、Https...都有应用，勘称现代密码基石
+		
+	DH 特点：
+		泄密风险：私密数据a，b在生成K后将被丢弃，因此不存在a，b过长时间存在导致增加泄密风险。
+		中间人攻击：由于DH在传输p，g时并无身份验证，所以有机会被实施中间人攻击，替换双方传输时的数据
+
+
+5.3 CA和证书	
+	
+CA(Certificate Authority)：证书颁发机构，也成为"证书授权中心" 
+	因为CA足够官方且权威，所以互联网所有用户都信任它，反过来，由它证明的公钥具有真实性，CA的证明文件称之为"数字证书"！
+	
+	
+CA证书验证公钥身份基本原理：	
+	1) CA同样有自己的公钥和私钥，因为所有用户都信任CA，所以提前就拥有CA的公钥！
+	2) A用户向CA申请证书时，会提供A自己的公钥，CA会用自己的私钥给A的公钥签名(也称为"数字签名")，
+	   签名的过程是CA首先(通过hash算法)生成A的公钥的摘要，再用CA的私钥加密摘要，得到的结果与其它额外信息组成一起生成一个文件，
+	   这个文件就是证书文件，也称为"数字证书"，然后证书将以文件的形式颁发给A用户！
+	   说明：
+			证书的内容包括：加过密的摘要、申请者的公钥、版本号、序列号、签名算法、颁发者、有限期限等！
+			签名分为两步，生成摘要和加密摘要 (摘要也称为指纹)：
+				加密摘要这一步就称为"数字签名"；
+				加密摘要生成的加密内容就是"数字证书"；
+				存放"加密摘要生成的加密内容"的文件称为"证书文件"；
+			证书中存放的不只是"加密摘要生成的加密内容"，还有其它信息，但是"加密摘要生成的加密内容"是最重要的信息，因为它是身份验证的基础！
+	3) A用户和B用户通信，当B收到A的证书后，B会用CA的公钥去解密证书中的"加过密的摘要",如果能解密成功，说明证书经过CA认证，身份真实可信！
+	   接下来B会拿到证书中 A的公钥 和 使用的hash算法，根据hash算法再次对A的公钥进行hash，得到的摘要 和 之前解密后得到的摘要进行对比，
+	   如果摘要信息一样，说明公钥没有被破坏或篡改！
+	   
+	4) 其它校验，比如证书是否过期等
+	
+	5) 至此利用证书验证公钥身份完成！
+	
+	
+根CA和子CA以及用户之间的关系：
+	-------------------------------------
+	/			  RootCA                /	根CA并不会直接面对用户，子CA会向根CA申请授权，获取授权后子CA才有能力面对用户！	
+	/				/\                  /	用户有证书需求，需要向子CA申请证书，申请证书需要付费！
+	/			   /  \                 /	
+	/			  /    \                /	子CA向RootCA申请授权其实就是向根CA申请证书： 
+	/			CA1    CA2	            /		子CA提供自己的公钥给根CA，根CA对公钥进行数字签名(签名就是先hash子CA的公钥得到摘要，根CA再用自己的私钥加密摘要),
+	/			/\      /\              /		根CA把证书制作完成后，颁发给子CA！
+	/		   /  \    /  \             /		
+	/		  /    \  /    \            /	互联网上有很多CA机构，这些机构和操作系统厂商合作，所以系统安装后就自带很多CA机构的根证书！
+	/		  A    B  C    D            /		widows证书路径："Win+R" --> 输入"certmgr.msc" --> 受信任的根证书颁发机构 --> 证书
+	/                                   /		linux证书路径："/etc/pki/ca-trust/"目录下的不同子目录对应不同的证书
+	-------------------------------------
+	
+	A和B通信，假如 A是浏览器，B是网站，A如何验证网站是否安全？
+		B向CA1申请证书会得到两个证书，1个是RootCA给CA1颁发的证书，1个是CA1给B颁发的证书。这两个证书B会配置到服务器！
+		当A向B通讯，B会把这两个证书都发送给A，因为A的系统自带很多根证书，这时会根据"RootCA给CA1颁发的证书"找到根证书！
+		到此，根证书、CA1的证书、B的证书组成了一条证书链！
+			CA1的证书是RootCA颁发的，RootCA 证书中的公钥可以校验CA1的证书，能校验的原因是：CA1的公钥的摘要经过了RootCA的私钥加密(签名)
+			B的证书是CA1颁发的,CA1证书中的公钥可以校验B的证书，能校验的原因是：B的公钥的摘要经过了CA1的私钥加密(签名)
+		整个过程，根证书校验CA1的证书，CA1的证书校验B的证书，如果都能校验通过，说明B是受信任的网站！
+	
+	总结：
+		一条完整的证书信任链由根证书，中间证书，用户证书等组成。
+		只有当整个证书信任链上的各个证书都有效时，浏览器才会认定当前颁发给用户的证书是有效和受信任的。
+		多数情况根CA只有一级子CA，但根CA可以用多级子CA，例如： 根CA --> 子CA --> *** --> 子CA --> 用户，子CA越多，证书链越长，认证效率也就越低！
+
+自签名证书：
+	根证书可以校验子CA的证书，但是根证书如何校验？
+	因为CA已经是最权威的机构，所以根证书自己校验自己(自已签发自己的公钥)，像这样的证书叫做自签名证书，根证书就是自签名证书！
+	
+	
+私有CA：
+	由于向商业CA机构申请证书需要花费成本，企业内部可以创建私有CA，通过私有CA颁发公司内部服务器使用的证书，在一定程度上可以节约成本！
+	
+	
+5.4 PKI(Public Key Infrastructure 公共密钥加密体系)
+
+PKI概念：	
+	PKI就是利用公钥理论和技术建立的提供安全服务的基础设施。PKI技术是信息安全技术的核心，也是电子商务的关键和基础技术。
+	PKI是一个包括硬件、软件、人员、策略和规程的集合，用来实现基于公钥密码体制的密钥和证书的产生、管理、存储、分发和撤销等功能。
+	完整的PKI系统必须具有权威认证机构(CA)、数字证书库、密钥备份及恢复系统、证书作废系统、应用接口(API)等基本构成部分，构建PKI也将围绕这五大系统来构建。
+	PKI的基础技术包括加密，数字签名，数据完整机制，数字信封，双重数字签名等。
+	
+	
+PKI的标准可分为两个部分：一类用于定义PKI，而另一类用于PKI的应用，定义PKI的标准有：
+	ASN．1基本编码规则的规范——X．209(1988)
+	目录服务系统标准——X．500(1993)	
+	IDAP轻量级目录访问协议一IDAP V3	
+	数字证书标准 X．509(1 993)				// x.509是证书的标准格式, CA机构颁发的证书都是 x.509 格式
+	OCSP在线证二拉状态协议
+	PKCS系列标准
+
+
+一个典型的PKI系统包括PKI策略、软硬件系统、证书机构CA、注册机构RA、证书发布系统和PKI应用等。
+	PKI安全策略：建立和定义了一个组织信息安全方面的指导方针，同时也定义了密码系统使用的处理方法和原则
+	CA(Certificate Authority，签证机构):负责签发证书、认证证书、管理已颁发证书，是PKI的核心
+	RA(Registration Authority，注册机构): 它的职责是核实用户数字认证请求然后告诉认证中心（CA）发放认证
+	CRL(Certificate Revocation List，证书吊销列表)：如果用户私钥丢失，必须要申请吊销证书，否则会被别人冒名顶替。
+	证书存取库：所有发出的证书都会在这里存一份，如果丢失证书可以在这里得到，如果丢失私钥，那么只能申请证书撤销。
+	证书发布系统：证书发布系统负责证书的发放，如可以通过用户自己，或是通过目录服务器发放。目录服务器可以是一个组织中现存的，也可以是PKI方案中提供的。
+	PKI的应用：PKI的应用非常广泛，包括应用在web服务器和浏览器之间的通信、电子邮件、电子数据交换(EDI)、在Internet上的信用卡交易和虚拟私有网(VPN)等。
+	
+	
+5.5 X.509，定义了证书的结构以及认证协议标准
+
+所有的X.509证书包含以下数据：
+	版本号，指出该证书使用了哪种版本的X.509标准，版本号会影响证书中的一些特定信息。目前的版本是3。
+	证书持有人的公钥，包括证书持有人的公钥、算法(指明密钥属于哪种密码系统)的标识符和其他相关的密钥参数。
+	证书的序列号：由CA给予每一个证书分配的唯一的数字型编号，当证书被取消时，实际上是将此证书序列号放入由CA签发的CRL或证书黑名单表中。这也是序列号唯一的原因。
+	主题信息：证书持有人唯一的标识符(或称DN-distinguished name)，这个名字在 Internet上应该是唯一的。DN由许多部分组成，看起来象这样：
+			CN=Bob Allen, OU=Total Network Security Division
+		　　O=Network Associates, Inc.
+		　　C=US
+		这些信息指出该科目的通用名、组织单位、组织和国家或者证书持有人的姓名、服务处所等信息。
+	证书的有效期：证书起始日期和时间以及终止日期和时间；指明证书在这两个时间内有效。
+	认证机构：证书发布者，是签发该证书的实体唯一的CA的X.500名字。使用该证书意味着信任签发证书的实体。(注意：在某些情况下，比如根或顶级CA证书，发布者自己签发证书)
+	发布者的数字签名：这是使用发布者私钥生成的签名，以确保这个证书在发放之后没有被撰改过。
+	签名算法标识符：用来指定CA签署证书时所使用的签名算法。算法标识符用来指定CA签发证书时所使用的公开密钥算法和HASH算法。 
+	
+
+证书类型：
+	证书授权机构的证书
+	服务器证书
+	用户证书
+
+获取证书两种方法：
+	自签名的证书： 自已签发自己的公钥
+	使用证书授权机构：
+		生成证书请求（csr）
+		将证书请求csr发送给CA
+		CA签名颁发证书
+
+
+5.6 安全协议 SSL/TLS
+	SSL后面被改名为TLS，所有 SSL 和TLS是一个东西！
+	SSL/TLS协议是个集成产品，由几个不同的小协议组成，实际加密过程很复杂！
+	SSL/TLS协议层位于应用层和传输层之间！
+	SSL/TLS是个通用协议，具有通用功能，通常和应用层协议组合使用！
+	
+SSL/TLS 协议功能：
+	机密性
+	认证
+	完整性
+	重放保护：相同的请求只能发送一次。重放保护是为了防范重放攻击(Replay Attacks)!
+		重放攻击又称重播攻击、回放攻击，是指攻击者发送一个目的主机已接收过的包，来达到欺骗系统的目的。主要用于身份认证过程，破坏认证的正确性。
+		比如攻击者截获登录的数据包，虽然不能解密，但数据是真实的，攻击者只需知道数据包的作用，然后把数据包原封不动的发送给主机进行认证登录！
+		常见的重放攻击类型：重放认证、重放支付、短信轰炸等
+		防范措施： 添加时间戳、添加流水号、添加随机数
+		
+SSL/TLS组成：
+	Handshake协议：包括协商安全参数和密码套件、服务器身份认证（客户端身份认证可选）、密钥交换
+	ChangeCipherSpec 协议：一条消息表明握手协议已经完成
+	Alert 协议：对握手协议中一些异常的错误提醒，分为fatal和warning两个级别：
+		fatal类型错误会直接中断SSL链接
+		warning级别的错误SSL链接仍可继续，只是会给出错误警告
+	Record 协议：包括对消息的分段、压缩、消息认证和完整性保护、加密等
+
+SSL/TLS协议可以和各种各样的不加密协议 或 不安全的加密协议进行组合，让数据在网络上安全传输！比如：
+	http + SSL/TLS
+	ftp + SSL/TLS
+	mysql + SSL/TLS
+	......
+
+	
+5.7 HTTPS 协议：就是“HTTP 协议”和“SSL/TLS 协议”的组合。HTTP over SSL 或 HTTP over TLS ，对http协议的文本数据进行加密处理后，成为二进制形式传输
+
+单向验证和双向验证
+	单向验证：
+		客户端验证服务端(比如电商网站)
+		服务端验证客户端(比如银行网站)
+	双向验证：
+		客户端验证服务端，服务端也要验证客户端
+
+HTTPS 工作的简化过程
+	1). 客户端发起HTTPS请求
+		用户在浏览器里输入一个https网址，然后连接到服务器的443端口
+	2). 服务端的配置
+		采用HTTPS协议的服务器必须要有一套数字证书，可以自己制作，也可以向组织申请。区别就是自己颁发的证书需要客户端验证通过，才可以继续访问，
+		而使用受信任的公司申请的证书则不会弹出提示页面。这套证书其实就是一对公钥和私钥
+	3). 传送服务器的证书给客户端
+		证书里其实就是公钥，并且还包含了很多信息，如证书的颁发机构，过期时间等等
+	4). 客户端解析验证服务器证书
+		这部分工作是由客户端的TLS来完成的，首先会验证公钥是否有效，比如：颁发机构，过期时间等等，如果发现异常，则会弹出一个警告框，提示证书存在问题。
+		如果证书没有问题，那么就生成一个随机值。然后用证书中公钥对该随机值进行非对称加密(这个随机值实际上就是对称密钥)
+	5). 客户端将加密信息传送服务器
+		这部分传送的是用证书加密后的随机值，目的就是让服务端得到这个随机值，以后客户端和服务端
+		的通信就可以通过这个随机值来进行加密解密了
+	6). 服务端解密信息
+		服务端将客户端发送过来的加密信息用服务器私钥解密后，得到了客户端传过来的随机值
+	7). 服务器加密信息并发送信息
+		服务器将数据利用随机值进行对称加密,再发送给客户端
+	8). 客户端接收并解密信息
+		客户端用之前生成的随机值解密服务段传过来的数据，于是获取了解密后的内容
+
+
+5.8 Base64 编码:作用是为了把ASCII码中有些不可见字符转化为可见字符
+	ASCII中总共有128个字符，但有些字符是不可见的，比如回车、换行、发声音等字符，如果把不可见字符存入磁盘文件中，查看文件就会产生乱码。
+	因为本身不可见，用文本工具看就会产生乱码！要实现存放文件中又不乱码，就要把ASCII码中那些不可见字符转化为可见字符！
+	ASCII码中也有很多可见字符，其中大小写字母52个，0-9数字10个，再加上"+"、"/"，总共64个字符(base64的来源)，另外还有一个后缀填充的"="字符，共计65个字符！
+	如果把ASCII码转化为成base64的64个字符，存到磁盘上，再次查看的时候就不会出现乱码，所以base64解决的是乱码问题
+	
+	比如非对称加密中的私钥和公钥就是经过了base编码，实际上真正的私钥里面存的内容如果不经过base64编码，里面的内容可能就是乱码。
+	乱码的视觉体验不好，经过base64编码后，都是可见字符，提升了视觉体验！
+	
+	Base64是编码，不是加密!
+	
+base64的编码过程：
+	1).将每3个字节放入一个24位的缓冲区中，最后不足3个字节的，缓冲区的剩余部分用0来填补。
+	2).然后每次取出6位（2的6次方为64，使用64个字符即可表示所有），将高2位用0来填充，组成一个新的字节!
+	3).计算出这个新字节的十进制值，对应base64的编码表，输出相应的字符。这样不断地进行下去，就可完成对所有数据的编码工作。
+	   注意：因为不足三个字节会用0来填充，如果最后取出的位全是0，就用后缀填充符"="表示，一个base64编码最多有两个"="
+	
+	
+	// 查看asc编码
+	[root@localhost ~]#man ascii
+	
+	// 一个字母占一个字节,  -e 表示将转义后的内容输出到屏幕上,  "\c"是转义符，表示不换行输出
+	[root@localhost ~]#echo -e 'abc\c' | base64
+	YWJj
+	
+	[root@localhost ~]#echo -e 'abcd\c' | base64
+	YWJjZA==
+	
+	[root@localhost ~]#echo -e 'abcde\c' | base64
+	YWJjZGU=
+	
+	// base64 编码是以3个字节为单位进行编码，如果转换的内容是3个字节的整数倍，就不会出现填充情况，也就不会出现"="
+	[root@localhost ~]#echo -e 'abcdef\c' | base64
+	YWJjZGVm
+	
+	// 汉字使用utf-8编码，一个汉字占三个字节，所以一个汉字被base64编码后不会出现"="
+	[root@localhost ~]#echo -e '码\c' | base64
+	56CB
+	
+	[root@localhost ~]#echo -e '码\c' > test.txt
+	[root@localhost ~]#ll test.txt
+	-rw-rw-r-- 1 ec2-user ec2-user 3 Nov 26 09:27 test.txt			# 一个汉字占三个字节
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 私有CA和openssl配置文件详解
+
+
+6.1 OpenSSL 官网：https://www.openssl.org/
+	OpenSSL是一个开放源代码的软件库包，应用程序可以使用这个包来进行安全通信，避免窃听，同时确认另一端连线者的身份。
+	
+两种运行模式：
+	交互模式：默认是交互式
+	批处理模式
+	
+OpenSSL包括三个组件：
+		
+	libcrypto：用于实现加密和解密的库
+	libssl：用于实现ssl通信协议的安全库
+	openssl：多用途命令行工具，核心工具
+	
+	// 查看 openssl 包的信息
+	[root@localhost ~]#rpm -qi openssl
+	Name        : openssl
+	Epoch       : 1
+	Version     : 1.0.2k	
+	......省略
+	
+	//  查看 openssl 包含哪些文件
+	[root@localhost ~]#rpm -ql openssl
+	/etc/pki/CA
+	/etc/pki/CA/certs
+	/etc/pki/CA/crl
+	/etc/pki/CA/newcerts
+	/etc/pki/CA/private
+	/etc/pki/tls/certs/Makefile
+	/etc/pki/tls/certs/make-dummy-cert
+	/etc/pki/tls/certs/renew-dummy-cert
+	/etc/pki/tls/misc/CA
+	/etc/pki/tls/misc/c_hash
+	/etc/pki/tls/misc/c_info
+	/etc/pki/tls/misc/c_issuer
+	/etc/pki/tls/misc/c_name
+	/usr/bin/openssl
+	......省略
+	
+	
+6.2 openssl命令对称加密
+	
+	// enc表示对称加密，-e 表示加密，-des3表示算法，-a 表示用base64编码转换(如果不转换加密的结果就是乱码)
+	// -salt 表示加盐，in 加密的文件，out 解密的文件
+	[root@localhost ~]#openssl enc -e -des3 -a -salt -in test.sh -out test.sh.enc
+	enter des-ede3-cbc encryption password:										# 输入加密的密码 
+	Verifying - enter des-ede3-cbc encryption password:						
+	
+	[root@localhost ~]#cat test.sh.enc
+	U2FsdGVkX1+I494l2kimz2249uSFb7TydFYicF0cDsPZ5z90DNgFi47H8QxjF+t8			# 生成的结果是base64编码
+	......省略
+	
+	//-d 表示解密，enc是子命令，表示解密
+	[root@localhost ~]#openssl enc -d -des3 -a -salt -in test.sh.enc -out test2.sh
+	enter des-ede3-cbc decryption password:										# 输密码解密
+ 
+	[root@localhost ~]#cat test2.sh
+	#!/bin/bash
+	......省略
+	
+
+6.3 openssl命令单向哈希加密：
+	
+	[root@localhost ~]#openssl md5 test.sh				# 等价于 openssl dgst -md5 test.sh
+	MD5(test.sh)= ecacabb865e7a31df93243a69eb91d8d
+	
+	
+	[root@localhost ~]#openssl sha512 test.sh			# 等价于 openssl dgst -sha512 test.sh
+	SHA512(test.sh)= 1bcabcede593a915ab72422a05e45ab131d23adf6416db621007540197d1a415568eb81b3551e8d695ae4d1606bfe1bba3a5c9d97958ee101d160bcf12e3190e
+	
+	// sha512sum 和 openssl sha512 效果一样
+	[root@localhost ~]#sha512sum test.sh
+	1bcabcede593a915ab72422a05e45ab131d23adf6416db621007540197d1a415568eb81b3551e8d695ae4d1606bfe1bba3a5c9d97958ee101d160bcf12e3190e  test.sh
+	
+
+6.4 openssl 命令生成用户密码:
+	// passwd:计算一个密钥的哈希值；-6表示使用sha512，-5表示sha256，-1表示MD5；如果命令中不加盐，命令会自动加盐
+	[root@centos8 ~]#openssl passwd -6				# centos7上的"openssl passwd"命令不支持 sha512 和 sha256 算法
+	Passaord:										#输入密码
+	Verifying - Passaord
+	$6$5U3EiJHnQHcju7SJ$TUTGL24j222HtMA3n9LyRq8uzj9rDRBb8W11qBKAlwZm1VqR2WMhHAJMuZYThGhzEz1aNY0rgznkOUP6G800s1
+	
+	
+	// hash结果我上面一样，因为算法一样，盐一样，密码一样，所以hash值一样
+	[root@centos8 ~]#openssl passwd -6 -salt "5U3EiJHnQHcju7SJ" 123456
+	$6$5U3EiJHnQHcju7SJ$TUTGL24j222HtMA3n9LyRq8uzj9rDRBb8W11qBKAlwZm1VqR2WMhHAJMuZYThGhzEz1aNY0rgznkOUP6G800s1
+	
+	
+	// 创建用户的时候就指定密码，使用-p选项，但这里是指定密码的哈希值，要用sha512算法，不能直接用明文密码
+	[root@centos8 ~]#useradd -p `openssl passwd -6 -salt "5U3EiJHnQHcju7SJ" 123456` xiaoming
+	
+	[root@centos8 ~]#getent shadow xiaoming
+	
+	
+	// centos6 生成sha512加密密码，centos7没有这个工具
+	grub-crypt		# 交互式命令
+	
+	
+	// 利用Python程序在CentOS7 生成sha512加密密码
+	[root@centos7 ~]#python -c 'import crypt,getpass;pw="magedu";print(crypt.crypt(pw))'
+	
+	
+6.5 openssl命令生成随机数，这个功能生成随机口令(密码)
+	
+	// 生成9个字节的随机字符，并且生成后进行base64编码
+	[root@localhost ~]#openssl rand -base64 9
+	e+gH+RlVkhNd
+	
+	// 生成9个字节的随机字符，以十六进制形式显示，十六进制只能显示16个可见字符
+	[root@localhost ~]#openssl rand -hex 9
+	b4bb20df5c1ea0e8df
+	
+	//其它方式生成随机密码
+	[root@localhost ~]#cat /dev/urandom | tr -dc '[:alnum:]' | head -c12
+	kX9gVJRBREOo
+
+	说明：	
+		"/dev/random" ：
+			会结合硬件信息，比如鼠标的位置、磁盘IO、磁头位置等随机生成随机数
+			假如机器没有任何磁盘操作、鼠标也没有动，就没有办法生成随机数，当使用的时候，随机数用尽，程序无法继续运行，就会阻塞程序的运行
+		"/dev/urandom"：
+			也会利用硬件生成随机数，随机数放在"熵池"中，"熵池"中存放了很多随机数，如果随机数用完，会利用软件生成伪随机数，不会阻塞程序的运行
+	
+	
+6.6 openssl命令实现 PKI
+	
+	公钥加密：
+		算法：RSA, ELGamal
+		工具：gpg, openssl rsautl
+			  man rsautl		# 查看帮助
+	数字签名：
+		算法：RSA, DSA, ELGamal
+	密钥交换：
+		算法：dh
+		DSA：Digital Signature Algorithm
+		DSS：Digital Signature Standard
+		RSA：
+
+	
+生成私钥	
+	格式：
+		openssl genrsa -out /PATH/TO/PRIVATEKEY.FILE [-aes128] [-aes192] [-aes256] [-des3] [NUM_BITS,默认2048]	
+		说明：
+			子命令 genrsa 主要用于生成RSA私钥 
+			后面跟上对称加密算法表示给私钥加密，对称加密算法如下：
+				-aes128, -aes192, -aes256, -aria128, -aria192, -aria256, -camellia128, -camellia192, -camellia256, -des, -des3, -idea
+			后面的数字表示生成多少位的私钥，默认是2048位，位数越多，加密效果越强
+			生成的公钥和私钥都经过了base64编码
+		注意事项：
+			一旦对私钥加密，每次使用私钥都要输入口令
+			公钥隐藏在私钥内部，可以通过私钥得到公钥。但从公钥得不到私钥！所以 "openssl genrsa" 命令相当于可以生成密钥对
+		查看 genrsa 帮助：
+			man genrsa
+
+
+示例1：使用对称密钥加密私钥，此方式更安全，但是不方便
+	[root@localhost ~]#openssl genrsa -out app.key -des3 2048
+	Generating RSA private key, 2048 bit long modulus
+	............................................................+++
+	......+++
+	e is 65537 (0x10001)
+	Enter pass phrase for app.key:						# 输入加密的密码
+	Verifying - Enter pass phrase for app.key:
+	
+	// 加密后的密钥仍然是Base64编码
+	[root@localhost ~]#cat app.key
+	-----BEGIN RSA PRIVATE KEY-----
+	Proc-Type: 4,ENCRYPTED
+	DEK-Info: DES-EDE3-CBC,56639B3C0294E5A7
+	......省略
+	
+	
+	// 从私钥中提取出公钥
+	[root@localhost ~]#openssl rsa -in app.key -pubout -out app.key.pub
+	Enter pass phrase for app.key:						# 输入密码才能导出
+	writing RSA key
+	
+	[root@localhost ~]#cat app.key.pub
+	-----BEGIN PUBLIC KEY-----
+	MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1ystxhIQSkeFIG3qLag
+	......省略
+	
+	
+	// 加密经过加密的私钥
+	[root@localhost ~]#openssl rsa -in app.key -out app.key.key
+	Enter pass phrase for app.key:					# 输入密码才能解密	
+	writing RSA key					
+	
+	[root@localhost ~]#cat app.key.key
+	-----BEGIN RSA PRIVATE KEY-----
+	MIIEowIBAAKCAQEAu1ystxhIQSkeFIG3qLagXSUfbsWpUqokLgUHWlg1Cu70AqDr
+	......省略
+	
+
+示例2：使用 umask 的方式给生成的私钥设置权限，也能保证私钥的安全
+	
+	// 把命令放在括号中表示让名字在子shell里面运行，因为这里设置了umask，防止影响当前shell环境
+	// centos8创建私钥时默认权限就很严格，可以不用umask命令；主要用在centos8之前的版本
+	[root@localhost ~]#(umask 066; openssl genrsa -out app2.key)
+	Generating RSA private key, 2048 bit long modulus
+	................................................................................................................................................+++
+	.......................................................................................................+++
+	e is 65537 (0x10001)
+	
+	[root@localhost ~]#ll app2.key
+	-rw------- 1 root root 1679 Nov 27 01:01 app2.key
+	
+	[root@localhost ~]#(umask 066; openssl rsa -in app2.key -pubout -out app2.key.pub)
+	writing RSA key
+	
+	// 导出公钥
+	[root@localhost ~]#ll app2.key.pub
+	-rw------- 1 root root 451 Nov 27 01:05 app2.key.pub
+	
+	
+6.7 私有CA简单介绍
+
+	建立私有CA有两种方案：
+		OpenCA：OpenCA开源组织使用Perl对OpenSSL进行二次开发而成的一套完善的PKI免费软件
+		openssl：相关包 openssl和openssl-libs , 通常用这种方案！
+		
+	
+	搭建私有CA的服务器：
+		所谓的搭建私有CA的服务器其实就是给自己颁发证书，根CA的证书是自己给自己颁发的自签名证书！
+		私有CA搭建会用到一个证书配置文件"/etc/pki/tls/openssl.cnf"，这个文件约定了创建证书需要的相关文件、配置、包括证书相关的文件路径等！
+	
+	
+详解证书配置文件：
+	[root@localhost ~]#cat /etc/pki/tls/openssl.cnf
+	......省略
+	# Policies used by the TSA examples.   	// 策略版本
+	tsa_policy1 = 1.2.3.4.1
+	tsa_policy2 = 1.2.3.4.5.6
+	tsa_policy3 = 1.2.3.4.5.7
+
+	####################################################################
+	[ ca ]									
+	default_ca      = CA_default            # The default ca section			// 一个主机上可以搭建多个CA，这里指定默认CA
+
+	####################################################################
+	[ CA_default ]																// 默认CA相关设置
+	// 存放和CA以及它颁发证书的所有相关文件的总目录,centos7默认有这个目录，centos8默认没有这个目录，需要自己创建
+	dir             = /etc/pki/CA           # Where everything is kept			
+	// 这个目录放颁发的证书
+	certs           = $dir/certs            # Where the issued certs are kept
+	// 证书吊销列表
+	crl_dir         = $dir/crl              # Where the issued crl are kept
+	// 存放所有颁发给用户的证书的索引数据库，给用户颁发的每个证书都有编号、功能、说明等信息。这个文件默认不存在，需要提前创建，内容在颁发证书的时候会自动添加
+	database        = $dir/index.txt        # database index file.
+	#unique_subject = no                    # Set to 'no' to allow creation of
+											# several ctificates with same subject.
+	new_certs_dir   = $dir/newcerts         # default place for new certs.		// 颁发的新证书会自动放到这个目录
+
+	certificate     = $dir/cacert.pem       # The CA certificate				// CA的自签名证书，需要创建
+	// 序列号，也就是证书的编号，每个证书都有一个编号，需要手动初始化一个值，颁发证书时这个编号会自动增长(在上一个编号的基础上加1) 
+	serial          = $dir/serial           # The current serial number
+	// 证书吊销列表的编号
+	crlnumber       = $dir/crlnumber        # the current crl number
+											# must be commented out to leave a V1 CRL
+	crl             = $dir/crl.pem          # The current CRL					// 证书吊销列表的文件
+	private_key     = $dir/private/cakey.pem# The private key					// CA的私钥	
+	RANDFILE        = $dir/private/.rand    # private random number file
+
+	x509_extensions = usr_cert              # The extentions to add to the cert
+
+	# Comment out the following two lines for the "traditional"
+	# (and highly broken) format.
+	name_opt        = ca_default            # Subject Name options
+	cert_opt        = ca_default            # Certificate field options
+
+	......省略
+
+	// 证书的默认有效期是365天，企业内部可以把时间设置长一些，比如十年。如果申请商业CA机构的证书，时间可以短以下，比如1年
+	default_days    = 365                   # how long to certify for
+	default_crl_days= 30                    # how long before next CRL
+	default_md      = sha256                # use SHA-256 by default
+	preserve        = no                    # keep passed DN ordering
+
+	# A few difference way of specifying how similar the request should look
+	# For type CA, the listed attributes must be the same, and the optional
+	# and supplied fields are just that :-)
+	policy          = policy_match			// 设定当前用的策略
+
+	# For the CA policy	  证书的匹配策略，作为CA来讲，将来给用户颁发证书，需要指定CA机构的相关信息  
+	// 可以看到下面有三项match，意思是将来给CA和用户颁发证书，国家、州或省份、组织都要保持一致，不一样会拒绝颁发证书！
+	// 因为是私有CA(私有就是在一个区域内部)，它会认为CA所在的国家和使用证书的用户所在的国家应该是同一个国家！ 
+	// 默认用的私有CA这种策略，只要是match的项，都必须保持一致，非match项，可以不用保持一致！
+	[ policy_match ]
+	countryName             = match			//	CA所在的国家
+	stateOrProvinceName     = match			//	州或省份
+	organizationName        = match			//  (比如公司)
+	organizationalUnitName  = optional		// 	部门
+	commonName              = supplied		// 	给哪个组织使用
+	emailAddress            = optional		//  邮箱
+
+	# For the 'anything' policy
+	# At this point in time, you must list all acceptable 'object'
+	# types.
+	// 下面的策略没有一项是match，这就相当于是公有CA策略，可以给任何国家的任何人颁发证书，没有限制！
+	// 使用场景：商业合作伙伴、不同组织合作等
+	[ policy_anything ]
+	countryName             = optional
+	stateOrProvinceName     = optional
+	localityName            = optional		// 城市
+	organizationName        = optional
+	organizationalUnitName  = optional
+	commonName              = supplied
+	emailAddress            = optional
+	......省略
+	[root@localhost ~]#
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>

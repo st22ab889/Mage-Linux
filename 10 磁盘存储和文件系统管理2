@@ -1,0 +1,1756 @@
+
+2 磁盘类型和结构
+  在linux中一切皆文件,所以硬盘也是个文件, 每个硬盘文件的命名方式和硬盘类型息息相关，内核自动识别、生成硬盘文件，放在 /dev 目录下面
+  系统有一个硬盘，就会在dev下面生成一个文件和硬盘对应，两个硬盘就会生成两个文件，以此类推，文件名称和硬盘类型有关
+
+2.1 设备文件的命名。linux下的硬盘一般采用/dev/sda、/dev/sdb、/dev/sdc和/dev/sdd来表示，但是在某些较早发布出来的linux中，往往用/dev/hdx来表示。x可以是a、b、c、d。至于磁盘下的分区，一般是在sda、sdb等都后面加上一个数字。
+
+	磁盘设备的设备文件命名:
+		/dev/sdX 			# SAS,SATA,SCSI,IDE,USB 类型磁盘。sdX中的X代表字母，比如有多块磁盘，分别以 sda、sdb、sdc 和 sdd来表示
+		/dev/nvme0n# 		# nvme协议硬盘，如：第一个硬盘：nvme0n1，第二个硬盘：nvme0n2
+		/dev/sr#			# 光盘设备, sr0、sr1、sr2等
+		
+	虚拟磁盘(云服务用的是虚拟磁盘)：
+		/dev/vd
+		/dev/xvd
+	
+	
+2.1  常见的硬盘类型介绍 
+	IDE		：133MB/s，并行接口，早期家用电脑
+	SCSI	：640MB/s，并行接口，早期服务器
+	SATA	：6Gbps，SATA数据端口与电源端口是分开的，即需要两条线，一条数据线，一条电源线
+	SAS		：6Gbps，SAS是一整条线，数据端口与电源端口是一体化的，SAS中是包含供电线的，而SATA中不包含供电线。SATA标准其实是SAS标准的一个子集，二者可兼容，SATA硬盘可以插入SAS主板上，反之不行
+	USB		：480MB/s
+	M.2		：
+
+	注意: 6Gbps/s = 6000Mbps/s / 8 = 750MB/s  , 速率是以1000为单位,并不是以1024
+
+	--------------------------------------------------------------------------------------------------------------------------------------------------------
+	/																																						/
+	/	如果1“Gbps”指的是宽度，那么1Gbps=1024Mbps。																											/
+	/	如果1“Gbps”指的是速度，那么1Gbps = 1000Mbps。																										/
+	/	网上一直有1Gbps = 1000Mbps和1Gbps=1024Mbps两种意见。																								/
+	/	所以导致很多人不知道到底1“Gbps”等于多少“Mbps”。但其实，1“Gbps”在计算机中常用的指的是宽度。所以通常来说1Gbps = 1024Mbps。							/
+	/	Mbps=Mbit/s即兆比特每秒。Million bits per second的缩写。																							/	
+	/	传输速率是指集线器的数据交换能力，也叫带宽，单位是Mbps（兆位/秒），目前主流的集线器带宽主要有10Mbps、54Mbps/100Mbps自适应型、100Mbps和150Mbps四种。	/
+	/																																						/
+	/																																						/
+	/	Mbps=Mbit/s即兆比特每秒（Million bits per second的缩写）。bps（bits per second），即比特率、比特/秒、位/秒、每秒传送位数，数据传输速率的常用单位。	/
+	/	而通常所说的文件大小的兆是指8MByte。字节（Byte）是计算机信息技术用于计量存储容量的一种计量单位，也表示一些计算机编程语言中的数据类型和语言字符。	/
+	/	1Byte＝8bit ,1KByte=1024Byte , 1M=1024KByte , 1MB/s=8Mbps																							/
+	/																																						/	
+	/	Mbps是megabits per second的缩写，是一种传输速率单位，指每秒传输的位（比特）数量。																	/			
+	/	1Mbps代表每秒传输1，000，000位（bit），即每秒传输的数据量为：1，000，000/8=125，000Byte/s															/			
+	/ 																																						/
+	/																																						/
+	/	参考资料:																																			/		
+	/		1“Gbps”等于多少“Mbps”？		https://zhidao.baidu.com/question/2208266096924889428.html															/			
+	/		mbps和mb/s怎么换算			https://m.php.cn/faq/487371.html																					/	
+	/		mbps换算成M					https://baijiahao.baidu.com/s?id=1724289737436381256																/
+	---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+	
+	不管是虚拟机还是物理机,当热拔插磁盘后都需要扫描以通知内核:
+	alias scandisk='echo - - - > /sys/class/scsi_host/host0/scan;echo - - - > /sys/class/scsi_host/host1/scan;echo - - - > /sys/class/scsi_host/host2/scan'
+
+	
+	
+	// sda 表示磁盘, sda1 和 sda2 表示分区, 分区就是把一个物理磁盘分成多个区域，每个区域是连续的。实际上硬盘可以不分区,但通常还是要分区
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sr0              11:0    1  4.4G  0 rom
+	[root@localhost ~]#
+	
+
+
+
+2.2 磁盘文件 	
+
+	[root@localhost ~]#ll /dev/sd*
+	brw-rw---- 1 root disk 8, 0 Oct 31 01:10 /dev/sda
+	brw-rw---- 1 root disk 8, 1 Oct 31 01:10 /dev/sda1
+	brw-rw---- 1 root disk 8, 2 Oct 31 01:10 /dev/sda2
+	
+	分析:
+		b代表块文件：以块为单位读写（假如一块有512个字节），通常都有缓存
+		c代表字符文件: 以字符为单位读写，没有缓存
+		
+		8, 0  ===>> 第1个数字表示设备类型, 第2个数字表示属于这个类型的第几个设备， 
+					设备类型的编号是系统自动分的，设备文件名都是内核自动识别出来的，识别出来后按照内核的默认逻辑命名出来的
+	
+	
+	
+	// 块设备也可以进行拷贝, 但不要用传统的方式去拷贝 , 但是需要加上 -a 参数保留属性
+	[root@localhost ~]#cp -a /dev/sda ./
+	[root@localhost ~]#ll sda
+	brw-rw---- 1 root disk 8, 0 Oct 31 01:10 sda
+	
+	
+	
+	// 块文件一般不需要人工干预，但如果说想用命令生成这种b开头的块文件或设备文件也是可以的
+	// 创建设备文件，用的少见（了解）
+	[root@localhost ~]#mknod null-device c 1 3
+	[root@localhost ~]#ll null-device
+	crw-r--r-- 1 root root 1, 3 Oct 31 01:55 null-device
+	
+	
+2.3 硬盘存储术语（详细见PDF），在老的系统中(centos6以及之前),命令里面会显示一些比较专业的术语，这些专业术语就和硬盘结构息息相关
+
+	硬盘存储术语 CHS （CHS相当于硬盘的三围）
+		head：磁头 磁头数=盘面数
+		track：磁道 磁道=柱面数
+		sector：扇区，512bytes
+		cylinder：柱面 1柱面=512 * sector数/track*head数=512*63*255=7.84M
+
+
+
+	补充概念:
+
+		磁道的编号是从外往里编的,依次是 0.1.2.3.4
+		
+		磁盘结构中 簇、块、扇区等概念
+			由于扇区的空间比较小且数目众多，在寻址时比较困难，所以操作系统就将多个的扇区组合在一起，形成一个更大的单位，再对这个单位进行整体的操作。
+			这个单位，在Windows下，FAT，和NTFS&nbsp;文件系统中叫做簇（cluster）；在Linux下如Ext4等文件系统中叫做块（block）。
+			每个簇或者块可以包括2、4、8、16、32、64…2的n次⽅个扇区。	
+		
+		柱面:
+			所有的0磁道认为0柱面，所有的1磁道认为1柱面，依此类推
+			柱面数就等于磁道数
+	
+	
+
+	// centos5以及之前的系统，划分分区不是以扇区，磁道，是以柱面为单位
+	//			Start 代表起始柱面
+	//			End 代表结束柱面
+	//			Blocks代表块,一块的大小为1KB
+	[root@centos6 ~]#fdisk -l /dev/sda
+	Disk /dev/sda: 214.7 GB, 214748364800 bytes
+	255 heads, 63 sectors/track, 26108 cylinders
+	Units = cylinders of 16065 * 512 = 8225280 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk identifier: 0x0006fc79
+	Device Boot 	Start 		End 		Blocks 		Id 		System
+	/dev/sda1 * 		1 		131    	   1048576 		83 		Linux
+	Partition 1 does not end on cylinder boundary.
+	/dev/sda2 		  131 	  12879  	 102400000 		83 		Linux
+	/dev/sda3 		12879     19253   	  51200000 		83 		Linux
+	
+	
+
+
+	// 从centos6开始划分分区以扇区为单位，划分更灵活更精细，centos6及以上系统弱化了柱面、磁头等概念, 一样的命令不再显示这些信息
+	//			Start 代表起始扇区
+	//			End 代表结束扇区
+	//			Blocks代表块,一块的大小为1KB
+	[root@localhost ~]#fdisk -l /dev/sda
+
+	Disk /dev/sda: 42.9 GB, 42949672960 bytes, 83886080 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x000b7caa
+
+	   Device Boot      Start         End      Blocks   Id  System
+	/dev/sda1   *        2048     2099199     1048576   83  Linux			// 1048576 Blocks = 1048576KB = 1048576KB/1024/1024=1G
+	/dev/sda2         2099200    83886079    40893440   8e  Linux LVM
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sr0              11:0    1  4.4G  0 rom
+	
+	
+	
+	// 如果要在centos7及以上系统显示柱面(cylinders)、磁头(heads) 信息, 加上 -u=cylinder 参数, 如下；
+	fdisk -u=cylinder -l /dev/sda
+
+
+	// 识别SSD和机械硬盘类型， 表示机械，1表示机械，0表示SSD
+	lsblk -d -o name,rota
+	
+	
+	总结:
+		CHS
+			CHS采用 24 bit位寻址
+			其中前10位表示cylinder，中间8位表示head，后面6位表示sector
+			最大寻址空间 8 GB
+		LBA（logical block addressing）
+			LBA是一个整数，通过转换成 CHS 格式完成磁盘具体寻址
+			ATA-1规范中定义了28位寻址模式，以每扇区512位组来计算，ATA-1所定义的28位LBA上限达到 128 GiB。2002年ATA-6规范采用48位LBA，同样以每扇区512位组计算容量上限可达128Petabytes
+		
+		
+		由于CHS寻址方式的寻址空间在大概8GB以内，所以在磁盘容量小于大概8GB时，可以使用CHS寻址方式或是LBA寻址方式；在磁盘容量大于大概8GB时，则只能使用LBA寻址方式	
+	
+
+2.4 使用磁盘空间过程
+	1. 设备分区
+	2. 创建文件系统
+	3. 挂载新的文件系统
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 MBR和GPT分区类型
+
+3.1 为什么分区
+
+	优化I/O性能
+	实现磁盘空间配额限制
+	提高修复速度
+	隔离系统和程序
+	安装多个OS
+	采用不同文件系统
+
+
+3.2 两种分区方式：MBR（了解），GPT
+
+
+3.3 MBR分区: MBR：Master Boot Record，1982年，使用32位表示扇区数，分区不超过 2T
+	
+	MBR分区中一块硬盘最多有4个主分区，活动分区只有1个,也可以3主分区+1扩展(N个逻辑分区)
+		主分区又能存数据又能装系统，扩展分区不能直接存数据，扩展分区里面的逻辑分区才能存数据
+	
+	MBR分区文件的命名方式：
+		主和扩展分区对应的1-4，/dev/sda1，/dev/sda2，/dev/sda3，/dev/sda4
+		逻辑分区从5开始，/dev/sda5
+	
+	
+3.4 分区的数据保存在 0磁道0扇区
+	
+	0磁道0扇区：512bytes
+		446bytes: boot loader 启动相关
+		64bytes：分区表，其中每16bytes标识一个分区
+		2bytes: 55AA
+	
+	// 查看分区表
+	hexdump -C -n 512 /dev/sda	  //这个命令是直接看二进制
+	fdisk -l
+
+
+3.5 mbr 分区数据备份, 放置分区破坏丢失数据
+	
+	// dd 可从标准输入或文件中读取数据，根据指定的格式来转换数据，再输出到文件、设备或标准输出
+	dd if=/dev/sda of=/data/mbr bs=1 count=64 skip=446
+	
+	ll /data/mbr
+	
+	hexdump -C data/mbr
+	
+	// mbr这个备份文件要不在本机上，因分区坏了，在本机上也找不到这个文件，要异地备份
+	scp /data/mbr 10.0.0.7:
+	
+	
+	// 模拟分区表破坏, skip 是跳源(if后面的就是源), seek是跳目标(seek后面的是输出目标)
+	dd if=/dev/zero of=/dev/sda bs=1 count=64 seek=446
+	
+	// 查看是否清零。-v 选项使 hextump 显示所有输入数据，显示时不压缩相似的行。没有 -v 选项，任何数量的输出行组，如果与前一组相同，将被替换为由一个星号构成的行。
+	hexdump -C -n 512 /dev/sda -v
+	
+	// 显示不出分区数据,是一个未分区的状态，系统也不能重启
+	fdisk -l
+	
+	
+	下面的操作在救援模式下:
+	
+	// 还原，进入救援模式，救援模式没有网络，但是可以配上网络
+	ip a a 10.0.0.8/24 dev ens33				//因为网卡没有正常启动,所以网卡名需要使用命令查看一下,是什么就是什么
+	ip a
+	ping 10.0.0.7
+	
+	// 拷贝远程文件到本机
+	scp 10.0.0.7:/root/mbr .
+	
+	ls -l mbr
+	
+	hexdump -C -n 512 /dev/sda -v
+	
+	// 恢复
+	dd if=mbr of=/dev/sda bs=1 count64 seek=446
+
+	// 确认一下是否已恢复
+	hexdump -C -n 512 /dev/sda -v
+
+	// 立即写磁盘,有时候放在缓冲区中,不一定能及时写进去
+	sync
+	
+	// 重启，系统正常启动
+	
+	
+3.6  GPT 分区（主流分区方式），支持很大的硬盘，取消逻辑分区的概念，全是主分区，GPT 分区后自动就有分区表备份
+	GPT：GUID（Globals Unique Identifiers） partition table 支持128个分区，使用64位，支持8Z（512Byte/block ）64Z （ 4096Byte/block）
+	使用128位UUID(Universally Unique Identifier) 表示磁盘和分区 GPT分区表自动备份在头和尾两份，并有CRC校验位
+	UEFI (Unified Extensible Firmware Interface 统一可扩展固件接口)硬件支持GPT，使得操作系统可以启动
+	
+	
+3.7 BIOS和UEFI：BIOS是固化在电脑主板上的程序，主要用于开机系统自检和引导操作系统。目前新式的电脑基本上都是UEFI启动
+	
+	BIOS（Basic Input Output System 基本输入输出系统）主要完成系统硬件自检和引导操作系统，操作系统开始启动之后，BIOS的任务就完成了。
+		BIOS在1975年就诞生了，使用汇编语言编写，当初只有16位，因此只能访问1M的内存，没有图形界面，通常见到的就是那个蓝色背景！
+		早期的BIOS不直接支持GPT分区
+	
+	UEFI(Unified Extensible Firmware Interface)统一的可扩展固件接口， 是一种详细描述类型接口的标准。
+		UEFI 相当于一个轻量化的操作系统，提供了硬件和操作系统之间的一个接口，提供了图形化的操作界面。最关键的是引入了GPT分区表，支持2T以上的硬盘，硬盘分区不受限制
+	
+	
+	BIOS、UEFI 和分区组合
+		BIOS+MBR
+		UEFI+GPT ，UEFI也支持MBR分区，但是配合GPT更主流
+	
+	注意: MSDN (Microsoft Developer Network) 指出，Windows 只能安装于 BIOS + MBR 或是 UEFI + GPT 的组合上，而 BIOS + GPT 和 UEFI + MBR 是不允许的。但是 BIOS + GPT + GRUB 启动Linux 是可以的
+	
+	
+	BIOS和UEFI运行流程:
+		开机 ===>> BIOS初始化 ===>> BIOS自检  ===>> 引导操作系统 ===>> 进入系统
+		开机 ===>> UEFI初始化 ===>> 引导操作系统 ===>> 进入系统
+
+	
+	
+3.8 硬盘分区管理
+	
+	// 列出块设备
+	lsblk
+	
+	// 添加一个新硬盘查看分区表,显示的全是 0
+	hexdump -C -n 512 /dev/sdb
+	
+	
+	分区(工具)命令：建议使用 fdisk 和 gdisk
+		fdisk 	主要管理MBR分区, 现在也支持对 GPT 的分区, 回车不生效，退出后才会生效
+		gdisk 	主要管理GPT分区, 回车不生效，退出后才会生效
+		parted 	（了解）高级分区操作，可以是交互或非交互方式。这个命令慎用, 一回车就立即生效，有可能会破坏系统，因为有时候回车后才发现做错了，那就来不及了
+			// 交互式
+			parted   /dev/sdb
+			
+			// 非交互式
+			parted /dev/sdb mklabel gpt|msdos
+			parted /dev/sdb print
+			parted /dev/sdb mkpart primary 1 200  #（默认M），表示从1M到200M
+			parted /dev/sdb rm 1
+			parted -l 列出所有硬盘分区信息
+	
+	
+	
+	// 把分区表同步到内存中，适合于除了CentOS 6 以外的其它版本( 5、7、8)，不使用命令同步也可以重启系统	
+	partprobe
+	
+	
+3.9 fdisk,  fdisk管理GPT分区的功能在centos7上处于实验阶段, 在centos8上已经成熟
+	man fdisk
+	
+3.10 gdisk
+
+	yum -y --disablerepo=* --enablerepo=BaseOS install gdisk
+
+	man gdisk
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 文件系统管理
+
+4.1 使用 fdisk 进行分区
+	
+	// 可以看到 sdb 是块新硬盘
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sdb               8:16   0   10G  0 disk
+	sr0              11:0    1  4.4G  0 rom
+	
+	// 分区实战,  fdisk 后面跟上硬盘名，就进入交互式环境
+	[root@localhost ~]#fdisk /dev/sdb
+	Welcome to fdisk (util-linux 2.23.2).
+
+	Changes will remain in memory only, until you decide to write them.
+	Be careful before using the write command.
+
+
+	Command (m for help): m
+	Command action
+	   a   toggle a bootable flag
+	   b   edit bsd disklabel
+	   c   toggle the dos compatibility flag
+	   d   delete a partition
+	   g   create a new empty GPT partition table
+	   G   create an IRIX (SGI) partition table
+	   l   list known partition types
+	   m   print this menu
+	   n   add a new partition
+	   o   create a new empty DOS partition table
+	   p   print the partition table
+	   q   quit without saving changes
+	   s   create a new empty Sun disklabel
+	   t   change a partition's system id
+	   u   change display/entry units
+	   v   verify the partition table
+	   w   write table to disk and exit
+	   x   extra functionality (experts only)
+
+	Command (m for help): p
+
+	Disk /dev/sdb: 10.7 GB, 10737418240 bytes, 20971520 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x18b32a0e
+
+	   Device Boot      Start         End      Blocks   Id  System
+
+	Command (m for help): n
+	Partition type:
+	   p   primary (0 primary, 0 extended, 4 free)
+	   e   extended
+	Select (default p): p
+	Partition number (1-4, default 1): 1
+	First sector (2048-20971519, default 2048):
+	Using default value 2048
+	Last sector, +sectors or +size{K,M,G} (2048-20971519, default 20971519): +1G
+	Partition 1 of type Linux and of size 1 GiB is set
+
+	Command (m for help): p
+
+	Disk /dev/sdb: 10.7 GB, 10737418240 bytes, 20971520 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x18b32a0e
+
+	   Device Boot      Start         End      Blocks   Id  System
+	/dev/sdb1            2048     2099199     1048576   83  Linux
+
+	Command (m for help): n
+	Partition type:
+	   p   primary (1 primary, 0 extended, 3 free)
+	   e   extended
+	Select (default p): e
+	Partition number (2-4, default 2): 2
+	First sector (2099200-20971519, default 2099200):
+	Using default value 2099200
+	Last sector, +sectors or +size{K,M,G} (2099200-20971519, default 20971519): +3G
+	Partition 2 of type Extended and of size 3 GiB is set
+
+	Command (m for help): n
+	Partition type:
+	   p   primary (1 primary, 1 extended, 2 free)
+	   l   logical (numbered from 5)
+	Select (default p): l
+	Adding logical partition 5
+	First sector (2101248-8390655, default 2101248):
+	Using default value 2101248
+	Last sector, +sectors or +size{K,M,G} (2101248-8390655, default 8390655): +1G
+	Partition 5 of type Linux and of size 1 GiB is set
+
+	Command (m for help): n
+	Partition type:
+	   p   primary (1 primary, 1 extended, 2 free)
+	   l   logical (numbered from 5)
+	Select (default p): l
+	Adding logical partition 6
+	First sector (4200448-8390655, default 4200448):
+	Using default value 4200448
+	Last sector, +sectors or +size{K,M,G} (4200448-8390655, default 8390655): +1G
+	Partition 6 of type Linux and of size 1 GiB is set
+
+	Command (m for help): n
+	Partition type:
+	   p   primary (1 primary, 1 extended, 2 free)
+	   l   logical (numbered from 5)
+	Select (default p): l
+	Adding logical partition 7
+	First sector (6299648-8390655, default 6299648):
+	Using default value 6299648
+	Last sector, +sectors or +size{K,M,G} (6299648-8390655, default 8390655):
+	Using default value 8390655
+	Partition 7 of type Linux and of size 1021 MiB is set
+	
+	Command (m for help): p
+
+	Disk /dev/sdb: 10.7 GB, 10737418240 bytes, 20971520 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x18b32a0e
+
+	   Device Boot      Start         End      Blocks   Id  System
+	/dev/sdb1            2048     2099199     1048576   83  Linux
+	/dev/sdb2         2099200     8390655     3145728    5  Extended
+	/dev/sdb5         2101248     4198399     1048576   83  Linux
+	/dev/sdb6         4200448     6297599     1048576   83  Linux
+	/dev/sdb7         6299648     8390655     1045504   83  Linux
+	
+	Command (m for help): w
+	The partition table has been altered!
+
+	Calling ioctl() to re-read partition table.
+	Syncing disks.
+	
+	// 分区结果
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sdb               8:16   0   10G  0 disk
+	├─sdb1            8:17   0    1G  0 part			#主分区
+	├─sdb2            8:18   0    1K  0 part			#扩展分区
+	├─sdb5            8:21   0    1G  0 part			#逻辑分区，从5开始的编号都是逻辑分区
+	├─sdb6            8:22   0    1G  0 part
+	└─sdb7            8:23   0 1021M  0 part
+	sr0              11:0    1  4.4G  0 rom
+
+	
+	// 修改分区
+	[root@localhost ~]#fdisk /dev/sdb
+	Welcome to fdisk (util-linux 2.23.2).
+
+	Changes will remain in memory only, until you decide to write them.
+	Be careful before using the write command.
+
+
+	Command (m for help): p
+
+	Disk /dev/sdb: 10.7 GB, 10737418240 bytes, 20971520 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x18b32a0e
+
+	   Device Boot      Start         End      Blocks   Id  System
+	/dev/sdb1            2048     2099199     1048576   83  Linux
+	/dev/sdb2         2099200     8390655     3145728    5  Extended
+	/dev/sdb5         2101248     4198399     1048576   83  Linux
+	/dev/sdb6         4200448     6297599     1048576   83  Linux
+	/dev/sdb7         6299648     8390655     1045504   83  Linux
+
+	Command (m for help): d
+	Partition number (1,2,5-7, default 7): 5										# 删除编号5的分区
+	Partition 5 is deleted
+
+	Command (m for help): p
+
+	Disk /dev/sdb: 10.7 GB, 10737418240 bytes, 20971520 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x18b32a0e
+
+	   Device Boot      Start         End      Blocks   Id  System
+	/dev/sdb1            2048     2099199     1048576   83  Linux
+	/dev/sdb2         2099200     8390655     3145728    5  Extended
+	/dev/sdb5         4200448     6297599     1048576   83  Linux					# 删除编号5的分区后,原来的sdb6变为sdb5, sdb7变为sdb6
+	/dev/sdb6         6299648     8390655     1045504   83  Linux
+
+	Command (m for help): n
+	Partition type:
+	   p   primary (1 primary, 1 extended, 2 free)
+	   l   logical (numbered from 5)
+	Select (default p): l
+	Adding logical partition 7
+	First sector (2101248-8390655, default 2101248):
+	Using default value 2101248
+	Last sector, +sectors or +size{K,M,G} (2101248-4200447, default 4200447):
+	Using default value 4200447
+	Partition 7 of type Linux and of size 1 GiB is set
+
+	Command (m for help): p
+
+	Disk /dev/sdb: 10.7 GB, 10737418240 bytes, 20971520 sectors
+	Units = sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disk label type: dos
+	Disk identifier: 0x18b32a0e
+
+	   Device Boot      Start         End      Blocks   Id  System
+	/dev/sdb1            2048     2099199     1048576   83  Linux
+	/dev/sdb2         2099200     8390655     3145728    5  Extended
+	/dev/sdb5         4200448     6297599     1048576   83  Linux
+	/dev/sdb6         6299648     8390655     1045504   83  Linux
+	/dev/sdb7         2101248     4200447     1049600   83  Linux				 # 新加一个逻辑分区,编号为 sdb7, sdb7实际上就是前面删除的sdb5的空间。这就造成分区编号的连续匹配不上分区空间的连续。
+
+	Partition table entries are not in disk order
+
+	Command (m for help): w												
+	The partition table has been altered!
+
+	Calling ioctl() to re-read partition table.
+	Syncing disks.
+	
+	
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sdb               8:16   0   10G  0 disk
+	├─sdb1            8:17   0    1G  0 part
+	├─sdb2            8:18   0    1K  0 part
+	├─sdb5            8:21   0    1G  0 part
+	├─sdb6            8:22   0 1021M  0 part
+	└─sdb7            8:23   0    1G  0 part
+	sr0              11:0    1  4.4G  0 rom
+	
+	[root@localhost ~]#ll /dev/sdb*
+	brw-rw---- 1 root disk 8, 16 Oct 31 15:25 /dev/sdb
+	brw-rw---- 1 root disk 8, 17 Oct 31 15:25 /dev/sdb1
+	brw-rw---- 1 root disk 8, 18 Oct 31 15:25 /dev/sdb2
+	brw-rw---- 1 root disk 8, 21 Oct 31 15:25 /dev/sdb5
+	brw-rw---- 1 root disk 8, 22 Oct 31 15:25 /dev/sdb6
+	brw-rw---- 1 root disk 8, 23 Oct 31 15:25 /dev/sdb7
+	
+	
+	结论：
+		分区名称并不稳定,这是分区的一个特性，所以不要写到配置文件中。描述一个分区可以写分区名，但是不稳定，可以使用设备的UUID，只要不重新创建文件系统，设备的UUID就不会改变
+		可以使用 blkid 命令查看设备的 UUID
+		
+
+	// 删除所有分区，过程省略
+	fdisk /dev/sdb
+	
+	
+	
+	
+4.2 使用 gdisk 进行分区，用法基本和fdisk一样
+
+	[root@localhost ~]#gdisk /dev/sdb
+	GPT fdisk (gdisk) version 0.8.10
+
+	Partition table scan:
+	  MBR: MBR only
+	  BSD: not present
+	  APM: not present
+	  GPT: not present
+
+
+	***************************************************************
+	Found invalid GPT and valid MBR; converting MBR to GPT format
+	in memory. THIS OPERATION IS POTENTIALLY DESTRUCTIVE! Exit by
+	typing 'q' if you don't want to convert your MBR partitions
+	to GPT format!
+	***************************************************************
+
+
+	Command (? for help): ?
+	b       back up GPT data to a file
+	c       change a partition's name
+	d       delete a partition
+	i       show detailed information on a partition
+	l       list known partition types
+	n       add a new partition
+	o       create a new empty GUID partition table (GPT)
+	p       print the partition table
+	q       quit without saving changes
+	r       recovery and transformation options (experts only)
+	s       sort partitions
+	t       change a partition's type code
+	v       verify disk
+	w       write table to disk and exit
+	x       extra functionality (experts only)
+	?       print this menu
+
+	Command (? for help): p
+	Disk /dev/sdb: 20971520 sectors, 10.0 GiB
+	Logical sector size: 512 bytes
+	Disk identifier (GUID): 06276C48-BC90-43B9-B509-E274141CE933
+	Partition table holds up to 128 entries
+	First usable sector is 34, last usable sector is 20971486
+	Partitions will be aligned on 2048-sector boundaries
+	Total free space is 20971453 sectors (10.0 GiB)
+
+	Number  Start (sector)    End (sector)  Size       Code  Name
+
+	Command (? for help): n
+	Partition number (1-128, default 1): 1
+	First sector (34-20971486, default = 2048) or {+-}size{KMGTP}:
+	Last sector (2048-20971486, default = 20971486) or {+-}size{KMGTP}: +1G
+	Current type is 'Linux filesystem'
+	Hex code or GUID (L to show codes, Enter = 8300):							# 有特殊要求才会改这个ID，比如要创建逻辑卷，没有特殊需要就用默认值
+	Changed type of partition to 'Linux filesystem'
+
+	Command (? for help): p
+	Disk /dev/sdb: 20971520 sectors, 10.0 GiB
+	Logical sector size: 512 bytes
+	Disk identifier (GUID): 06276C48-BC90-43B9-B509-E274141CE933
+	Partition table holds up to 128 entries
+	First usable sector is 34, last usable sector is 20971486
+	Partitions will be aligned on 2048-sector boundaries
+	Total free space is 18874301 sectors (9.0 GiB)
+
+	Number  Start (sector)    End (sector)  Size       Code  Name
+	   1            2048         2099199   1024.0 MiB  8300  Linux filesystem
+
+	Command (? for help): w
+
+	Final checks complete. About to write GPT data. THIS WILL OVERWRITE EXISTING
+	PARTITIONS!!
+
+	Do you want to proceed? (Y/N): y
+	OK; writing new GUID partition table (GPT) to /dev/sdb.
+	The operation has completed successfully.
+	
+	[root@localhost ~]#lsblk /dev/sdb
+	NAME   MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+	sdb      8:16   0  10G  0 disk
+	└─sdb1   8:17   0   1G  0 part
+	
+	
+	
+4.3 对于一个旧硬盘分区，可能会遇到分区表和实际分区表不同步的问题。
+	旧硬盘不是时间上的旧, 而是指已经在正常使用了的硬盘, 比如系统的安装盘
+
+	
+	使用 fdisk 命令创建一个分区,比如是sdb6，分区后保存退出如果出现如下警告, 一般就会存在这种问题。这个警告实际上已经给出解决方案。
+		WARNING: Re-reading the partition table failed with error 16: Device or resource
+		busy.
+		The kernel still uses the old table. The new table will be used at
+		the next reboot or after you run partprobe(8) or kpartx(8)
+		Syncing disks.
+	
+	使用如下命令可以看到分区已经成功:
+		fdisk /dev/sda -l
+		
+	但是运行下面的命令看不到 sdb6 这个分区
+		lsblk
+		ls /dev/sdb*
+		
+	原因是: 硬盘分区表和内存中的分区表不同步
+	
+	
+解决方法:	
+	centos5、7、8 使用如下两个命令都可以:
+		partprobe
+		kpartx
+	
+	centos6同步比较麻烦，增加和删除分区的处理方式不一样
+		增加分区运行如下命令同步到内存:
+			partx -a /dev/sda
+		删除分区运行如下命令同步到内存:
+			partx -d --nr 6-7 /dev/sda
+			
+
+
+4.4 文件系统：文件系统的作用就是提供文件管理功能，把磁盘空间里的数据以文件的方式提出出来让用户使用，这就是文件系统的核心意义
+    分区后理论上没有文件系统也能存放数据,但不是以文件的形式存放,直接是二进制形式存放
+	文件系统就是把磁盘上的数据以文件的方式进行组织
+
+	文件系统也有开销,比如文件系统的元数据也保存在硬盘上。不同的文件系统还有一些额外的功能,例如权限、压缩、加密、日志等
+	
+	
+	
+文件系统类型：
+	
+	Linux 常用文件系统：
+		ext2	：Extended file system 适用于那些分区容量不是太大，更新也不频繁的情况，例如 /boot 分区
+		ext3	：是 ext2 的改进版本，其支持日志功能，能够帮助系统从非正常关机导致的异常中恢复
+		ext4	：是 ext 文件系统的最新版。提供了很多新的特性，包括纳秒级时间戳、创建和使用巨型文件(16TB)、最大1EB的文件系统，以及速度的提升。 Ubuntu默认用ext4
+		xfs		：SGI，支持最大8EB的文件系统。从centos7开始，红帽就推崇用 xfs。主要特性就是支持的空间大
+		swap
+		iso9660 光盘
+		btrfs（Oracle）
+		reiserfs	
+		
+		注: ext4 是现在主流的文件系统，而且历史悠久，推荐使用！！！	
+		
+	Windows 常用文件系统
+		FAT32
+		NTFS			微软的私有文件系统，linux较高的版本也可以编译内核，让内核能支持NTFS, 默认不支持
+		exFAT
+		
+	Unix：
+		FFS（fast）
+		UFS（unix）
+		JFS2
+		
+	网络文件系统：
+		NFS
+		CIFS
+		
+	集群文件系统：
+		GFS2
+		OCFS2（oracle）
+		
+	分布式文件系统：
+		fastdfs
+		ceph
+		moosefs
+		mogilefs
+		glusterfs
+		Lustre
+	
+	RAW：
+		裸文件系统,未经处理或者未经格式化产生的文件系统。裸文件系统(没有文件系统，直接存在硬盘分好区的空间中，很少见，后期管理很麻烦,只能以二进制形式管理),追求高性能。比如Oracle数据库	
+
+
+Linux的虚拟文件系统
+	虚拟文件系统为各种文件系统提供了统一的入口。让上层用户对底层文件系统的不同差异没有感知。比如用户运行ls命令访问各种文件系统上的文件，所有表现出来的形式是一样的。
+	用户 ==》 虚拟文件系统(为ext4、xfs等提供统一接口) ==》 文件系统
+
+		
+		
+文件系统的功能是由操作系统内核提供的:
+	// 列出系统支持的文件系统
+	[root@localhost ~]#ls /lib/modules/`uname -r`/kernel/fs
+	binfmt_misc.ko.xz  ceph    dlm    fat      gfs2   lockd          nfs_common  overlayfs  udf
+	btrfs              cifs    exofs  fscache  isofs  mbcache.ko.xz  nfsd        pstore     xfs
+	cachefiles         cramfs  ext4   fuse     jbd2   nfs            nls         squashfs
+	
+	// 输完后按tab键, 查看目前支持的文件系统类型
+	[root@localhost ~]#mkfs.
+	mkfs.btrfs   mkfs.cramfs  mkfs.ext2    mkfs.ext3    mkfs.ext4    mkfs.minix   mkfs.xfs
+
+
+为新分区创建文件系统:
+	
+	// -f 可以显示出分区的文件系统, 可以看到sdb1分区没有任何文件系统
+	[root@localhost ~]#lsblk -f
+	NAME            FSTYPE      LABEL           UUID                                   MOUNTPOINT
+	sda
+	├─sda1          xfs                         5749bb60-3729-4dfb-84dd-232108cc4944   /boot
+	└─sda2          LVM2_member                 RkGwX7-oVcW-vbNu-Jo7f-b1Hs-Epb5-3yZkBO
+	  ├─centos-root xfs                         6048e3e7-c9d9-4ebc-b0fa-ba0aa27ddfa6   /
+	  └─centos-swap swap                        111c047b-93f2-4df8-b54d-93fd9933465a   [SWAP]
+	sdb
+	└─sdb1
+	sr0             iso9660     CentOS 7 x86_64 2020-11-04-11-36-43-00
+	
+	[root@localhost ~]#lsblk -f /dev/sdb1
+	NAME FSTYPE LABEL UUID MOUNTPOINT
+	sdb1
+	
+	// 为新分区创建文件系统
+	[root@localhost ~]#mkfs.ext4 /dev/sdb1
+	mke2fs 1.42.9 (28-Dec-2013)
+	Filesystem label=
+	OS type: Linux
+	Block size=4096 (log=2)
+	Fragment size=4096 (log=2)
+	Stride=0 blocks, Stripe width=0 blocks
+	65536 inodes, 262144 blocks
+	13107 blocks (5.00%) reserved for the super user
+	First data block=0
+	Maximum filesystem blocks=268435456
+	8 block groups
+	32768 blocks per group, 32768 fragments per group
+	8192 inodes per group
+	Superblock backups stored on blocks:
+			32768, 98304, 163840, 229376
+
+	Allocating group tables: done
+	Writing inode tables: done
+	Creating journal (8192 blocks): done
+	Writing superblocks and filesystem accounting information: done
+	
+	[root@localhost ~]#lsblk -f /dev/sdb1
+	NAME FSTYPE LABEL UUID                                 MOUNTPOINT
+	sdb1 ext4         fad10a4c-f1e5-4b28-8198-c42aeefbf505
+	
+	// 可以查看块设备属性信息, 没有没给新分区创建文件系统，不会在这里列出来
+	[root@localhost ~]#blkid
+	/dev/sda1: UUID="5749bb60-3729-4dfb-84dd-232108cc4944" TYPE="xfs"
+	/dev/sda2: UUID="RkGwX7-oVcW-vbNu-Jo7f-b1Hs-Epb5-3yZkBO" TYPE="LVM2_member"
+	/dev/sr0: UUID="2020-11-04-11-36-43-00" LABEL="CentOS 7 x86_64" TYPE="iso9660" PTTYPE="dos"
+	/dev/mapper/centos-root: UUID="6048e3e7-c9d9-4ebc-b0fa-ba0aa27ddfa6" TYPE="xfs"
+	/dev/mapper/centos-swap: UUID="111c047b-93f2-4df8-b54d-93fd9933465a" TYPE="swap"
+	/dev/sdb1: UUID="fad10a4c-f1e5-4b28-8198-c42aeefbf505" TYPE="ext4" PARTLABEL="Linux filesystem" PARTUUID="b771bb7b-b28e-43e5-8e2d-20888e7ee149"
+	[root@localhost ~]#
+	
+	
+	注意: 不能给扩展分区创建文件系统，只能给扩展分区里面的逻辑分区创建文件系统
+	
+
+查看ext4文件系统的元信息以及状态（dumpe2fs 命令只能看ext系列的文件系统）:  
+	[root@localhost ~]#dumpe2fs /dev/sdb1
+	Block size:               4096				// 1块的大小 4k
+	Inode count:              65536				// 节点数
+	Block count:              262144			// 总块数
+	Reserved block count:     13107				// 保留的块，普通用户不能使用。保留的块占总块数的5%，这个比例可以改
+	Reserved blocks uid:      0 (user root)		// 保留的块给root用户以及root组用
+	Reserved blocks gid:      0 (group root)
+	
+	Group 0: (Blocks 0-32767)
+	  Checksum 0x5f95, unused inodes 8181
+	  Primary superblock at 0, Group descriptors at 1-1			 	// Group 0 是超级块
+	Group 1: (Blocks 32768-65535) [INODE_UNINIT]
+	  Checksum 0xb8f9, unused inodes 8192
+	  Backup superblock at 32768, Group descriptors at 32769-32769
+	Group 2: (Blocks 65536-98303) [INODE_UNINIT, BLOCK_UNINIT]
+	  Checksum 0x0d34, unused inodes 8192
+	  Block bitmap at 131 (bg #0 + 131), Inode bitmap at 147 (bg #0 + 147)
+	Group 3: (Blocks 98304-131071) [INODE_UNINIT]
+	  Checksum 0xe037, unused inodes 8192
+	  Backup superblock at 98304, Group descriptors at 98305-98305
+	......
+	
+	说明:
+		Group 0 是超级块, 里面保存着文件系统元数据，很重要，丢失了就不能访问文件系统。
+		所以在 Group 1、3、5、7、9 中都备份了元数据
+
+
+	// 下面命令和"dumpe2fs /dev/sdb1"命令一样，只不过不显示group信息
+	tune2fs /dev/sdb1 -l
+
+
+查看xfs文件系统的元信息以及状态	
+	[root@localhost ~]#lsblk -f /dev/sda1
+	NAME FSTYPE LABEL UUID                                 MOUNTPOINT
+	sda1 xfs          5749bb60-3729-4dfb-84dd-232108cc4944 /boot
+	
+	[root@localhost ~]#xfs_info /dev/sda1
+	meta-data=/dev/sda1              isize=512    agcount=4, agsize=65536 blks
+			 =                       sectsz=512   attr=2, projid32bit=1
+			 =                       crc=1        finobt=0 spinodes=0
+	data     =                       bsize=4096   blocks=262144, imaxpct=25			// bsize 就是块大小，也是4K
+			 =                       sunit=0      swidth=0 blks
+	naming   =version 2              bsize=4096   ascii-ci=0 ftype=1
+	log      =internal               bsize=4096   blocks=2560, version=2
+			 =                       sectsz=512   sunit=0 blks, lazy-count=1
+	realtime =none                   extsz=4096   blocks=0, rtextents=0
+	[root@localhost ~]#
+	
+	
+4.5 文件系统检测和修复
+	
+	修复最多只能让文件系统正常，数据能不能恢复不一定，但至少能让文件系统用起来。
+	如果没有文件系统或文件系统坏了，所有的数据都不能用了，恢复了至少有些数据还能用。
+	
+	
+	注意：一定不要在挂载状态下执行下面命令修复, 要先 umount ，再修复，否则会对文件系统造成更严重的破坏
+	
+	fsck（File System Check）命令:
+		
+		常用选项：
+			-a 自动修复，这个参数常用
+			-r 交互式修复错误
+		
+		两种格式:
+			fsck.FS_TYPE				# FS_TYPE 一定要与分区上的文件类型相同	
+			fsck -t FS_TYPE				# FS_TYPE 一定要与分区上的文件类型相同	
+			
+		示例：
+			fsck.ext4  -a /dev/sdb2		# 检查 /dev/sdb2 是否正常，如果有异常便自动修复
+		
+			
+	ext系列文件专用的检测修复工具 e2fsck, 这个命令实际上也调用的是fsck：
+		e2fsck /dev/sdb2 -y
+	
+	xfs文件系统专用检测修复工具 xfs_repair
+		xfs_repair
+	
+	
+	
+挂载分区到目录:	
+	[root@localhost ~]#mount /dev/sdb1 /mnt/
+	
+	//"lost+found"是ext系列的特性，只要是ext系列的文件系统都有，相当于垃圾箱或收容所。因为某种特殊原因，当linux系统发现哪个文件找不到它所属的文件夹，就扔在这里面。一般用不上，也可以删掉。
+	[root@localhost ~]#ls /mnt/
+	lost+found
+	
+	[root@localhost ~]#df -T
+	Filesystem              Type     1K-blocks    Used Available Use% Mounted on
+	devtmpfs                devtmpfs   1918632       0   1918632   0% /dev
+	tmpfs                   tmpfs      1930644       0   1930644   0% /dev/shm
+	tmpfs                   tmpfs      1930644   11840   1918804   1% /run
+	tmpfs                   tmpfs      1930644       0   1930644   0% /sys/fs/cgroup
+	/dev/mapper/centos-root xfs       36805060 2663240  34141820   8% /
+	/dev/sda1               xfs        1038336  188008    850328  19% /boot
+	tmpfs                   tmpfs       386132       0    386132   0% /run/user/0
+	/dev/sdb1               ext4        999320    2564    927944   1% /mnt
+	
+	// 取消挂载
+	[root@localhost ~]#umount /mnt
+	
+	
+修复案例见PDF文档!!!
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+5 挂载管理和swap空间管理
+
+5.1 挂载：将额外文件系统与根文件系统某现存的目录建立起关联关系，进而使得此目录做为其它文件访问入口的行为
+	卸载:为解除此关联关系的过程
+
+	挂载的目录称为挂载点，这个目录应该是提前建好的并且是空文件夹，如果里面包含数据，挂载新的磁盘分区后，数据将会被隐藏！
+	一个挂载点同一时间只能挂载一个设备，如果重复挂载，将会以最新的挂载为准！
+	
+	
+	// 创建挂载点
+	[root@localhost ~]#mkdir /mnt/sdb1
+	
+	// 挂载
+	[root@localhost ~]#mount /dev/sdb1 /mnt/sdb1
+	
+	[root@localhost ~]#ls /mnt/sdb1
+	lost+found
+	
+	// 查看关联关系
+	[root@localhost ~]#df
+	Filesystem              1K-blocks    Used Available Use% Mounted on
+	devtmpfs                  1918632       0   1918632   0% /dev
+	tmpfs                     1930644       0   1930644   0% /dev/shm
+	tmpfs                     1930644   11836   1918808   1% /run
+	tmpfs                     1930644       0   1930644   0% /sys/fs/cgroup
+	/dev/mapper/centos-root  36805060 2661896  34143164   8% /
+	/dev/sda1                 1038336  188008    850328  19% /boot
+	tmpfs                      386132       0    386132   0% /run/user/0
+	/dev/sdb1                  999320    2564    927944   1% /mnt/sdb1
+	
+	// 解除挂载，解除挂载后使用 df 命令可以发现关联关系也取消了
+	[root@localhost ~] umount /mnt/sdb1
+	
+
+一个挂载点同一时间只能挂载一个设备：
+	// 假如现在有个两个设备, 同时挂到一个目录
+	mount /dev/sdb1 /mnt/sdb1
+	mount /dev/sdb2 /mnt/sdb1
+
+	// 以最新的挂载为准，所以 /mnt/sdb1 挂载的是 sdb2， 现在取消挂载 sdb2
+	umount /mnt/sdb2
+	
+	// 取消 sdb2 后，可以发现 /dev/sdb1 此时挂载的是 /dev/sdb1，这种情形有点像数据结构中的栈
+
+
+一个设备可以同时挂载到多个文件夹上。
+
+
+
+重新挂载：
+	方式1：
+		// 如果有用户正在使用挂载目录，就不能取消挂载
+		umount /mnt/sdb1
+		
+		// 查看是谁在使用这个目录，然后就可以通知这个人不要使用这个文件夹。或者强制停止用户使用这个挂载点
+		fuser -v /mnt/sdb1
+		
+		// 强制停止用户使用这个挂载点
+		fuser -km /mnt/sdb1
+		
+		mount -o ro /dev/sdb1 /mnt/sdb1		// -o ro 表示 只读挂载
+		
+		
+		
+	方式2：
+		// 如果有用户正在使用挂载目录, 也能挂载成功 
+		mount -o remount,rw /mnt/sdb1		// rw 表示可读可写
+
+
+
+查看挂载情况
+	#通过查看/etc/mtab文件显示当前已挂载的所有设备
+	mount
+	
+	#查看内核追踪到的已挂载的所有设备
+	cat /proc/mounts
+	
+	#查看挂载点情况, 可以看到文件夹是否是个挂载点
+	[root@localhost ~]#findmnt /mnt/sdb1
+	TARGET    SOURCE    FSTYPE OPTIONS
+	/mnt/sdb1 /dev/sdb1 ext4   rw,relatime,data=ordered
+
+	#查看正在访问指定文件系统的进程，lsof 和 fuser命令后面也可以跟普通文件夹和文件
+	lsof MOUNT_POINT
+	fuser -v MOUNT_POINT
+	
+	#终止所有在正访问指定的文件系统的进程
+	fuser -km MOUNT_POINT
+	
+	
+	
+持久挂载
+	// 这个挂载是临时挂载，重新启动后就没有了
+	mount /dev/sdb1 /mnt/sdb1
+	
+	将挂载保存到 /etc/fstab 中可以下次开机时，自动启用挂载
+	/etc/fstab 格式如下:
+		/dev/mapper/centos-root 						/                 xfs     defaults        0 0
+		UUID=5749bb60-3729-4dfb-84dd-232108cc4944 		/boot             xfs     defaults        0 0
+		
+	说明：
+		第一列: UUID | 设备分区名 | 卷标(卷标现在已经不推荐使用) ，使用 blkid 命令可以查看设备的UUID
+		第二列: 挂载点
+		第三列: 设备的文件系统
+		第四列: 挂载的属性，比如 ro 、rw、acl、noacl，如果有多个选项用逗号隔开，这里一般保持默认
+		第五列: 0表示备份的频次，0 表示不备份，1表示1天备份一次，2代表2天备份一次，这个备份需要配合备份工具使用，一般用不上
+		第六列: 开机有个检测文件系统的过程，0表示不检测，1表示先检测，2表示后续再检测， 表示检测的次数，一般写0就可以
+		
+	改好 /etc/fstab 文件后生效的两种方法:
+		reboot 					# 重启
+		mount -a				# 避免重启，立即生效
+	
+	[root@localhost ~]#blkid /dev/sdb1
+	/dev/sdb1: UUID="fad10a4c-f1e5-4b28-8198-c42aeefbf505" TYPE="ext4" PARTLABEL="Linux filesystem" PARTUUID="b771bb7b-b28e-43e5-8e2d-20888e7ee149"	
+	
+	
+	注意: 如果"/etc/fstab" 的第一列写错误或者文件系统被破坏，那么系统重新启动将失败，只能进入紧急模式或救援模式区修复，案列见 PDF ！！！
+	
+
+挂载不仅可以挂普通的设备, 还可以挂载其它设备，比如还支持文件夹往文件夹上挂载
+	
+	[root@localhost ~]#mkdir dataDir; mkdir mountDir
+	
+	[root@localhost ~]#mount dataDir/ mountDir/
+	mount:  /root/dataDir is not a block device
+	
+	// 要加上 -B 参数，类似软衔接的效果
+	[root@localhost ~]#mount -B dataDir/ mountDir/
+	
+	[root@localhost ~]#touch dataDir/test.txt
+	[root@localhost ~]#ls mountDir/
+	test.txt
+	
+	// 解除挂载
+	[root@localhost ~]#umount mountDir/
+	[root@localhost ~]#ls mountDir/
+	[root@localhost ~]#
+	
+	
+5.2 swap 介绍，swap 就是交换文件系统，用来缓解内存不足的情况。系统的 swap 空间大小，官方有推荐值，详见 PDF 。
+	
+	工作原理：用硬盘模拟内存，内存中将暂时用不到的数据存到硬盘中！k8s就要求禁用swap
+	
+	// swap 是一种特殊的文件系统，
+	[root@localhost ~]#lsblk -f
+	NAME            FSTYPE      LABEL           UUID                                   MOUNTPOINT
+	sda
+	├─sda1          xfs                         5749bb60-3729-4dfb-84dd-232108cc4944   /boot
+	└─sda2          LVM2_member                 RkGwX7-oVcW-vbNu-Jo7f-b1Hs-Epb5-3yZkBO
+	  ├─centos-root xfs                         6048e3e7-c9d9-4ebc-b0fa-ba0aa27ddfa6   /
+	  └─centos-swap swap                        111c047b-93f2-4df8-b54d-93fd9933465a   [SWAP]
+	sdb
+	└─sdb1          ext4                        fad10a4c-f1e5-4b28-8198-c42aeefbf505   /mnt/sdb1
+	sr0             iso9660     CentOS 7 x86_64 2020-11-04-11-36-43-00
+	
+	
+	有些物理机，上面有很多虚拟机，虚拟机的内存加起来超过了物理的内存，这就称之为超分，当虚拟机都启动起来的时候，物理机内存不够用，这时swap就能起到作用！
+	swap的缺点就是慢！！！
+	
+	vmvare中可以不用关闭虚拟机就调整内存大小，即时生效！！
+	
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        224M        3.3G         11M        124M        3.3G
+	Swap:          3.9G          0B        3.9G	
+	
+	
+	
+给Swap空间增加2G：
+	
+	// swap是一个分区，分完大小就不能变，怎么办？再建一个2G的swap分区
+	[root@localhost ~]#gdisk /dev/sdb
+	GPT fdisk (gdisk) version 0.8.10
+
+	Partition table scan:
+	  MBR: protective
+	  BSD: not present
+	  APM: not present
+	  GPT: present
+
+	Found valid GPT with protective MBR; using GPT.
+
+	Command (? for help): n
+	Partition number (2-128, default 2):
+	First sector (34-20971486, default = 2099200) or {+-}size{KMGTP}:
+	Last sector (2099200-20971486, default = 20971486) or {+-}size{KMGTP}: +2G
+	Current type is 'Linux filesystem'
+	Hex code or GUID (L to show codes, Enter = 8300): L
+	0700 Microsoft basic data  0c01 Microsoft reserved    2700 Windows RE
+	3000 ONIE boot             3001 ONIE config           4100 PowerPC PReP boot
+	4200 Windows LDM data      4201 Windows LDM metadata  7501 IBM GPFS
+	7f00 ChromeOS kernel       7f01 ChromeOS root         7f02 ChromeOS reserved
+	8200 Linux swap            8300 Linux filesystem      8301 Linux reserved					# 注意: swap 的GUID是 8200
+	8302 Linux /home           8400 Intel Rapid Start     8e00 Linux LVM
+	a500 FreeBSD disklabel     a501 FreeBSD boot          a502 FreeBSD swap
+	a503 FreeBSD UFS           a504 FreeBSD ZFS           a505 FreeBSD Vinum/RAID
+	a580 Midnight BSD data     a581 Midnight BSD boot     a582 Midnight BSD swap
+	a583 Midnight BSD UFS      a584 Midnight BSD ZFS      a585 Midnight BSD Vinum
+	a800 Apple UFS             a901 NetBSD swap           a902 NetBSD FFS
+	a903 NetBSD LFS            a904 NetBSD concatenated   a905 NetBSD encrypted
+	a906 NetBSD RAID           ab00 Apple boot            af00 Apple HFS/HFS+
+	af01 Apple RAID            af02 Apple RAID offline    af03 Apple label
+	af04 AppleTV recovery      af05 Apple Core Storage    be00 Solaris boot
+	bf00 Solaris root          bf01 Solaris /usr & Mac Z  bf02 Solaris swap
+	bf03 Solaris backup        bf04 Solaris /var          bf05 Solaris /home
+	bf06 Solaris alternate se  bf07 Solaris Reserved 1    bf08 Solaris Reserved 2
+	bf09 Solaris Reserved 3    bf0a Solaris Reserved 4    bf0b Solaris Reserved 5
+	c001 HP-UX data            c002 HP-UX service         ea00 Freedesktop $BOOT
+	eb00 Haiku BFS             ed00 Sony system partitio  ed01 Lenovo system partit
+	Press the <Enter> key to see more codes:
+	ef00 EFI System            ef01 MBR partition scheme  ef02 BIOS boot partition
+	fb00 VMWare VMFS           fb01 VMWare reserved       fc00 VMWare kcore crash p
+	fd00 Linux RAID
+	Hex code or GUID (L to show codes, Enter = 8300): 8200										# 注意: 把 swap 分区的 GUID 设置为 8200						
+	Changed type of partition to 'Linux swap'
+
+	Command (? for help): p
+	Disk /dev/sdb: 20971520 sectors, 10.0 GiB
+	Logical sector size: 512 bytes
+	Disk identifier (GUID): 06276C48-BC90-43B9-B509-E274141CE933
+	Partition table holds up to 128 entries
+	First usable sector is 34, last usable sector is 20971486
+	Partitions will be aligned on 2048-sector boundaries
+	Total free space is 14679997 sectors (7.0 GiB)
+
+	Number  Start (sector)    End (sector)  Size       Code  Name
+	   1            2048         2099199   1024.0 MiB  8300  Linux filesystem
+	   2         2099200         6293503   2.0 GiB     8200  Linux swap
+
+	Command (? for help): w
+
+	Final checks complete. About to write GPT data. THIS WILL OVERWRITE EXISTING
+	PARTITIONS!!
+
+	Do you want to proceed? (Y/N): y
+	OK; writing new GUID partition table (GPT) to /dev/sdb.
+	Warning: The kernel is still using the old partition table.
+	The new table will be used at the next reboot.
+	The operation has completed successfully.
+	
+	
+	// 查看一个硬盘的分区详情
+	[root@localhost ~]#gdisk -l /dev/sdb
+	GPT fdisk (gdisk) version 0.8.10
+
+	Partition table scan:
+	  MBR: protective
+	  BSD: not present
+	  APM: not present
+	  GPT: present
+
+	Found valid GPT with protective MBR; using GPT.
+	Disk /dev/sdb: 20971520 sectors, 10.0 GiB
+	Logical sector size: 512 bytes
+	Disk identifier (GUID): 06276C48-BC90-43B9-B509-E274141CE933
+	Partition table holds up to 128 entries
+	First usable sector is 34, last usable sector is 20971486
+	Partitions will be aligned on 2048-sector boundaries
+	Total free space is 14679997 sectors (7.0 GiB)
+
+	Number  Start (sector)    End (sector)  Size       Code  Name
+	   1            2048         2099199   1024.0 MiB  8300  Linux filesystem
+	   2         2099200         6293503   2.0 GiB     8200  Linux swap
+	
+
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sdb               8:16   0   10G  0 disk
+	├─sdb1            8:17   0    1G  0 part
+	└─sdb2            8:18   0    2G  0 part
+	sr0              11:0    1  4.4G  0 rom
+	
+	
+	// blkid用于查看块设备UUID、Label、挂载、文件系统类型等信息 
+	[root@localhost ~]#blkid /dev/sdb2
+	/dev/sdb2: PTTYPE="dos" PARTLABEL="Linux filesystem" PARTUUID="a916c501-70e4-4103-8bae-c48531e67fb9"
+	
+	
+	// 创建swap文件系统
+	[root@localhost ~]#mkswap /dev/sdb2
+	mkswap: /dev/sdb2: warning: don't erase bootbits sectors
+			(dos partition table detected). Use -f to force.
+	Setting up swapspace version 1, size = 2097148 KiB
+	no label, UUID=14a27e6e-04e2-49e0-ac1a-ed2e3717d321
+	
+	[root@localhost ~]#blkid /dev/sdb2
+	/dev/sdb2: UUID="14a27e6e-04e2-49e0-ac1a-ed2e3717d321" TYPE="swap" PTTYPE="dos" PARTLABEL="Linux filesystem" PARTUUID="a916c501-70e4-4103-8bae-c48531e67fb9"
+	
+	
+	// 在 "/etc/fstab" 文件中添加如下行， 第二列的swap也可以写为 none，因为这个分区是模拟内存的，所以没有挂载点
+	UUID=14a27e6e-04e2-49e0-ac1a-ed2e3717d321  swap                    swap    defaults        0 0
+	
+	// 让挂载立即生效
+	[root@localhost ~]#swapon -a
+	
+	// 查看是否生效
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        226M        3.3G         11M        129M        3.3G
+	Swap:          5.9G          0B        5.9G
+	
+	// 查看swap信息，显示更详细
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2				# -2 代表优先级，数字越大优先级越高，优先级越高就会被优先使用
+	/dev/sdb2                               partition       2097148 0       -3				# 假如这里挂载的sdb1，sdb1是硬盘的外圈，效率更高，如果修改此swap的优先级？
+	
+	
+	// 模拟内存占用，mem + Swap = 9.6G 内存，如果同一时间占用的内存超过9.6G，就会报内存溢出
+	[root@localhost ~]#dd if=/dev/zero of=/dev/null bs=10G count=1
+	dd: memory exhausted by input buffer of size 10737418240 bytes (10 GiB)
+	
+	
+	
+改变 swap 的优先级：
+	
+	// 修改 "/etc/fstab" 文件， 修改属性这一列，添加pri属性
+	UUID=14a27e6e-04e2-49e0-ac1a-ed2e3717d321  swap                    swap    pri=1        0 0
+	
+	// 首先要禁用被修改的swap分区
+	[root@localhost ~]#swapoff /dev/sdb2
+	
+	// 查看禁用是否成功
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2
+	
+	// 重新生效
+	[root@localhost ~]#swapon -a
+	
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2
+	/dev/sdb2                               partition       2097148 0       1				# 优先级已经变更成功
+	
+	
+	总结:
+		可以指定swap分区0到32767的优先级，值越大优先级越高
+		如果用户没有指定，那么核心会自动给swap指定一个优先级，这个优先级从-1开始，每加入一个新的没有用户指定优先级的swap，会给这个优先级减一
+		先添加的swap的缺省优先级比较高，除非用户自己指定一个优先级，而用户指定的优先级(是正数)永远高于核心缺省指定的优先级(是负数)
+	
+	
+	注意：生产中很少有两个swap，一般就1个swap !!!
+	
+	
+禁用swap
+	// 修改 "/etc/fstab" 文件，注释掉swap配置行
+	
+	// 立即禁用所有swap
+	[root@localhost ~]#swapoff -a
+	
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        226M        3.3G         11M        129M        3.3G
+	Swap:            0B          0B          0B
+	
+	------------------------------------------------------------------------------------
+	|	// 下面命令也可以同时开启所有swap，但必须"/etc/fstab"文件中有相应的swap配置	   |
+	|	swapon -a 																	   |
+	------------------------------------------------------------------------------------
+
+
+一个文件也可以提供swap功能:
+	
+	场景1: 分区的时候没有考虑到要用swap，后面发现需要swap，但是分区分完了，没法新增加分区了，这时候就拿文件来当swap
+	       
+	拿文件当swap功能的做法如下：
+	
+	// 创建一个两个G的文件
+	[root@localhost ~]#dd if=/dev/zero of=/swapfile  bs=1M count=2048
+	2048+0 records in
+	2048+0 records out
+	2147483648 bytes (2.1 GB) copied, 5.51865 s, 389 MB/s
+	
+	[root@localhost ~]#ll -h /swapfile
+	-rw-r--r-- 1 root root 2.0G Oct 31 23:19 /swapfile
+	
+	// 改文件权限，防止内存中的数据被人看到，改了后除了root，其它人都不能看
+	[root@localhost ~]#chmod a= /swapfile
+	
+	[root@localhost ~]#ll /swapfile
+	---------- 1 root root 2147483648 Oct 31 23:19 /swapfile
+	
+	// 这个文件不能直接用，同样要创建swap文件系统
+	[root@localhost ~]#mkswap /swapfile
+	Setting up swapspace version 1, size = 2097148 KiB
+	no label, UUID=e8ab659f-b01d-434e-9a22-23776edc30e1
+	
+	[root@localhost ~]#blkid /swapfile
+	/swapfile: UUID="e8ab659f-b01d-434e-9a22-23776edc30e1" TYPE="swap"
+	
+	
+	// 在"/etc/fstab" 文件中添加如下行，注意：第1列不要写UUID，要写文件名，因为UUID是针对设备来说，在系统启动的时候知道设备的UUID，但这个时候它并不知道UUID指的是哪个文件，将来就会找不到
+	/swapfile                                  none     swap    defaults        0 0
+	
+	
+	[root@localhost ~]#swapon -a
+	
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        233M        1.3G         11M        2.2G        3.2G
+	Swap:          7.9G          0B        7.9G
+	
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2
+	/dev/sdb2                               partition       2097148 0       1
+	/swapfile                               file    2097148 0       -3
+	
+	
+	
+	场景2: 硬盘占用快满了，需要更多的空间给业务用。这个时候就需要删除些没用的文件
+		   如果这个磁盘中有一个文件作为swap功能用，这时就可以把这个文件移到另外一个挂载的磁盘上去，这样就可以释放一些空间
+
+	// 找一个空闲的时候，内存消耗量很少，可用空间很大，首先检查下内存占用
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        233M        1.3G         11M        2.2G        3.2G
+	Swap:          7.9G          0B        7.9G
+	
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2
+	/dev/sdb2                               partition       2097148 0       1
+	
+	// 先禁用
+	[root@localhost ~]#swapoff /swapfile
+	
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2
+	/dev/sdb2                               partition       2097148 0       1
+	
+	// 假如"/data"这个目录挂载的是另外一个磁盘的分区
+	[root@localhost ~]#mv /swapfile /data/ ; ll /data/swapfile
+	---------- 1 root root 2147483648 Oct 31 23:22 /data/swapfile
+	
+	// 改"/etc/fstab" 文件中的swap配置，如下：
+	/data/swapfile                             none     swap    defaults        0 0
+	
+	[root@localhost ~]#swapon -a
+	
+	[root@localhost ~]#free -h
+				  total        used        free      shared  buff/cache   available
+	Mem:           3.7G        233M        1.3G         11M        2.2G        3.2G
+	Swap:          7.9G          0B        7.9G
+	
+	[root@localhost ~]#swapon -s
+	Filename                                Type            Size    Used    Priority
+	/dev/dm-1                               partition       4063228 0       -2
+	/dev/sdb2                               partition       2097148 0       1
+	/data/swapfile                          file    2097148 0       -3
+	[root@localhost ~]#
+	
+	
+5.3 swap的使用策略, "/proc/sys/vm/swappiness"的值决定了当内存占用达到一定的百分比时，会启用swap分区的空间
+	
+	[root@localhost ~]#cat /proc/sys/vm/swappiness
+	30
+	[root@localhost ~]#
+	
+	说明：
+		内存在使用到100-30=70%的时候，就开始出现有交换分区的使用。简单地说这个参数定义了系统对swap的使用倾向，默认值为30，值越大表示越倾向于使用swap。
+		值可以设为0，这样做并不会禁止对swap的使用，只是最大限度地降低了使用swap的可能性
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 移动设备和raid初步
+	
+6.1 光盘（了解），很多服务器现在没有光驱，用的很少
+	光盘直接挂载目录下就可以直接用
+	
+	// 挂载光驱
+	mount /dev/sr0 /mnt/
+	
+	//弹出光盘
+	eject 
+	
+	// 弹入光盘
+	eject -t
+	
+	// 把光盘内容做成iso镜像
+	cp /dev/cdrom /root/centos.iso
+	
+	// cdrom 实际上就是sr0
+	[root@localhost ~]#ll /dev/cdrom
+	lrwxrwxrwx 1 root root 3 Nov  1 10:50 /dev/cdrom -> sr0
+	
+	// 镜像文件可以直接挂载
+	mount /data/centos7.iso /media
+	
+	// 把/etc 目录打包生成ios文件
+	mkisofs -r -o /root/etc.iso /etc
+	
+	
+	// 光盘淘汰，但是可以将iso盘制作为u盘，这样的制作工具很多，比如 Rufus
+	
+	
+6.2 USB介质（U盘，移动硬盘）
+
+	// 当U盘、移动硬盘接入到系统，内核会自动识别出来，观察日志可以看到
+	tail /var/log/messages -f
+	
+	
+	// 识别出来的设备名也是以 sd 开头，假如这里有个usb设备名为sdd，也需要挂载才能访问
+	mount /dev/sdd /mnt/
+	
+	如果U盘的文件系统是fat32格式, 使用"lsblk -f"查看到的格式为 vfat, 实际上就是 fat32，fat32文件系统不支持Linux中的权限。
+	在fat32文件系统里面创建的文件，权限将显示为 "-rwxr-xr-x", 并且文件名称是绿色的，使用 chmod 也不能改变权限！！也不能使用 chown 改变所有者和所属组！！对大小写也不敏感！！
+	所以权限不是linux系统的功能，是文件系统的功能！！！
+	
+	
+	// 格式化U盘为 FAT32 文件系统
+	yum -y install dosfstools
+	mkfs.vfat /dev/sdd1
+	
+	// 查看USB设备
+	yum -y install usbutils
+	lsusb
+	
+	
+6.3 磁盘常见工具
+	
+	df 检查文件系统的磁盘空间占用情况(文件系统的大小、使用了多少、可用多少等信息)，但是文件系统必须是挂载状态
+		
+		常用选项:
+			-H 以10为单位
+			-T 文件系统类型
+			-h human-readable
+			-i inodes instead of blocks
+			-P 以Posix兼容的格式输出
+		
+		// 默任以kb为单位显示
+		df
+		
+		// 以M、G 等单位为显示
+		df -h
+		
+		
+		// 把文件系统格式化后，挂载后，即使里面没有任何文件，用 df 命令看到同样有几M空间被占用,这就是文件系统的元数据
+	
+	
+	du 查看文件夹中的文件和文件大小
+		
+		常用选项:
+			-h human-readable
+			-s summary
+			--max-depth=# 指定最大目录层级
+			-x, --one-file-system #忽略不在同一个文件系统的目录
+		
+		// -h 带单位显示，默认以KB为单位显示
+		[root@localhost ~]#du -h /data/
+		0       /data/music
+		16K     /data/soft
+		2.1G    /data/
+		[root@localhost ~]#
+		
+		// -s 查看一个目录的总大小
+		[root@localhost ~]#du -sh /data/
+		2.1G    /data/
+	
+		
+		当删除文件但不释放空间时,有什么不同?(du 查看文件空间释放,df 查看文件系统显示不释放，df显示的是真实的空间状态，du从文件的角度看也确实是删除了的)
+		
+		
+	dd 	convert and copy a file
+		
+		格式：dd if=/PATH/FROM/SRC of=/PATH/TO/DEST bs=# count=#
+		
+		常用选项：
+			if=file 从所命名文件读取而不是从标准输入
+			of=file 写到所命名的文件而不是到标准输出
+			ibs=size 一次读size个byte
+			obs=size 一次写size个byte
+			bs=size block size, 指定块大小（既是是ibs也是obs)
+			cbs=size 一次转化size个byte
+			skip=blocks 从开头忽略blocks个ibs大小的块
+			seek=blocks 从开头忽略blocks个obs大小的块
+			count=n 复制n个bs
+			conv=conversion[,conversion...] 用指定的参数转换文件
+				conversion 转换参数:
+					ascii 转换 EBCDIC 为 ASCII
+					ebcdic 转换 ASCII 为 EBCDIC
+					lcase 把大写字符转换为小写字符
+					ucase 把小写字符转换为大写字符
+					nocreat 不创建输出文件
+					noerror 出错时不停止
+					notrunc 不截短输出文件
+					sync 把每个输入块填充到ibs个字节，不足部分用空(NUL)字符补齐
+					fdatasync 写完成前，物理写入输出文件
+		
+		示例：见PDF !!!
+		
+		
+6.4 空洞文件（也称为稀疏文件）：看起来有大小，但实际上没占地，这是一种特殊文件，虚拟化的时候会用	
+	比如vmvare中创建一个200G的硬盘文件，但实际并不占用200G，而是真正用到的时候才占
+	
+	
+	[root@localhost ~]#df -h
+	Filesystem               Size  Used Avail Use% Mounted on
+	devtmpfs                 1.9G     0  1.9G   0% /dev
+	tmpfs                    1.9G     0  1.9G   0% /dev/shm
+	tmpfs                    1.9G   12M  1.9G   1% /run
+	tmpfs                    1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root   36G  4.6G   31G  13% /
+	/dev/sda1               1014M  184M  831M  19% /boot
+	tmpfs                    378M     0  378M   0% /run/user/0
+	
+	// 创建一个空洞文件, bs=1M 表示以 1M 为单位, seek=1024 表示跳过目标文件的前1024M，然后拷贝0个1M，
+	[root@localhost ~]#dd if=/dev/zero of=bigfile bs=1M count=0 seek=1024
+	0+0 records in
+	0+0 records out
+	0 bytes (0 B) copied, 0.000100747 s, 0.0 kB/s
+	
+	// 文件显示1G大小
+	[root@localhost ~]#ll -h bigfile
+	-rw-r--r-- 1 root root 1.0G Nov  1 11:22 bigfile
+	
+	// 但实际并没有占硬盘空间。所以df看到的是真实的占用空间大小，而不是表面空间上的大小
+	[root@localhost ~]#df -h
+	Filesystem               Size  Used Avail Use% Mounted on
+	devtmpfs                 1.9G     0  1.9G   0% /dev
+	tmpfs                    1.9G     0  1.9G   0% /dev/shm
+	tmpfs                    1.9G   12M  1.9G   1% /run
+	tmpfs                    1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root   36G  4.6G   31G  13% /
+	/dev/sda1               1014M  184M  831M  19% /boot
+	tmpfs                    378M     0  378M   0% /run/user/0
+	
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 raid工作原理和特性
+  分区是主流的方法，但分区完后想变大变小就不行了
+  服务器上的硬盘经过两三年就很容器出故障，所以分区是没办法解决这个问题的，解决方案就是使用 RAID
+  
+  raid是服务器存储上面的一个标配
+  raid有很多实现方案，称为raid级别， aid级别有很多种，但常用的不多
+  
+  raid实现的方案：
+	硬件实现：硬件卡（raid卡），raid卡有两种，专门外接的 和 主板内置的。
+	软件实现：windows和linux系统本身就可以做raid，群晖nas的raid其实就是linux的raid，群晖的系统本身也就是linux系统，linux内核支持raid
+	总结：硬件实现性能更好、更专业， 企业一般用硬件实现，软件实现用在家用环境。
+
+  每个服务器存储厂商配置raid的界面都不一样，但工作原理是一样的。
+	
+  RAID功能实现
+	提高IO能力,磁盘并行读写
+	提高耐用性,磁盘冗余算法来实现
+	
+
+7.1 常用raid方案(级别)：方案不同，多块磁盘组织在一起的工作方式有所不同。参考链接: https://zh.wikipedia.org/wiki/RAID
+
+	RAID-0：条带卷，strip     ==》 没有容错性，企业基本不用。
+	RAID-1：镜像卷，mirror
+	RAID-2		 ==》被淘汰
+	RAID-3		 ==》被淘汰
+	RAID-4		 ==》被淘汰
+	RAID-5
+	RAID-6
+	RAID-7		 ==》被淘汰，不是标准，各个厂商的私有技术，性能好，但是用的极少
+	RAID-10		 ==》推荐，能做RAID-10，就不做RAID-01，企业用的比较多，但是代价也很大，只有50%的利用率，其它50%都用来放了备份
+	RAID-01
+	RAID-50
+	等
+
+7.2
+	RAID-0
+		要求两块设备一样大。如果个10T,一个8T，那么就以8T为准，能用的总共16T
+		当两个硬盘组合成raid，在linux上只能看到一个设备
+		比如存一个1G的文件，会把这1G的文件生成若干个 chunk（chunk的代销可以指定），然后一半放在A硬盘，另一半放在B硬盘，比如chunk1放A盘，chunk2放B盘，chunk3放A盘....
+		RAID-0可以拿单块硬盘做,但是没有任何意义，得不到性能特性。场景：有时候手上只有一块硬盘，利用这一块硬盘先配上RAID-0，等新硬盘到位了再加上，这样就组成了两块硬盘的RAID-0
+		优点: 同时往两个硬盘写，速度快
+		缺点: 其中一个硬盘损坏，全部数据丢失
+	
+	
+	RAID-1
+		同时往两块硬盘写一模一样的数据
+		优点：有容错性
+		缺点：写性能没提升，但读性能有提升（两块硬盘可以同时读），只有一把的空间利用起来
+		
+		
+	RAID-4
+		至少三块硬盘，
+		假如现在4块硬盘，也是数据切成很多小块，三个硬盘放数据，剩下一个盘放校验位。比如A1、A2、A3三块数据分别放在三块硬盘中，最后一块放校验位AP。依次类推
+		如果放校验位的盘坏了，不影响数据；如果放数据的盘其中一块坏了，可以通过校验位恢复。
+		磁盘利用率 (N-1)/N
+		优点：容错性有、效率也有提升
+		缺点：只能容忍一个数据盘坏
+		为什么淘汰？因为在生产时间中，放校验位的盘经常坏，因为读写非常频繁
+		
+		
+	RAID-5
+		改进版的RAID-4
+		把校验位不是固定在一个盘上，每一个盘都有
+		生产中用的比较多，但是坏一块硬盘会影响服务器的性能，因为坏掉一块就会用其它盘的数据，去计算出损坏硬盘的数据，这时候系统性能急剧下降，这称为降级使用！！出现这种情况要及时修复
+		可以准备一块空闲硬盘(spare disk), 当坏了一块后，自动替换上
+		缺点: 坏一块可以，但是坏两块就没有办法了
+	
+	RAID-6
+		有两个校验位
+		至少4个硬盘，使用率 (n-2)/n
+		性能不错，容错性更强，允许多多2块硬盘同时损坏
+		容错性其实损失硬盘空间得来的
+		
+	
+	RAID-10
+		实际上是 RAID-1 和 RAID-0 的组合
+		至少4个硬盘
+		两个硬盘分别组成RAID-1，再把两个RAID-1组成RAID-0
+		每组RAID-1允许坏掉一块硬盘
+		更推荐使用
+		
+	RAID-01
+		实际上是 RAID-0 和 RAID-1 的组合
+		至少4个硬盘
+		两个硬盘分别组成RAID-0，再把两个RAID-0组成RAID-1
+		允许一组RAID-0损坏
+	
+	RAID-50
+		实际上是 RAID-5 和 RAID-0 的组合
+		多块磁盘先实现RAID5,再组合成RAID0
+	
+	RAID-60
+		实际上是 RAID-6 和 RAID-0 的组合
+	
+	
+	常用级别：RAID-0, RAID-1, RAID-5, RAID-10, RAID-50, RAID-60
+
+
+7.3 raid 缺点:
+	当raid空间不够了，就需要扩容，扩容需要关掉服务器，需要重新在raid的配置界面去重新构建，但这个过程需要关机停服务，影响业务！
+	不能在线扩容！！！
+	
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展：
+	docker的 联合文件系统，一个目录可以挂载多个分区
+	
+	// -n 1 表示 每隔一秒运行"free -h"， -d=cumulative 表示高亮显示变化情况
+	watch -n 1 -d=cumulative free -h
+	
+	
+	清理内存缓存的方法：
+		// Linux有自己完备的一套内存回收机制，并不需要人为的干预，但它同时也提供了一种手动释放的手段，可以在调试的时候使用，方法是通过设置"/proc/sys/vm/drop_cache"参数
+		[root@localhost ~]#find /proc/ -name 'drop_*'
+		/proc/sys/vm/drop_caches
+	
+		// 这个参数可接收3个数字的输入，分别是1, 2和3，写入1代表只释放page cache的可回收部分，写入2代表只释放slab cache中的可回收部分。写入3代表同时释放page cache和reclaimable slab cache。
+		[root@localhost ~]#echo 3 > /proc/sys/vm/drop_caches
+		
+		[root@localhost ~]#cat /proc/sys/vm/drop_caches
+		3
+		
+		[root@localhost ~]#
+	
+	

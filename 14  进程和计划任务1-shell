@@ -1,0 +1,388 @@
+
+1 shell脚本编程进阶字符串切片和高级变量
+
+1.1 字符串处理
+
+	字符串切片：
+		#返回字符串变量var的字符的长度,一个汉字算一个字符
+		${#var}
+		
+		#返回字符串变量var中从第offset个字符后（不包括第offset个字符）的字符开始，到最后的部分，offset的取值在0 到 ${#var}-1 之间(bash4.2后，允许为负值)
+		${var:offset}
+		
+		#返回字符串变量var中从第offset个字符后（不包括第offset个字符）的字符开始，长度为number的部分
+		${var:offset:number}
+		
+		#取字符串的最右侧几个字符,取字符串的最右侧几个字符, 注意：冒号后必须有一空白字符
+		${var: -length}
+		
+		#从最左侧跳过offset字符，一直向右取到距离最右侧lengh个字符之前的内容,即:掐头去尾
+		${var:offset:-length}
+		
+		#先从最右侧向左取到length个字符开始，再向右取到距离最右侧offset个字符之间的内容,注意：-length前空格,并且length必须大于offset
+		${var: -length:-offset}
+	
+	
+		实践：
+			[root@localhost ~]#name=中华人民共和国
+			
+			[root@localhost ~]#echo ${#name}
+			7
+
+			[root@localhost ~]#echo ${name:2}
+			人民共和国
+			
+			[root@localhost ~]#echo ${name:2:2}
+			人民
+			
+			// 注意："-3"前面有空格
+			[root@localhost ~]#echo ${name: -3}
+			共和国
+			
+			[root@localhost ~]#echo ${name:3:-3}
+			民
+			
+			[root@localhost ~]#echo ${name: -6:-3}
+			华人民
+			
+			// 如果 length 等于 offset，什么也不输出
+			[root@localhost ~]#echo ${name: -6:-6}
+			
+			// length 小于 offset
+			[root@localhost ~]#echo ${name: -3:-6}
+			-bash: -6: substring expression < 0
+
+
+	基于模式取子串
+		#其中word可以是指定的任意字符,自左而右，查找var变量所存储的字符串中，第一次出现的word, 删除字符串开头至第一次出现word字符串（含）之间的所有字符,即懒惰模式,以第一个word为界删左留右
+		${var#*word}
+		
+		#同上，贪婪模式，不同的是，删除的是字符串开头至最后一次由word指定的字符之间的所有内容,即贪婪模式,以最后一个word为界删左留右
+		${var##*word}
+
+		#其中word可以是指定的任意字符,功能：自右而左，查找var变量所存储的字符串中，第一次出现的word,删除字符串最后一个字符向左至第一次出现word字符串（含）之间的所有字符,即懒惰模式,以从右向左的第一个word为界删右留左
+		${var%word*}
+		
+		#同上，只不过删除字符串最右侧的字符向左至最后一次出现word字符之间的所有字符,即贪婪模式,以从右向左的最后一个word为界删右留左
+		${var%%word*}
+		
+
+		实践：
+			[root@localhost ~]#url=https://www.abc.com:8080/index.html
+			
+			// 从左往右找-懒惰模式
+			[root@localhost ~]#echo ${url#*:}
+			//www.abc.com:8080/index.html
+			
+			// 从左往右找-贪婪模式
+			[root@localhost ~]#echo ${url##*:}
+			8080/index.html
+			
+			// 从右往左找-懒惰模式
+			[root@localhost ~]#echo ${url%:*}
+			https://www.abc.com
+			
+			// 从右往左找-贪婪模式
+			[root@localhost ~]#echo ${url%%:*}
+			https
+					
+	
+	查找替换
+		#查找var所表示的字符串中，第一次被pattern所匹配到的字符串，以substr替换之
+		${var/pattern/substr}
+		
+		#查找var所表示的字符串中，所有能被pattern所匹配到的字符串，以substr替换之
+		${var//pattern/substr}
+		
+		#查找var所表示的字符串中，行首被pattern所匹配到的字符串，以substr替换之
+		${var/#pattern/substr}
+		
+		#查找var所表示的字符串中，行尾被pattern所匹配到的字符串，以substr替换之
+		${var/%pattern/substr}
+	
+		实践：
+			[root@localhost ~]#line=`getent passwd root`
+			[root@localhost ~]#echo $line
+			root:x:0:0:root:/root:/bin/bash
+			
+			// 替换-懒惰模式
+			[root@localhost ~]#echo ${line/root/admin}
+			admin:x:0:0:root:/root:/bin/bash
+			
+			// 替换-贪婪模式
+			[root@localhost ~]#echo ${line//root/admin}
+			admin:x:0:0:admin:/admin:/bin/bash
+			
+			// 替换行首匹配的词
+			[root@localhost ~]#echo ${line/#root/administrator}
+			administrator:x:0:0:root:/root:/bin/bash
+			
+			// 替换行尾匹配的词
+			[root@localhost ~]#echo ${line/%bash/powershell}
+			root:x:0:0:root:/root:/bin/powershell
+
+
+	查找并删除
+		#删除var表示的字符串中第一次被pattern匹配到的字符串
+		${var/pattern}
+		
+		#删除var表示的字符串中所有被pattern匹配到的字符串
+		${var//pattern}
+		
+		#删除var表示的字符串中所有以pattern为行首匹配到的字符串
+		${var/#pattern}
+		
+		#删除var所表示的字符串中所有以pattern为行尾所匹配到的字符串
+		${var/%pattern}
+		
+		实践：
+			[root@localhost ~]#line=`getent passwd root`
+			[root@localhost ~]#echo $line
+			root:x:0:0:root:/root:/bin/bash
+			
+			// 删除-懒惰模式
+			[root@localhost ~]#echo ${line/root}
+			:x:0:0:root:/root:/bin/bash
+			
+			// 删除-贪婪模式
+			[root@localhost ~]#echo ${line//root}
+			:x:0:0::/:/bin/bash
+			
+			// 删除行首匹配的词
+			[root@localhost ~]#echo ${line/#root}
+			:x:0:0:root:/root:/bin/bash
+			
+			// 删除行尾匹配的词
+			[root@localhost ~]#echo ${line/%bash}
+			root:x:0:0:root:/root:/bin/
+					
+
+	字符大小写转换
+		#把var中的所有小写字母转换为大写
+		${var^^}
+		
+		#把var中的所有大写字母转换为小写
+		${var,,}
+			
+		实践：
+			[root@localhost ~]#line=`getent passwd root`
+			[root@localhost ~]#echo $line
+			root:x:0:0:root:/root:/bin/bash
+			
+			// 小写转大写
+			[root@localhost ~]#echo ${line^^}
+			ROOT:X:0:0:ROOT:/ROOT:/BIN/BASH
+			
+			[root@localhost ~]#line2=`echo ${line^^}`
+			[root@localhost ~]#echo $line2
+			ROOT:X:0:0:ROOT:/ROOT:/BIN/BASH
+			
+			// 大小转小写
+			[root@localhost ~]#echo ${line2,,}
+			root:x:0:0:root:/root:/bin/bash		
+	
+	
+1.2 高级变量
+	
+	高级变量赋值：
+		
+		格式1：var=${str-expr}					# 如果str变量没有定义，，则变量var会被赋予默认值（expr相当于默认值）
+		
+			实践：
+				[root@localhost ~]#var=${str-linux};echo $var	
+				linux
+				[root@localhost ~]#str='' var=${str-linux};echo $var	
+
+				[root@localhost ~]#str='unix' var=${str-linux};echo $var
+				unix
+	
+		
+	
+		格式2：var=${str:-expr}					# 如果str变量没有定义或定义了长度为0的空字串串，则变量var会被赋予默认值（expr相当于默认值）
+				
+				// 取消str这个变量
+				[root@localhost ~]#unset str
+				
+				[root@localhost ~]#unset str
+				[root@localhost ~]#var=${str:-linux};echo $var
+				linux
+				[root@localhost ~]#str='' var=${str:-linux};echo $var
+				linux
+				[root@localhost ~]#str=' ' var=${str:-linux};echo $var
+
+				[root@localhost ~]#str=windows var=${str:-linux};echo $var
+				windows
+		
+		其它格式，详见PDF！！
+	
+	
+	
+	高级变量用法-有类型变量：
+		Shell变量一般是无类型的，但是bash Shell提供了declare和typeset两个命令用于指定变量的类型，两个命令是等价的
+		
+		declare [选项] 变量名
+		
+		选项：
+			-r 声明或显示只读变量
+			-i 将变量定义为整型数
+			-a 将变量定义为数组
+			-A 将变量定义为关联数组
+			-f 显示已定义的所有函数名及其内容
+			-F 仅显示已定义的所有函数名
+			-x 声明或显示环境变量和函数,相当于export
+			-l 声明变量为小写字母 declare -l var=UPPER
+			-u 声明变量为大写字母 declare -u var=lower
+			-n make NAME a reference to the variable named by its value
+		
+		
+		实践：
+			[root@localhost ~]#declare -l name=ROOT
+			[root@localhost ~]#echo $name
+			root
+	
+	
+	
+	变量间接引用:
+		
+		eval命令: eval命令将会首先扫描命令行进行所有的置换，然后再执行该命令。该命令适用于那些一次扫描无法实现其功能的变量,该命令对变量进行两次扫描
+			
+			实践1：
+			[root@localhost ~]#n=10
+			[root@localhost ~]#echo {1..$n}   # 为什么这里打印没有展开，因为shell只处理依次，也就是把$n变为10,然后把"{1..10}"当成一整个字符串！！
+			{1..10}
+		
+			[root@localhost ~]#type eval
+			eval is a shell builtin
+			
+			[root@localhost ~]#help eval
+			eval: eval [arg ...]								# eval 后面必须跟参数
+				Execute arguments as a shell command.
+
+				Combine ARGs into a single string, use the result as input to the shell,
+				and execute the resulting commands.
+
+				Exit Status:
+				Returns exit status of command or success if command is null.
+			
+		
+			[root@localhost ~]#eval echo {1..$n}				# eval 会有两次操作，第一次是替换变脸，第二次是运行命令
+			1 2 3 4 5 6 7 8 9 10
+			
+			
+			实践2：
+			[root@localhost ~]#n=3; for i in {1..$n};do echo $i ;done
+			{1..3}
+			[root@localhost ~]#n=3; for i in `eval echo {1..$n}`;do echo $i ;done
+			1
+			2
+			3
+			
+			
+			实践3：
+			[root@localhost ~]#i=o
+			[root@localhost ~]#j=s
+			[root@localhost ~]#$i$j=linux
+			-bash: os=linux: command not found
+			[root@localhost ~]#eval $i$j=linux
+			[root@localhost ~]#echo $os
+			linux
+			
+			
+			实践4：
+			[root@localhost ~]#i=1
+			[root@localhost ~]#j=1
+			[root@localhost ~]#arr[$i$j]=x				
+			[root@localhost ~]#echo ${arr[11]}
+			x
+			[root@localhost ~]#j=2
+			[root@localhost ~]#arr[$i$j]=y				# 注意：数组中用下标取值或赋值时可以不使用 eval
+			[root@localhost ~]#echo ${arr[12]}				
+			y
+			[root@localhost ~]#echo ${arr[$i$j]}		# 注意：数组中用下标取值或赋值时可以不使用 eval
+			y
+		
+	
+		间接变量引用: 
+			如果第一个变量的值是第二个变量的名字，从第一个变量引用第二个变量的值就称为间接变量引用
+			variable1的值是variable2，而variable2又是变量名，variable2的值为value，间接变量引用是指通过variable1获得变量值value的行为
+				variable1=variable2
+				variable2=value
+				
+				#示例:
+					i=1
+					$1=wang
+			
+			bash Shell提供了两种格式实现间接变量引用：
+				#方法1
+					#变量赋值
+					eval tempvar=\$$variable1
+					#显示值
+					eval echo \$$variable1
+					eval echo '$'$variable1
+				
+				#方法2
+					#变量赋值
+					tempvar=${!variable1}
+					#显示值
+					echo ${!variable1}
+			
+				
+			实践1：
+				[root@localhost ~]#ceo=name
+				[root@localhost ~]#name=admin
+				[root@localhost ~]#echo $$ceo			# 这样取会把"$$"变成一个变量，实际上系统里面也存在这个变量，"$$"变量表示当前进程编号
+				1510ceo
+				[root@localhost ~]#echo $$
+				1510
+				
+				[root@localhost ~]#eval echo '$'$ceo	# 被''引起来不会当作变量符号
+				admin
+				[root@localhost ~]#eval echo \$$ceo		# 把变量符号进行转义
+				admin
+				[root@localhost ~]#eval echo ${!ceo}
+				admin
+			
+			
+			实践2：
+				cat create_user.sh	
+				#!/bin/bash
+				n=$#
+				[ $n -eq 0 ] && { echo "Usage: `basename $0` username..." ; exit 2; }
+				
+				for i in `eval echo {1..$n}`;do
+					user=${!i}
+					id $user &> /dev/null && echo $user is exist || { useradd $user; echo $user
+				is created; }
+				done
+				
+				[root@centos8 ~]#bash create_user.sh hehe xixi haha
+				hehe is created
+				xixi is created
+				haha is created					
+					
+					
+		
+		变量引用 reference
+			[root@centos8 ~]#cat test.sh
+			#!/bin/bash
+			title=ceo
+			ceo=mage
+			
+			#声明引用变量ref
+			declare -n ref=$title					# -n 表示间接变量引用，declare 的 "-n"参数在centos8上被支持！！ 查看帮助"help declare"可以知道是否支持该选项
+			[ -R ref ] && echo "reference" 			# [ -R var ] 是bash4.4新特性，-R 在centos8上被支持！！ 	查看帮助"help test"可以知道是否支持该选项
+			
+			echo ref=$ref
+			ceo=wang
+			echo ref=$ref
+			
+			[root@centos8 ~]#bash test.sh
+			reference
+			ref=mage
+			ref=wang	
+	
+			// -x 调试脚本，跟踪脚本运行过程
+			[root@centos8 ~]#bash -x test.sh
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+

@@ -1,0 +1,199 @@
+1 keepalived脑裂现象和实现LVS的高可用
+
+1.1 启用keepalived独立日志功能
+	默认keepalived的日志属于LOG_DAEMON,记录在系统日志messages(centos)或syslog(ubuntu)文件,通过配置可以实现独立日志
+	
+	[root@ka1 ~]# /usr/lib/systemd/system/keepalived.service
+	......
+	[Service]
+	# 这个文件中定义了开启keepalived服务时的选项 
+	EnvironmentFile=-/usr/local/keepalived/etc/sysconfig/keepalived
+	ExecStart=/usr/local/keepalived/sbin/keepalived $KEEPALIVED_OPTIONS
+	......
+	
+	[root@ka1 ~]#cat /usr/local/keepalived/etc/sysconfig/keepalived
+	......
+	KEEPALIVED_OPTIONS="-D -S 6"
+	
+	
+	[root@ka1 ~]#vim /etc/rsyslog.conf
+	local6.* 							/var/log/keepalived.log
+	
+	[root@ka1 ~]#systemctl restart keepalived.service rsyslog.service
+	[root@ka1 ~]#tail -f /var/log/keepalived.log
+	
+1.2 keepalived 脑裂现象
+	
+	脑裂现象实验：
+		详见PDF ===>> "3.5 实现 master/master 的 Keepalived 双主架构"  ===>> 脑裂现象
+		
+	解决办法：
+		可以编写一个简单的监控脚本，一旦发现就stop掉一个Keepalived服务
+		早期使用 fence 设备实现，可以给电脑关机。
+
+1.3 LVS的高可用
+	keepalived 的配置文件中可以添加 LVS 的规则，生产中很少用ipvsadm命令去添加LVS规则，但使用ipvsadm命令查看LVS规则很直观！
+	keepalived 解决了LVS单点失败以及对后端服务器健康检查的问题
+	
+	LVS配置：
+		#virtual_server group string { 		# 使用虚拟服务器组，这种方式了解，一般使用下面的方式定义 IP 和 port
+		virtual_server IP port {			# 这里的VIP就是keepalived中可以飘的那个VIP，port是指后端服务的端口号
+			lb_algo rr|wrr|lc|wlc|lblc|sh|dh 	# 定义调度方法
+			lb_kind NAT|DR|TUN 					# 集群的工作模式,注意要大写
+			sorry_server <IPADDR> <PORT> 		# 所有RS故障时，备用服务器地址
+			...
+			# 如果健康检测失败，使用"ipvsadm -Ln"查看，将看不到后端服务器。如果服务恢复，健康检测成功，使用"ipvsadm -Ln"又可以重新看到
+			# 如果所有的后端服务都健康检测失败，如有配置 sorry_server，使用"ipvsadm -Ln"看的后端服务器是sorry_server
+			real_server {						
+			...
+			}
+			real_server {
+			...
+			}
+		…
+		}
+	
+		注意事项：
+			同样要修改内核参数或命令关闭 ARP广播 和 ARP通告
+			如果 virtual_server 配置的端口是80，keepalived服务器开启Nginx监控80端口，会冲突吗？
+			不会冲突，因为监听端口是应用程序在监听，而LVS用的是内核的功能
+	
+		LVS配置详见PDF ===>> "3.6.1.4 虚拟服务器配置"
+	
+	
+	应用层配置：
+		HTTP_GET|SSL_GET {
+			url {
+				path <URL_PATH> 			# 定义要监控的URL
+				status_code <INT> 			# 判断上述检测机制为健康状态的响应码，一般为 200
+			}
+			connect_timeout <INTEGER> 	# 客户端请求的超时时长, 相当于haproxy的timeout server
+			nb_get_retry <INT> 			# 重试次数
+			delay_before_retry <INT> 	# 重试之前的延迟时长
+			# 下面四项可配可不配, 推荐不配置
+			connect_ip <IP ADDRESS> 	# 向当前RS哪个IP地址发起健康状态检测请求
+			connect_port <PORT> 		# 向当前RS的哪个PORT发起健康状态检测请求
+			bindto <IP ADDRESS> 		# 向当前RS发出健康状态检测请求时使用的源地址
+			bind_port <PORT> 			# 向当前RS发出健康状态检测请求时使用的源端口
+		}
+		
+		注：解释 connect_ip 和 connect_port 
+			因为需要健康状态检测的服务器可能没有在 real_server 中定义，这个服务器可能只是一个后端服务器依赖的服务器，在这里可以配置！
+			如果后端服务器已经在 real_server 中定义，完全不需要在这里再次配置后端服务器!
+			
+		LVS配置详见PDF ===>> "3.6.1.5 应用层监测"
+	
+
+1.4 实现单主的 LVS-DR 模式案例
+
+	详见PDF ===>> "3.6.2.1 实战案例1：实现单主的 LVS-DR 模式"
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 keepalived实现LVS的主主模型
+
+2.1 keepalived实现LVS的主主模型  	
+
+	[root@ka1 conf.d]#cat lvs_web1.conf
+	virtual_server 10.0.0.100 80 {
+		delay_loop 3
+		lb_algo rr
+		lb_kind DR
+		protocol TCP
+		sorry_server 127.0.0.1 80
+		real_server 10.0.0.7 80 {
+			# weight 1				# 文档上这个配置有错误，因为在轮询调度算法上配权重无效
+			......
+		......
+	}
+	
+	详见PDF ===>> "3.6.2.2 实战案例2：实现双主的 LVS-DR 模式"  ===>> "范例: 双主分别实现httpd和mysql服务的调度"
+	
+	注：文档上的范例只实现了一台keepalived服务器的配置，只需要在这个配上上稍加修改就能得到另一台keepalived服务器的配置！ 
+	
+	
+2.2 实现单主的 LVS-DR 模式，利用FWM绑定成多个服务为一个集群服务
+	
+	iptables -t mangle -A PREROUTING -d 10.0.0.10 -p tcp -m multiport --dports 80,443 -j MARK --set-mark 6
+	
+	virtual_server fwmark 6 { 		# 指定FWM为6
+		delay_loop 2
+		lb_algo rr
+		lb_kind DR
+		# sorry_server 和 real_server 虽然指定了80端口，但不是只对80端口有效，主要看防火墙标签绑定了哪些端口，就对哪些端口有效!
+		sorry_server 127.0.0.1 80 	# 注意端口必须指定,官方文档有bug
+		real_server 10.0.0.7 80 { 	# 注意端口必须指定
+			weight 1				# 文档上这个配置有错误，因为在轮询调度算法上配权重无效
+			......
+		......
+	}
+	
+	详见PDF ===>> "3.6.2.3 实战案例3：实现单主的 LVS-DR 模式，利用FWM绑定成多个服务为一个集群服务"
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 keepalive利用vrrp_script
+	keepalived 利用 VRRP Script 技术，可以调用外部的辅助脚本进行资源监控，并根据监控的结果实现优先动态调整，从而实现其它软件的高可用性功能。
+	keepalived + Nginx/HAProxy/Mysql等的组合官方并没有直接提供方法，但是可以使用vrrp_script来实现Nginx/HAProxy/Mysql等的高可用！
+
+3.1 配置
+	vrrp_script <SCRIPT_NAME> {		# 语句块的名字
+		script <SCRIPT PATH> 		# 此脚本返回值为非0时，会触发下面OPTIONS执行
+		interval <INTEGER> 			# 间隔时间，单位为秒，默认1秒
+		timeout <INTEGER> 			# 超时时间
+		weight <INTEGER:-254..254>  # 默认为0,如果设置不管是整数还是负数，都会将此值和优先级相加，实现优先级的调整
+		fall <INTEGER>    			# 执行脚本连续几次都失败,则转换为失败，建议设为2以上
+		rise <INTEGER>				# 执行脚本连续几次都成功，优先级值将减去weight值，这样可以将优先级动态还原
+		user USERNAME [GROUPNAME] 	# 执行监测脚本的用户或组。默认使用root
+		init_fail 					# 设置默认标记为失败状态，监测成功之后再转换为成功状态。一般不加此项
+	}
+	
+	vrrp_instance VI_1 {
+		...	
+		track_script {
+			SCRIPT_NAME_1				# 引用语句块，可以引用多个
+			SCRIPT_NAME_2
+		}
+	}
+
+	注意事项：解决 vrrp_script 和 vrrp_instance 加载优先级的问题！
+		如果 vrrp_script 和 vrrp_instance 都配置在主文件中，要保证 vrrp_script 定义在 vrrp_instance 的上方
+		如果在主配置文件中使用"include /etc/keepalived/conf.d/*.conf"，要保证 vrrp_script 这个conf 文件先加载(其实就是根据首字母的顺序)
+	
+	详见PDF ===>> "3.7.1 VRRP Script 配置"
+	详见PDF ===>> "3.7.2 实战案例：利用脚本实现主从角色切换"
+	
+3.2 实现单主模式的Nginx反向代理的高可用案例
+	
+	详见PDF ===>> "3.7.3 实战案例：实现单主模式的Nginx反向代理的高可用"
+
+3.3 同步组(了解，LVS的NAT的模式很少用),LVS的NAT 模型VIP和DIP需要同步，所以需要同步组
+	
+	LVS的 NAT 模型:
+		Client<------------> [vip]LVS-NAT[DIP] <------------> RealServer
+	
+	配置：
+		vrrp_sync_group VG_1 {
+			group {
+				VI_1 				# name of vrrp_instance (below)
+				VI_2 				# One for each moveable IP
+			}
+		}
+		vrrp_instance VI_1 {
+			eth0
+			vip
+		}
+		vrrp_instance VI_2 {
+			eth1
+			dip
+		}
+	
+	简单说：如果使用LVS的NAT的模式，那么VIP和DIP要一起飘!
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展：
+	小公司用Nginx比较多！
+
+
+

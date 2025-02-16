@@ -1,0 +1,1429 @@
+4 Linux启动流程和grub管理
+	
+	linux的组成：
+		linux内核(内核)：实现进程管理、内存管理、网络管理、驱动程序、文件系统、安全功能等功能
+		根文件系统(rootfs)：包括程序(二进制执行文件)和 glibc 库(函数集合, function, 调用接口（头文件负责描述）)
+
+	内核设计流派:
+		宏内核(monolithic kernel)：
+			又称单内核和强内核，
+			Unix，Linux把所有系统服务都放到内核里，所有功能集成于同一个程序，分层实现不同功能，系统庞大复杂，
+			Linux其实在单内核内核实现了模块化，也就相当于吸收了微内核的优点
+		
+		微内核(micro kernel)：Windows，Solaris，HarmonyOS 
+			简化内核功能，在内核之外的用户态尽可能多地实现系统服务，同时加入相互之间的安全保护，每种功能使用一个单独子系统实现，将内核功能移到用户空间，性能差
+
+	CentOS 6启动流程
+		POST(加电自检) ========>> MBR引导 ========>> GRUB ========>> 加载内核
+
+4.1 硬件启动POST	
+	POST(Power-On-Self-Test，加电自检):  是BIOS功能的一个主要部分。负责完成对CPU、主板、内存、硬盘子系统、显示子系统、串并行接口、键盘等硬件情况的检测
+	
+	主板的(Read-Only Memory，只读存储器)：保存着有关计算机系统最重要的BIOS(Basic Input and Output System,基本输入输出程序)，系统信息设置、开机加电自检程序和系统启动自举程序等
+
+	主板的RAM：CMOS互补金属氧化物半导体，保存各项参数的设定，按次序查找引导设备，第一个有引导程序的设备为本次启动设备	
+		主板上的RAM：
+			大概是指南桥或PCH内部集成的CMOS存储器，作用是保存用户对BIOS参数的设置和维持系统时钟以反映真实时间，容量非常小。
+			平时主板不上电时这个RAM由RTC电池（纽扣电池）供电，上电时由3.3V系统电压供电，以延长纽扣电池使用时间。
+			现在有平板电脑上的这个RTC电池是可以充电的，更加大大延长了它的使用寿命。。
+
+
+4.2 启动加载器 bootloader
+	
+	bootloader: 引导加载器，引导程序
+		Windows: ntloader，仅是启动OS
+		Linux：功能丰富，提供菜单，允许用户选择要启动系统或不同的内核版本；把用户选定的内核装载到内存中的特定空间中，解压、展开，并把系统控制权移交给内核
+	
+	Linux的bootloader：
+		LILO(LInux LOader)：早期的bootloader，功能单一
+		GRUB(GRand Unified Bootloader): CentOS 5,6 GRUB 0.97: GRUB Legacy， CentOS 7 以后使用GRUB 2.02
+			GRUB是一个系统引导程序,分为两个阶段,第一阶段它保存在MBR中。用汇编语言编写，也就是MBR中的引导程序部分。
+			GRUB引导程序的第二阶段，通常用C语音编写!
+			
+GRUB(GRand Unified Bootloader)启动阶段：
+	primary boot loader :
+		1st stage：MBR的前446个字节
+		1.5 stage：MBR 之后的扇区，让stage1中的bootloader能识别stage2所在的分区上的文件系统
+	secondary boot loader ：2nd stage，分区文件/boot/grub/
+
+	// MBR详细解释：
+		MBR，占用主引导扇区的前446字节，紧随其后的64字节是分区表DPT，最后还剩两个字节则恒为55AA，表示结束符号。
+		MBR，全称为Master Boot Record，即硬盘的主引导记录。MBR，共446字节，一般在操作系统安装时写入，但它并不属于操作系统。
+		MBR就是一段引导程序，用于检测磁盘的分区合法性和加载操作系统，它的重要作用就是识别活动分区，并引导操作系统。
+		
+		// 查看MBR占用的446字节 以及  分区表DPT占用的64字节
+		[root@centos6 ~]#hexdump -C -n 446 /dev/sda
+
+	参考资料：
+		https://www.jianshu.com/p/53326ef09d57
+		https://blog.csdn.net/qq_53522710/article/details/114334476
+
+
+4.3 CentOS6 grub Legacy 的第1阶段和1.5阶段 被破坏后的修复方法：
+	CentOS 5,6 GRUB 0.97 就是 GRUB Legacy
+	
+	安装 grub的两种方法：
+		方法1： grub-install 安装grub stage1和stage1_5到/dev/DISK磁盘上，并复制GRUB相关文件到 DIR/boot目录下	
+			#grub-install是非交互式，自动生成，方便
+			grub-install --root-directory=DIR /dev/DISK
+		
+		方法2：grub命令
+			#grub是交互式命令，不方便
+			grub> root (hd#,#)
+			grub> setup (hd#)
+			
+	注意：这些修复方法并不能修复 GRUB Legacy 的配置件，GRUB Legacy 的配置件如下：
+			/boot/grub/grub.conf
+			/etc/grub.conf -> ../boot/grub/grub.conf
+		配置文件属于GRUB Legacy的第2阶段，这节只讨论GRUB Legacy的第1和1.5阶段的修复！
+		
+		
+范例1：利用grub命令修复grub
+	
+	// 破环MBR占用的446字节，这446字节保存的就是GRUB的第一阶段程序
+	[root@centos6 ~]#dd if=/dev/zero of=/dev/sda bs=1 count=446
+	
+	// 进入交互式操作，详情见PDF
+	[root@centos6 ~]#grub
+	......省略
+	
+	
+范例2：grub的第1阶段故障无法启动,进行修复
+	// 破坏grub第1阶段
+	[root@centos6 grub]#dd if=/dev/zero of=/dev/sda bs=1 count=446
+
+	[root@centos6 grub]#hexdump -C -n 512 /dev/sda -v
+	
+	// 无法启动
+	[root@centos6 grub]#reboot
+
+	
+	光盘启动，进入rescue模式，运行如下命令：
+	chroot /mnt/sysimage
+	grub-install /dev/sda
+	sync
+	exit
+	exit
+	
+	
+范例3：修复grub的第1.5 阶段故障
+
+	// 破坏 grub的第1.5 阶段
+	[root@centos6 ~]#dd if=/dev/zero of=/dev/sda bs=512 count=25 seek=1			# 跳过"/dev/sda"的前512字节(保留MBR和分区表)，将后面的25个扇区(一个扇区512字节)清零
+	
+	//无法启动
+	[root@centos6 ~]#reboot
+	
+	光盘启动，进入rescue模式
+	chroot /mnt/sysimage
+	grub-install /dev/sda
+	sync
+	按 ctrl+alt+delete 三个键重启动
+	
+	
+	
+4.4 grub legacy 管理（这里的GRUB Legacy指的是CentOS 5,6 GRUB 0.97）
+	grub legacy stage2及内核等通常放置于一个基本磁盘分区 
+	
+grub legacy 功用：
+	(1) 提供启动菜单、并提供交互式接口
+		a：内核参数
+		e：编辑模式，用于编辑菜单
+		c：命令模式，交互式接口
+	(2) 加载用户选择的内核或操作系统
+		允许传递参数给内核
+		可隐藏启动菜单
+	(3) 为菜单提供了保护机制
+		为编辑启动菜单进行认证
+		为启用内核或操作系统进行认证
+	
+GRUB Legacy 配置文件：
+	/boot/grub/grub.conf		# 定义了内核存放的相关路径
+	/etc/grub.conf -> ../boot/grub/grub.conf
+
+	// grub legacy配置文件"/boot/grub/grub.conf"详解：
+		default=#											: #设定默认启动的菜单项；落单项(title)编号从0开始
+		timeout=#											：#指定菜单项等待选项选择的时长
+		splashimage=(hd#,#)/PATH/XPM_FILE					：#菜单背景图片文件路径
+		password [--md5| --encrypt] STRING					: #启动菜单编辑认证
+		hiddenmenu											：#隐藏菜单
+		title TITLE											：#定义菜单项“标题”, 可出现多次
+		root (hd#,#)										：#查找stage2及kernel文件所在设备分区；为grub的根，"grub的根"是"/boot" 
+		kernel /PATH/TO/VMLINUZ_FILE [PARAMETERS]			：#启动的内核，还有指定操作系统真正的根(根文件系统)，以及指定一些内核参数
+		initrd /PATH/TO/INITRAMFS_FILE						: #内核匹配的ramfs文件，是一个辅助文件，很关键，破坏后不能正常启动系统
+		password [--md5|--encrypted ] STRING				: #启动选定的内核或操作系统时进行认证
+
+
+示例1：破坏grub legacy 第二阶段。 删除 /boot/grub 整个目录，然后修复
+	
+	// 删除 /boot/grub 整个目录
+	rm -rf /boot/grub
+
+	// 重启失败
+	reboot
+	
+	光盘启动，进入rescue模式，运行如下命令：
+	
+	chroot /mnt/sysimage
+	grub-install /dev/sda		# 生成grub legacy的第1阶段和第2阶段的所有相关文件，但是不会生成"/boot/grub/grub.conf"配置文件
+	
+	// 可以发现"/boot/grub"文件夹，并且里面自动生成了相关文件。但是没有生成背景图片和"grub.conf"配置文件
+	// 背景图片不要也可以
+	
+	// 创建"grub.conf"文件
+	vim /boot/grub/grub.conf
+	cat /boot/grub/grub.conf		# 配置文件中关键的就是下面5项
+	default=0
+	timeout=5
+	title Linux grub legacy test
+	kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64	root=/dev/sda2			# root这里指定操作系统真正的根(根文件系统)，可以直接指定相应的硬盘分区，也可以指定相应的硬盘分区的UUID
+	initrd (hd0,0)/initramfs-2.6.32-754.e16.x86_64.img						# 内核匹配的ramfs文件，是一个辅助文件，很关键，破坏后不能正常启动系统
+	
+	sync							# 同步到磁盘
+	exit
+	exit	
+	
+	// 说明：
+		hd0,0 中的 hd代表硬盘，0代表第一个硬盘，第二个0代表这个硬盘上的第一个分区，实际上表示的就算sda1
+	
+	
+	
+示例2：grub 是交互式命令，在系统启动的时候(选择菜单倒计时的时候)。根据提示输入"e"就可以进入，通过交互式修改"grub.conf"配置中的一些项，比如"kernel"和"initrd"项 ！
+	
+	kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64	root=/dev/sda2  quiet rhgb			# "quiet rhgb" 表示启动的时候显示背景，把内核的启动过程隐藏
+	
+	
+示例3：删除"/boot/grub/grub.conf"文件，在交互式界面把系统启动起来
+	
+	mv /boot/grub/grub.conf /data
+	
+	reboot			
+	
+	重启会失败，但是会自动进入grub命令交互式界面，这本交互式环境表示只缺了"grub.conf"文件，其它1、1.5、2阶段的文件都有。
+	这里就可以进行交互式写操作，把"grub.conf"中关键的几行输入，如下：
+		kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64	root=/dev/sda2
+		initrd (hd0,0)/initramfs-2.6.32-754.e16.x86_64.img
+		boot
+		
+	然后系统自动重启，启动之后再手动生成"grub.conf"文件，否则每次都要手动输入才会启动系统
+	
+	mv /data/grub.conf /boot/grub/			# 将配置文件还原
+	
+	
+
+4.5 grub 设置密码，防止破解root口令
+	
+centos6以及之前的版本破解root口令：破解操作必须在机器面前操作，因为没有网络
+	在系统启动的时候(选择菜单倒计时的时候)，编辑grub菜单(选定要编辑的title，而后使用a 或 e 命令)
+	
+	在选定的kernel后附加1, s, S，single 都可以进入单用户模式,如下：
+		grub append> root=/dev/sda2 1
+		
+	进入到单用户
+		passwd  新密码
+		
+	重新启动，输入新密码
+
+	
+给 grub 添加密码,防止破解root密码
+	
+	grub加密生成grub口令
+		grub-md5-crypt			# MD5加密，安全险较弱
+		grub-crypt				# SHA-512加密
+		
+		
+	// 修改 grub legacy配置文件"/boot/grub/grub.conf"
+	cat /boot/grub/grub.conf	
+	cat /boot/grub/grub.conf		
+	default=0
+	timeout=5
+	password --encrypt $aasdfasgsdgsdfhsdfhsdfgwergsg/asdfasdfasetgasgasdg/asdfasdfasdfasdf			# 假如这里是密码123456的 SHA-512 值
+	title Linux grub legacy test
+	kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64	root=/dev/sda2	
+	initrd (hd0,0)/initramfs-2.6.32-754.e16.x86_64.img						
+	
+	reboot
+	
+	在系统启动的时候(选择菜单倒计时的时候)，编辑grub菜单，发现已经没有了a的选项，多了一个p选项，并提示需要密码，输入了密码，可以发现a选项出现了，这时候才可以通过a选项进入到单用户模式
+	
+	即使加了密码也能破解，可以通过救援模式去修改grub.conf"文件。还可以修改"/etc/shadow"文件，清除root密码，开机后输入root就能直接以root身份进入系统，
+	
+	总结：只要物理上接触服务器，就没有安全性！所以生产中的服务器先要确保物理安全！
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 Linux启动流程和服务管理
+
+	grub 的第1、2阶段加载完成后，就开始加载内核，内核在"/boot/grub/grub.conf"文件中指定，如下：
+		kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64	root=/dev/sda2					# 这里指定了操作系统内核文件，以及根文件系统
+	
+	内核文件在加载的时候，会根据root指定的路径找到真正的硬盘的根系统，但是进入硬盘的根系统面临新问题？
+	因为硬盘的根系统是一个独立的分区，有自己的根分区文件系统，意味着通过内核需要进入到操作系统的根，就要先识别文件系统的驱动
+	
+		// 可以看到，这里的根分区文件系统的类型是ext4。要加载根分区，就要加载 ext4 的驱动
+		[root@centos6 ~]#df -T | grep /dev/sda
+		/dev/sda1               ext4        1038336  188008    850328  19% /boot	
+		/dev/sda2				ext4       36805060 3067608  33737452   9% /				# 这里的根文件系统的类型是 ext4
+		
+		
+		// ext4 驱动的位置。内核能支持识别到ext4的驱动，但是ext4的驱动在根文件系统中
+		[root@centos6 ~]#find /lib -name "ext4.ko" 
+		/lib/modules/2.6.32-754.el6.x86_64/kernel/fs/ext4/ext4.ko
+	
+	问题就是：内核要加载根分区(根文件系统)，就要先加载ext4的驱动， 但是ext4的驱动放在根目录下。这样就出现了先有鸡还是有蛋的问题！
+	
+	"/boot/grub/grub.conf"文件中的initrd选项解决了这个问题:
+		initrd (hd0,0)/initramfs-2.6.32-754.e16.x86_64.img	  	# img 这个文件包含ext4的驱动，这个文件在"/boot"目录下，"/boot"目录的文件系统是/dev/sda1，"/"(根)目录的文件系统是/dev/sda2
+		
+	
+	
+详解 initramfs-2.6.32-754.e16.x86_64.img		
+	
+	// initramfs-2.6.32-754.e16.x86_64.img	 文件实际上是一个打包的压缩文件，是一个gzip文件
+	[root@centos6 ~]#file /boot/initramfs-2.6.32-754.e16.x86_64.img
+	/boot/initramfs-2.6.32-754.e16.x86_64.img: gzip compressed data, from Unix, last modified: Sat Oct 29 14:59:12 2022, max compression
+	
+	// 复制一份
+	[root@centos6 ~]#cp /boot/initramfs-2.6.32-754.e16.x86_64.img  /data/
+	[root@centos6 ~]#cd /data/
+	[root@centos6 data]#mv initramfs-2.6.32-754.e16.x86_64.img initramfs-2.6.32-754.e16.x86_64.img.gz
+	[root@centos6 data]#ll -h initramfs-2.6.32-754.e16.x86_64.img.gz
+	-rw------- 1 root root 22M Nov 20 18:26 initramfs-2.6.32-754.e16.x86_64.img.gz
+	
+	// 改名以gz结尾，才能解压缩
+	[root@centos6 data]#gzip -d initramfs-2.6.32-754.e16.x86_64.img.gz
+	
+	// 解开后，文件大小变为 51M
+	[root@centos6 data]#ll -h initramfs-2.6.32-754.e16.x86_64.img
+	-rw------- 1 root root 51M Nov 20 18:26 initramfs-2.6.32-754.e16.x86_64.img
+	
+	// 可以看到实际上是一个cpio文件
+	[root@centos6 data]#file initramfs-2.6.32-754.e16.x86_64.img
+	initramfs-2.6.32-754.e16.x86_64.img: ASCII cpio archive (SVR4 with no CRC)	
+		
+		
+	// 预览 cpio 文件里面的内容	
+	[root@centos6 data]# cpio -it  < initramfs-2.6.32-754.e16.x86_64.img 	
+		
+	// 解开 cpio 文件
+	[root@centos6 data]# cpio -id  < initramfs-2.6.32-754.e16.x86_64.img
+	102556 blocks
+	
+	// 解开后可以看到这就是一个小型linux的目录结构	
+	[root@centos6 data]#ls
+	bin  dev  etc  init  initramfs-2.6.32-754.e16.x86_64.img  lib  lib64  proc  root  run  sbin  shutdown  sys  sysroot  tmp  usr  var	
+	
+	// 这里面就包含 ext4.ko 文件 ，所以通过这个文件就可以加载根文件系统的ext4驱动，进而就可以加载根文件系统
+	[root@centos6 data]#find -name ext4.ko
+	./lib/modules/2.6.32-754.el6.x86_64/kernel/fs/ext4/ext4.ko
+	
+	
+	总结："initramfs-2.6.32-754.e16.x86_64.img"这个文件系统很重要，这是一个虚拟的文件系统，必须要存在，因为要靠这个文件加载根文件系统。这个文件出了问题，系统就不能启动 ！
+	
+	
+	
+示例：initramfs-2.6.32-754.e16.x86_64.img 这个文件系统文件被破坏了，也可以修复：
+	
+	// 删除
+	rm  -f initramfs-2.6.32-754.e16.x86_64.img
+	
+	// 使用 mkinitrd 命令可以生成
+	mkinitrd /boot/initramfs-$(uname -r).img $(uname -r)		# 等价于  mkinitrd /boot/initramfs-`uname -r`.img `uname -r`
+	
+	
+	
+5.1 进入到根系统后，首先加载系统第一个进程(init)进程
+		[root@centos6 ~]#which init
+		/sbin/init
+	
+	init进程启动之后，会根据一个初始化文件做初始化，这个文件定义了系统启动后的运行模式， 如下：
+		[root@centos6 ~]#cat /etc/inittab
+		......省略
+		# System initialization is started by /etc/init/rcS.conf
+		#
+		# Individual runlevels are started by /etc/init/rc.conf
+		#
+		# ctrl-Alt-Delete is handled by /etc/init/control-alt-delete.conf
+		#
+		# Terminal gettys are handled by /etc/init/tty.conf and /etc/init/serial.conf, with configuration in /etc/sysconfig/init.
+		#
+		# For information on how to write upstart event handlers, or how upstart works, see init(5), init(8), and initctl(8).
+		#
+		# Default runlevel.The runlevels used are:
+		#	0 - halt (Do Not set initdefault to this)
+		#	1 - Single user mode														// 相当于windows中的安全模式
+		#	2 - Multiuser, without NFS (The same as 3, if you do not have networking)	// 很少用
+		#	3 - Full multiuser mode
+		#	4 - unused																	// 保留下来,没有使用的模式
+		#	5 - X11
+		#   6 - reboot (Do Not set inittab tothis)
+		#
+		id:3:initdefault:					# 这里定义默认运行级别，3表示字符界面，5表示图形界面。
+		
+		[root@centos6 ~]#runlevel   	# 查看当前系统运行级别，这个级别就来源于"/etc/inittab"中定义的值
+		N 3
+	
+	如果不小心将模式设置为0和6的解决办法：
+		方法1：救援模式
+		方法2：在系统启动的时候(选择菜单倒计时的时候)。根据提示输入"a"就可以进入，然后敲入3，就可以临时以3模式进入到系统，进入到系统后再修改"/etc/inittab"文件
+					kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64 root=/dev/sda2 3 
+			   注意：如果在"/boot/grub/grub.conf"文件中的kernel项配置了" quiet rhgb",就会把内核的启动过程隐藏，这个时候就看不到选择菜单的界面。
+					 解决方法是在系统启动的时候，在进度条阶段以及进度条之后的倒计时阶段，按任意键就可以显示出选择菜单的界面，这个时候再输入"a", 再临时修改启动模式！
+
+
+	除了读"/etc/inittab"文件中定义的模式，接下来还要做初始化，实际上是运行了一个初始化脚本：
+		[root@centos6 ~]#cat /etc/init/rcS.conf
+		......省略
+		exec /etc/rc.d/rc/sysinit  		# 关键代码，这就是系统的第一个初始化脚本"/etc/rc.d/rc/sysinit"
+		......省略
+
+		[root@centos6 ~]#cat /etc/init/rcS.conf
+		......省略
+		
+		"/etc/rc.d/rc/sysinit"这个初始化脚本实现了以下功能：
+			(1) 设置主机名
+			(2) 设置欢迎信息
+			(3) 激活udev和selinux
+			(4) 挂载/etc/fstab文件中定义的文件系统
+			(5) 检测根文件系统，并以读写方式重新挂载根文件系统
+			(6) 设置系统时钟
+			(7) 激活swap设备
+			(8) 根据/etc/sysctl.conf文件设置内核参数
+			(9) 激活lvm及software raid设备
+			(10)加载额外设备的驱动程序
+			(11)清理操作
+		
+	"/etc/rc.d/rc/sysinit"脚本初始化后，开始初始化"/etc/init/rc.conf"脚本：
+		[root@centos6 ~]#cat /etc/init/rc.conf
+		# rc - System V runlevel compatibility
+		#
+		# this task runs the old sysv-rc runlevel scripts. It is usually started by the telinit compatibility wrapper
+		#
+		# Do not edit this file directly. If you want to change the behavior, please create a file rc.override and put your changes there.
+		
+		start on runlevel [0123456]
+		
+		stop on runlevel [!$RUNLEVEL]			# 这里引用的的就是"/etc/inittab"文件中定义的级别
+		
+		task
+		
+		export RUNLEVEL
+		console output
+		exec /etc/rc.d/rc $RUNLEVEL				# 这里引用的的就是"/etc/inittab"文件中定义的级别
+		
+		[root@centos6 ~]#cat /etc/rc.d/rc
+		......省略
+		# Is there an rc directory for this new runlevel?
+		[ -d /etc/rc$runlevel.d ] || exit 0					# 如果运行模式是3，就会运行"etc/rc3.d" 目录下的脚本		
+		......省略
+		# First,run the KILL scripts
+		for i in /etc/rc$runlevel.d/K*;do
+		......省略
+		# Now run the START scripts
+		for i in /etc/rc$runlevel.d/S*;do
+		......省略
+		
+		[root@centos6 ~]#ls /etc/rc*.d -dl
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc0.d -> rc.d/rc0.d
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc1.d -> rc.d/rc1.d
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc2.d -> rc.d/rc2.d
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc3.d -> rc.d/rc3.d
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc4.d -> rc.d/rc4.d
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc5.d -> rc.d/rc5.d
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc6.d -> rc.d/rc6.d
+		drwxr-xr-x. 10 root root 127 Aug 20  2021 /etc/rc.d
+		
+		
+		// 可以发现下面的文件都是软连接，都指向了"/init.d"目录，这个目录下面都是服务脚本
+		// 软连接的名称分为K开头和S开头，意思是启动的时候停止K开头的服务，启动S开头的服务，这个逻辑"/etc/rc.d/rc"这个脚本中实现
+		[root@centos6 ~]#ls -l /etc/rc.d/rc3.d/
+		total 0
+		lrwxrwxrwx. 1 root root 20 Aug 20  2021 K50netconsole -> ../init.d/netconsole
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 S10network -> ../init.d/network
+		
+		[root@centos6 ~]#ll /etc/init.d/
+		total 40
+		-rw-r--r--. 1 root root 18281 May 22  2020 functions
+		-rwxr-xr-x. 1 root root  4569 May 22  2020 netconsole
+		-rwxr-xr-x. 1 root root  7928 May 22  2020 network
+		-rw-r--r--. 1 root root  1160 Oct  2  2020 README
+		
+		
+		//"service 服务名 status"可以看到服务有没有启动：
+		service atd status				# 等价于  /etc/init.d/atd status
+		service httpd status			# 等价于  /etc/init.d/httpd status
+		
+		// 停止服务
+		service httpd stop				# 等价于 /etc/init.d/httpd stop
+		
+		// 启动服务
+		service httpd start				# 等价于  /etc/init.d/httpd start
+		
+		注意：
+			service命令只是临时性的启动或关闭。如果希望开机是启动还是关闭，和模式有关，然后在对应的目录下，确保指向服务脚本的软连接是以S开头还是K开头
+			service后面的start、stop、status参数实际上传递给了服务脚本，当服务脚本接收到这些参数，就会判断，然后运行相应的逻辑。
+		
+		
+		// 手动改软连接的名称可以控制服务是否开机启动，但一般不使用手动改
+		// chkconfig 命令可以用来设置当前系统中的各种服务。这个服务本质上、真正的路径都是在"/etc/init.d/"目录下, 这个目录下放着所有服务的启动脚本
+		
+		// 列出所有的服务在各个模式下是否是开机启动。on代表开机启动，off 代表关闭
+		[root@centos6 ~]#chkconfig --list			
+		netconsole      0:off   1:off   2:off   3:off   4:off   5:off   6:off
+		network         0:off   1:off   2:on    3:on    4:on    5:on    6:off
+		
+		// 将 netconsole 服务在3模式下设为开机启动
+		[root@centos6 ~]#chkconfig --level 3 netconsole on
+		[root@centos6 ~]#chkconfig --list
+		netconsole      0:off   1:off   2:off   3:on    4:off   5:off   6:off
+		network         0:off   1:off   2:on    3:on    4:on    5:on    6:off
+		
+		// 这个时候可以发现"/etc/rc.d/rc3.d/"目录下指向netconsole服务的软连接变为了S开头。  
+		[root@centos6 ~]#ll /etc/rc.d/rc3.d/
+		total 0
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 S10network -> ../init.d/network
+		lrwxrwxrwx  1 root root 20 Nov 20 23:31 S50netconsole -> ../init.d/netconsole
+		
+		问题1：指向netconsole服务之前的软连接为 K50netconsole，改之后变为 S50netconsole, K 和 S 之后的数字从哪里来的？
+		
+			[root@centos6 ~]#cat /etc/init.d/netconsole
+			#!/bin/bash
+			#
+			# netconsole    This loads the netconsole module with the configured parameters.
+			#
+			# chkconfig: - 50 50										# K 和 S 的数字来源于这个地方。"-"表示在第一次将服务加到服务列表时，不管什么模式，都是off，也就是都用K开头！
+			# description: Initializes network console logging
+			#
+			
+		问题2：K 和 S 之后的数字有什么意义？
+			当运行脚本的时候，目录下有很多软连接，这就涉及到运行的次序，实际就是按照目录列表的次序来运行。从逻辑上来讲，数字越大运行的时刻越晚。不管是K还是S，都是遵从这个次序 ！
+			另外，启动的时候服务之间或许有依赖关系，比如ssh服务和网络服务，ssh服务依赖网络服务，所以网络服务应该先启动！所以S后的数字也定义了服务启动的优先级！
+			这个次序一般不需要去干预，系统自动定义。如果自己开发服务脚本，可以参考这个格式来写。
+			服务脚本必须要加上下面3行：
+				#!/bin/bash
+				# chkconfig: 345 95 5			# 345表示在第一次将服务加到服务列表时，如果用的345模式之一，就用S开头。 S开头使用95，K开头使用5，这个在写服务脚本的时候要定义好。
+				# description: descrip ......
+				. /etc/init.d/functions			# 这一行不加也可以
+				start(){
+				
+				}
+				stop(){
+				
+				}
+				status(){
+				
+				}				
+
+			注意：
+				S开头的数字越大，K开头的数字就应该越小。因为S开头的数字越大说明依赖的服务越少或不依赖其它服务，在关闭的时候就可以先关闭！
+				如果S开头的数字和其它S开头的数字一样也没有关系，一样的话会比较数字后的字母。实际上不是直接拿K或S后的数字比较，是转换为字母来比，按照字符顺序来比！
+
+		
+		生产中有可能自己写服务脚本！比如编译安装的程序，就可以写成服务的形式，做成开机启动！
+		这里的服务是指开机启动或关闭，和在终端里面手动运行的服务有区别，终端里面手动直接运行的服务一般是临时性的,重启就没有了。
+			直接运行的服务是指：
+				假如nginx是个可运行文件，以"./nginx" 这样的方式运行的服务！ 
+				通过service开启的服务，也是临时服务，比如 service httpd start ，使用service的条件是在"/etc/init.d/"目录下有相应的启动脚本
+				通过"systemctl start"开启的服务，也是临时服务,比如 systemctl start httpd.service
+			下面的方式不是直接运行：
+				chkconfig --level 3 netconsole on		# 设置为开机启动，使用chkconfigs的条件是，在"/etc/init.d/"目录下有相应的启动脚本，以及启动脚本的软连接在系统运行模式对应的文件夹(/etc/rc.d/rc[0到6].d)中
+				systemctl enable httpd.service 			# "systemctl enable name.service" 设定某服务开机自启							
+				
+			注意：systemctl 是 centos7.x 的新指令，融合之前 service 和 chkconfig 的功能于一体， 用来替换 service 和 chkconfig ！		
+
+			
+5.2 自定义服务脚本
+	[root@centos6 ~]#cat /etc/init.d/testsrv
+	#!/bin/bash
+	# chkconfig: - 96 3							# "-"表示在第一次将服务加到服务列表时，不管什么模式，都是off，也就是都用K开头！ 如果是S，后面跟数字96；如果是K，后面跟数字3
+	# description: This is test service script
+	
+	. /etc/init.d/functions																# 引入"/etc/init.d/functions"中定义的函数或变量
+	
+	start(){
+		[ -e /var/lock/subsys/testsrv ] && exit || touch /var/lock/subsys/testsrv		# 如果服务是启动的，那么就存则"/var/lock/subsys/testsrv"这样一个文件
+		echo $PATH
+		action "Starting testsrv"														# action是个函数，来源于"/etc/init.d/functions"这个文件
+		sleep 3
+	}
+	stop(){
+		[ -e /var/lock/subsys/testsrv ] && rm /var/lock/subsys/testsrv || exit
+		action "Stopping testsrv"
+	}
+	status(){
+		[ -e /var/lock/subsys/testsrv ] && echo "testsrv is running..." || echo
+		"testsrv is stopped"
+	}
+	case $1 in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		stop
+		start
+		;;
+	status)
+		status
+		;;
+	*)
+		echo $"Usage: $0 {start|stop|status|restart}"
+		exit 2
+	esac	
+	
+	[root@centos6 ~]#chmod +x /etc/init.d/testsrv
+	
+	// 加到服务列表，同时会自动生成 rc0.d 到 rc6.d 这7个目录下的软连接，并且这些软连接指向"/etc/init.d/testsrv"
+	[root@centos6 ~]#chkconfig --add testsrv
+	
+	// 如果不指定模式，默认会把2、3、4、5模式变为on
+	[root@centos6 ~]#chkconfig testsrv on
+	
+	[root@centos6 ~]#chkconfig --list testsrv 
+	testsrv         0:off   1:off   2:on    3:on    4:on    5:on    6:off
+	
+	// 重启看效果
+	[root@centos6 ~]#reboot
+	
+	// 在系统启动过程中可以看到如下打印:
+	......省略
+	/sbin:/usr/sbin:/bin:/usr/bin							// 这里打印出了 path 变量，可以看到比正常的 path 变量少
+	Starting testsrv						[ ok ]			// 这个 ok 是个绿色的字体
+	_
+	
+	
+
+如果服务出现问题，停在系统启动界面不动怎么办
+	
+	// 在上面的 自定义服务脚本 实践中，在系统启动过程中可以看到如下打印:
+	......省略
+	/sbin:/usr/sbin:/bin:/usr/bin
+	Starting testsrv						[ ok ]			
+	_														// 假如服务出现问题(可以在服务脚本中的start()方法中写"sleep 1000"来模拟这种效果)，在这里不动了怎么办？ 		
+	
+	
+	解决办法：
+		重新启动，在系统启动的时候(选择菜单倒计时的时候)。敲a键进入单用户模式。从示例1可以知道，testsrv这个服务在2、3、4、5模式是on，1模式下服务是off状态，所以可以轻松进入到单用户模式！
+		然后运行以下命令：
+			[root@centos6 /]#chkconfig testsrv off
+			
+			[root@centos6 /]#chkconfig --list testsrv 
+			testsrv         0:off   1:off   2:off    3:off    4:off    5:off    6:off			
+		
+			// 然后服务就可以正常启动，然后再排除为什么服务会出现问题！
+			[root@centos6 /]#reboot
+		
+	
+	// 删除服务，并且自动删除 rc0.d 到 rc6.d 这7个目录下的相应软连接
+	[root@centos6 ~]#chkconfig --del testsrv
+	
+	// 但是 testsrv 这个文件仍然在 "/etc/init.d/" 目录下
+	[root@centos6 ~]#ls /etc/init.d/testsrv
+	
+	// 只要"/etc/init.d/testsrv"没有被删除,仍然可以使用service这个命令来操作
+	[root@centos6 ~]#service testsrv restart
+	
+	
+5.3 如果不想写服务脚本，但是又想开机启动
+	
+	[root@centos6 ~]#ll /etc/rc*.d/*rc.local
+	-rw-r--r--. 1 root root 473 Oct  2  2020 /etc/rc.d/rc.local						
+	
+	[root@centos6 ~]#ll /etc/rc*.d/*local
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc2.d/S99local -> ../rc.local		# 传统的软连接都指向"/etc/init.d/"这个目录下的服务，但是这个软连接指向"/etc/rc.d/rc.local"
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc3.d/S99local -> ../rc.local
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc4.d/S99local -> ../rc.local
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc5.d/S99local -> ../rc.local	
+	-rw-r--r--. 1 root root 473 Oct 2  2020 /etc/rc.d/rc.local	
+
+	// list 里面也没有"rc.local"这样一个服务，所以"/etc/rc.d/rc.local"这个脚本不属于正常的服务脚本
+	[root@centos6 ~]#chkconfig --list
+	......省略
+	
+	
+	"/etc/rc.d/rc.local"文件的作用是：
+		只要把服务放在"/etc/rc.d/rc.local"，在2、3、4、5模式下就会开机启动!
+		编译安装的程序服务启动后，系统重启动后不会自动启动，这时就可以把启动程序放到"/etc/rc.d/rc.local"文件中，就可以实现开机自动启动！
+
+	实践：
+		[root@centos6 ~]#cat /etc/rc.d/rc.local
+		#!/bin/bash
+		# This script will be executed *after* all the other init scripts.
+		# You can put your own initialization stuff in here if you don't
+		# want to do the full Sys V style init stuff
+
+
+		touch /var/lock/subsys/local
+		
+		
+		[root@centos6 ~]#vim /etc/rc.d/rc.local
+		#!/bin/bash
+		# This script will be executed *after* all the other init scripts.
+		# You can put your own initialization stuff in here if you don't
+		# want to do the full Sys V style init stuff
+
+
+		touch /var/lock/subsys/local
+		touch /data/rc.local				# 自己添加用来做实验
+	
+	
+		[root@centos6 ~]#reboot
+		
+		[root@centos6 ~]#ls /data
+		rc.local
+		
+	
+总结：
+	让服务开机启动的两种方法：1.写服务脚本； 2.把启动服务的命令写到"/etc/rc.d/rc.local"文件中!
+	
+	注意: 
+		centos7、centos8、但是默认这个文件没有运行权限，需要手动加上。Ubuntu18.04 也支持"/etc/rc.d/rc.local"文件！
+		Ubuntu 默认无 /etc/rc.local 文件,可以创建此脚本文件并添加执行权限,rc.local的首行必须有shebang机制
+	
+	// centos7 上的 rc.local 文件
+	[root@localhost ~]#cat /etc/rc.d/rc.local
+	#!/bin/bash
+	# THIS FILE IS ADDED FOR COMPATIBILITY PURPOSES								// 已说明 这个文件存在是为了兼容目的
+	#
+	# It is highly advisable to create own systemd services or udev rules
+	# to run scripts during boot instead of using this file.
+	#
+	# In contrast to previous versions due to parallel execution during boot
+	# this script will NOT be run after all other services.
+	#
+	# Please note that you must run 'chmod +x /etc/rc.d/rc.local' to ensure		// 已说明 要使这个文件生效，首先要加运行权限
+	# that this script will be executed during boot.
+
+	touch /var/lock/subsys/local
+	
+
+
+5.4 (了解)非独立服务，centos7已经取消
+	系统中有些服务用的很少，如果简单地设置为服务，开机会自动启动，这样会占用资源。但是不启动，偶尔又需要用。像这样的服务在centos6上会设置为非独立服务！
+	非独立服务会找一个总代理服务 xinetd，这个服务监控那些用的很少的服务，这些服务在用户访问的时候由xinetd激活。如果用户不访问就停止服务 ，这样就实现了不开机启动也能随时访问！
+	非独立服务依赖于 xinetd 服务，所以这个服务也被称为"超级守护"进程！
+	
+	
+	// 比如 telnet-server 服务用的很少，早期用来实现远程登录，但是安全性很差，被ssh替代。但个别场景下还能用到这个服务，这个时候系统就会把它设置为非独立覅我
+	// 安装 telnet-server 服务的时候会自动安装 xinetd 服务，因为 telnet-server 依赖 xinetd
+	[root@centos6 ~]#yum -y install telnet-server				# telnet-server 安全性差的原因是：用户名和密码是明文，可以通过抓包软件获取。目前 telnet 已经被淘汰！
+	
+	[root@centos6 ~]#chkconfig --list
+	......省略
+	xinetd based services:						# 这个下面非独立服务
+			chargen-dgram: 	off
+			telnet:			off					# 这个 off 表示不能被 xinetd 服务激活
+			time-dgram:		off
+			time-stream:	off
+			......省略
+
+	[root@centos6 ~]#chkconfig telnet on
+	[root@centos6 ~]#chkconfig --list
+	......省略
+	xinetd         0:off   1:off   2:off    3:on    4:on    5:on    6:off
+	......省略
+	xinetd based services:						
+			chargen-dgram: 	off
+			telnet:			on					# 设为 on 后就能被 xinetd 这个服务托管，就能通过 xinetd 这个服务来激活。telnet绑定的端口是23
+			time-dgram:		off
+			time-stream:	off
+			......省略
+	
+	// 这里 xinetd 服务虽然在3、4、5模式下显示on，但实际还没启动，因为刚刚才安装的服务
+	[root@centos6 ~]#chkconfig --list xinetd
+	xinetd         0:off   1:off   2:off    3:on    4:on    5:on    6:off			
+
+	[root@centos6 ~]#service xinetd status
+	xinetd is stopped	
+		
+	[root@centos6 ~]#service xinetd start
+	Starting xinetd:									[ OK ]	
+	
+	
+	// 可以看到现在是由xinetd监控23端口，说明xinetd代理了telnet
+	[root@centos6 ~]#ss -ntlp 
+	State        Recv-Q        Send-Q               Local Address:Port                Peer Address:Port       Process
+	LISTEN       0             64                        :::23                      		:::*			  users:(("xinetd",2214,5))
+	......省略
+	
+	// 可以看到 telnet 进程并没有启动
+	[root@centos6 ~]#ps aux|grep telnet
+	root 12571  0.0  0.0 119432   916 pts/1    S+   04:28   0:00 grep --color=auto telnet
+	
+	// 在另一个终端进行访问
+	[root@centos8 ~]#telnet 10.0.0.6
+	
+	// 可以看到 telnet 被 xinetd 激活
+	[root@centos6 ~]#ps aux|grep telnet
+	root 12571  0.0  0.1 119432  1016 ?   	   S+   04:28   0:00 in.telnetd: 10.0.0.8
+	root 12571  0.0  0.0 119432   916 pts/1    S+   04:28   0:00 grep --color=auto telnet
+	
+	
+	总结：
+		非独立服务不能作为一个独立服务直接启动，由 xinetd 服务来启动。xinetd 服务监控是否由用户访问，有人访问就启动，没有访问就关闭，从而节约系统资源 ！
+		xinetd 服务其实监控的是非独立服务绑定的端口 ！
+	
+	
+5.5 启动过程的故障排错
+	
+实战案例1：
+	故障: 删除 /sbin/init 无法启动
+	恢复过程：
+		方法1: 从同一个版本的另的主机复制init文件
+		
+		方法2:
+			1 先进入grub菜单，在kernel参数后加 selinux=0 init=/bin/bash
+			2 mount -o remount,rw /
+			3 mount /dev/sr0 /mnt/
+			
+			接下来的步骤也有两种做法：
+			方法1：
+				4 rpm2cpio /mnt/Packages/upstart.xxx.rpm | cpio -idv ./sbin/init
+				5 mv ./sbin/init /sbin/
+			
+			方法2
+				4 rpm -ivh /mnt/Packages/upstart.xxx.rpm --force
+	
+	
+				
+实战案例2：
+	
+	故障：rm -rf /boot/* 
+		  rm -f /etc/fstab 		
+		  
+		// "/etc/fstab"这个文件保存着分区信息
+		[root@centos6 ~]#cat  /etc/fstab
+		......省略
+		UUID=14a27e6e-04e2-49e0-ac1a-ed2e3717d321 /                       ext4     defaults        1 1
+		UUID=5749bb60-3729-4dfb-84dd-232108cc4944 /boot                   ext4     defaults        1 1
+		......省略
+		  
+		
+	恢复：	
+		第一步：首先恢复 /etc/fstab 
+			1. 用光盘进入 rescue mode。注意：因为缺失"/etc/fstab",所以根目录并没有挂载到"/mnt/sysimage"目录
+			   但是使用以下命令仍然可以查到分区文件信息：
+					blkid
+					fdisk -l
+			2. 如果分区多，可能并不知道哪个分区是根文件系统，这个时候就可以简单分析，排除不是根目录的分区，然后剩下的分区分别挂到目录上，如果哪个分区包含linux目录结构，那就是根文件系统
+					mkdir /mnt/rootdir
+					mount /dev/sda1 /mnt/rootdir		# 可能是sda1、sda2、sda3、sda4 等，假如 sda1 就是根目录系统
+					ls /mnt/rootdir
+					
+			3. 同样的方式找出"/boot"的文件系统
+					mkdir /mnt/bootdir
+					mount /dev/sda2 /mnt/bootdir		# 假如sda2就是"/boot"的文件系统
+					ls /mnt/bootdir						# 因为"/boot/"目录下的文件已被清空，所以这个分区里面是空的
+					
+			4. 手动创建 /etc/fstab 文件，从 "blkid" 或 "fdisk -l" 很容易获得分区信息
+					vim /mnt/rootdir/etc/fstab			# 编辑分区信息
+						
+			
+			5. 重启。重启快捷键 "ctrl+alt+delete"
+			
+		第二步：恢复内核和initrd 文件，以及除"grub.conf"以外的其它文件
+			6. 重启还是使用光盘进入 rescue mode。这时候根目录就挂载到"/mnt/sysimage"目录下：
+				chroot /mnt/sysimage
+				mount /dev/sr0 /mnt/ 		# 挂载光盘
+				
+			7. 恢复内核和initrd 文件，有两种方式：
+				#方法1
+				rpm -ivh /mnt/Packages/kernel.xxxx.rpm --force		// 这里加"--force"的原因是，因为内核不是正常卸载，只是删除了一些文件，所以要强行安装。安装后，删除的文件也会重新生成！
+				
+				#方法2
+				cp /mnt/isolinux/vmlinuz /boot/
+				mkinitrd /boot/initramfs.img `uname -r`
+		
+		第三步：修复grub以及"/boot/grub/grub.conf"
+			grub-install /dev/sda
+			vim /boot/grub/grub.conf
+			sync													// 确认将缓冲区的数据写到磁盘，以防重启的时候系统还没来得及将缓冲区的数据写到磁盘
+			reboot
+	
+				
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 Linux的内核参数配置
+
+6.1 /proc 目录和内核参数管理。/proc目录：内核把自己内部状态信息及统计信息，以及可配置参数通过proc伪文件系统加以输出
+	
+	//帮助
+	man proc
+	
+	内核参数：
+		只读：只用于输出信息
+		可写：可接受用户指定“新值”来实现对内核某功能或特性的配置
+	
+	
+	/proc 目录存放的是进程相关信息，包括内核状态。这实际上是一个虚拟文件见，它对应的是内存中的状态
+		// "/proc"目录内容虽然很多，但大小为0，因为都不是硬盘上的文件，里面的东西都在内存中，所以这里面的设置可以影响系统的运行！
+		[root@localhost ~]#du -sh /proc/
+		du: cannot access ‘/proc/1717/task/1717/fd/4’: No such file or directory
+		du: cannot access ‘/proc/1717/task/1717/fdinfo/4’: No such file or directory
+		du: cannot access ‘/proc/1717/fd/3’: No such file or directory
+		du: cannot access ‘/proc/1717/fdinfo/3’: No such file or directory
+		0       /proc/
+		
+	
+	[root@centos6 ~]#ls /proc/sys
+	abi  crypto  debug  dev  fs  kernel  net  user  vm
+	
+	
+	// 路由就是在这里配的，这里面的设置其实都是内存中的设置
+	[root@centos6 ~]#ls /proc/sys/net/ipv4/ip_forward
+	/proc/sys/net/ipv4/ip_forward
+	
+6.2 sysctl 命令
+
+	sysctl是一个允许改变正在运行中的Linux系统的接口，修改的是针对整个系统的内核参数。
+	sysctl的修改是立即且临时的（重启后失效）。也可以通过修改sysctl.conf配置文件，达到永久生效	
+	
+
+6.3 "/proc/sys" 下的很多信息可以被修改, 可以通过观察"/proc/sys"来控制内核中的各种设置
+	
+	如果改设置，直接改/proc下的文件，相当于直接改内存，不能永久保存。要想永久保存，可以把设置存到下面文件中：
+		/run/sysctl.d/*.conf
+		/etc/sysctl.d/*.conf
+		/usr/local/lib/sysctl.d/*.conf
+		/usr/lib/sysctl.d/*.conf
+		/lib/sysctl.d/*.conf
+		/etc/sysctl.conf							# 改上面的文件都可以。但一般都是改这个文件，其它文件不用动 ！
+	
+	比如现在要开启 ip_forward 
+		[root@centos6 ~]#vim /etc/sysctl.conf
+		net.ipv4.ip_forward=1						# 注意格式，"."就相当于路径分隔符"/"，路径从net开始，不是从proc开始。因为"/etc/sysctl.conf"对应的就是"/proc/sys/"这个文件夹
+		net.ipv4.icmp_echo_ignore_all=1			    # 禁ping
+		
+		// 使设置生效
+		[root@centos6 ~]#sysctl -p					
+		
+		// 查看所有生效参数
+		[root@centos6 ~]#sysctl -a
+		
+		注意：这种方法centos7、8都支持，只不过centos7、8的"/etc/sysctl.conf"这个文件中什么都没有！
+	
+	
+6.4	(重要)常用的内核参数
+	net.ipv4.ip_forward
+	net.ipv4.icmp_echo_ignore_all				#禁ping
+	net.ipv4.ip_nonlocal_bind 					#允许应用程序可以监听本地不存在的IP
+	vm.drop_caches								#释放缓存
+	fs.file-max = 1020000 						#全局打开文件的最大数
+	vm.overcommit_memory = 0					#防止超分内存，比如只有8G内存，非要分10G内存出去
+		#0表示内核将检查是否有足够可用内存供应用进程使用；如果有足够的可用内存，内存申请允许；否则内存申请失败，并把错误返回给应用进程。
+		#1表示内核允许分配所有的物理内存，而不管当前的内存状态如何。
+		#2表示内核允许分配超过所有物理内存和交换空间总和的内存。
+	vm.swappiness = 10							#表示物理内存剩余10%的时候允许使用swap，生产中可以优化这个参数
+	
+	# 禁用IPv6
+	net.ipv6.conf.all.disable_ipv6 = 1
+	net.ipv6.conf.default.disable_ipv6 = 1
+	
+	示例：禁ping
+		环境：两台主机，分别是 192.168.32.100 、192.168.32.101
+		
+		// 192.168.32.100 上运行
+		[root@localhost ~]#ping 192.168.32.101				# 可以ping通，不要停止，一直ping
+		
+		// 192.168.32.101 上运行		
+		[root@localhost ~]#vim /etc/sysctl.conf
+		net.ipv4.icmp_echo_ignore_all=1
+		[root@localhost ~]#sysctl -p						# 运行这个命令后，可以发现" 192.168.32.100"这台主机不能ping通，停在那里不动了
+		
+		[root@localhost ~]#vim /etc/sysctl.conf					
+		#net.ipv4.icmp_echo_ignore_all=1					# 注释或删掉这一行
+		[root@localhost ~]#sysctl -p						# 观察"192.168.32.100"主机，发现还是不能ping通。因为"-p"表示读取配置文件，覆盖内存中的设置，这一行配置都删了，所以覆盖不了内存中的配置
+		
+		[root@localhost ~]#cat /proc/sys/net/ipv4/icmp_echo_ignore_all
+		1										 			# 可以发现内存中的值还是1
+		
+		方法1：
+		[root@localhost ~]#echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all		
+		方法2：
+		[root@localhost ~]#sysctl -w net.ipv4.icmp_echo_ignore_all=0			# -w 表示临时修改
+		
+		用上面两种方法都可以使内存中的值及时生效，再查看"192.168.32.100"主机，可以发现又能ping通 ！！
+	
+	
+	示例2："fs.file-max"表示"全局打开文件的最大数"。
+		
+		// "fs.file-max"的默认数值要优化，因为默认的数值保守，会导致打开的文件量不够大
+		[root@centos6 ~]#sysctl -a | grep fs.file-max
+		fs.file-max = 178079								# 默认只能打开 178079 个文件，对于一些生产服务器来讲，打开的文件会非常多。所以可以适当把这个值调大些
+	
+		[root@centos6 ~]#vim /etc/sysctl.conf
+		fs.file-max = 1020000
+	
+	
+	示例3：优化"vm.swappiness"参数
+		
+		[root@localhost ~]#sysctl -a | grep vm.swappiness
+		vm.swappiness = 30									# 表示物理内存剩余30%的时候允许使用swap
+		
+		
+		"vm.swappiness"这个值要尽可能设小，因为如果还剩很多物理内存空间，就把数据往硬盘上些，会导致速度变量。
+		 所以要把这个值调小，或者调为0，调为0表示没有物理内存可用了才使用swap，或者关闭swap！
+		
+	
+	示例4：清除缓存
+		// it can degrade overall system performance.
+		echo 1 > /proc/sys/vm/drop_caches
+
+		// To free dentries and inodes, use:
+		echo 2 > /proc/sys/vm/drop_caches
+		
+		// To free pagecache, dentries and inodes, use:
+		echo 3 > /proc/sys/vm/drop_caches
+		
+		注意：由于写入此文件是一项非破坏性操作，并且虚拟对象不可释放，因此用户应首先运行sync（1）。
+		
+	
+6.5 /sys 目录，这个目录和硬件相关，里面是一些硬件信息，由内核管理，一般不用去管它。
+	
+	"/sys"目录使用sysfs文件系统，为用户使用的伪文件系统，输出内核识别出的各硬件设备的相关属性信息，也有内核对硬件特性的设定信息；有些参数是可以修改的，用于调整硬件工作特性。
+	
+	udev通过此路径下输出的信息动态为各设备创建所需要设备文件，udev是运行用户空间程序专用工具：udevadmin, hotplug
+	udev为设备创建设备文件时，会读取其事先定义好的规则文件，一般在 /etc/udev/rules.d 及 /usr/lib/udev/rules.d 目录下
+	
+
+	[root@localhost ~]#ls /sys/
+	block  bus  class  dev  devices  firmware  fs  hypervisor  kernel  module  power			#  block(块设备), bus(总线)，devices(设备)), firmware(固件), fs(文件系统
+	
+	// "/sys/"也是一个虚拟文件夹，不是真正的文件夹，对应的也是内存中的一些数据
+	[root@localhost ~]#du -sh /sys/
+	0       /sys/
+
+	扩展：
+		sysfs 文件系统是 Linux 众多文件系统中的一个
+		sysfs 文件系统是 Linux 2.6 内核的一个新特性，它是一个只存在于内存中的文件系统。内核通过这个文件系统将信息导出到用户空间中。
+		sysfs 文件系统：https://blog.csdn.net/lyndon_li/article/details/126432157
+	
+	
+示例：别名实现新添加硬盘的识别
+	[root@centos8 ~]#alias scandisk
+	alias scandisk='echo - - - > /sys/class/scsi_host/host0/scan;echo - - - > /sys/class/scsi_host/host1/scan;echo - - - > /sys/class/scsi_host/host2/scan'
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 systemd特性和内核编译安装，内核编译是了解内容，实际工作中很少会自己编译内核！在早期的时候，有些功能只有新内核才支持，有些公司为了实现特定的新功能才会编译内核，这个很少见！
+	
+	Linux是单内核体系设计、但充分借鉴了微内核设计体系的优点，为内核引入模块化机制 !
+	
+	Linux内核组成部分：
+		kernel：内核核心，一般为bzImage，通常在/boot目录
+			vmlinuz-VERSION-RELEASE
+		kernel object：内核对象，一般放置于
+			/lib/modules/VERSION-RELEASE/
+		辅助文件：ramdisk
+			initrd-VERSION-RELEASE.img：从CentOS 5 版本以前
+			initramfs-VERSION-RELEASE.img：从CentOS6 版本以后
+	
+	内核版本：
+		在运行中的内核使用 uname 命令打印系统信息
+		格式：uname [OPTION]...
+		常用选项：
+			-n 显示节点名称
+			-r 显示VERSION-RELEASE
+			-a 显示所有信息
+	
+	
+	内核模块命令：
+		lsmod 命令：
+			显示由核心已经装载的内核模块
+			显示的内容来自于: /proc/modules文件
+		
+		modinfo命令：
+			功能：管理内核模块
+			配置文件：/etc/modprobe.conf, /etc/modprobe.d/*.conf
+			
+			显示模块的详细描述信息
+				modinfo [ -k kernel ] [ modulename|filename... ]
+				常用选项：
+					-n：只显示模块文件路径
+					-p：显示模块参数
+					-a：作者
+					-d：描述
+					
+		modprobe命令：装载或卸载内核模块
+			modprobe [ -C config-file ] [ modulename ] [ module parame-ters... ]
+			modprobe [ -r ] modulename…
+			
+		depmod命令：内核模块依赖关系文件及系统信息映射文件的生成工具
+		
+		insmod命令：可以安装模块，需要指定模块文件路径，并且不自动解决依赖模块
+			insmod [ filename ] [ module options... ]
+			
+		rmmod命令：卸载模块
+			rmmod [ modulename ]
+		
+		
+7.1 为什么要编译内核
+	编译linux内核，可以开启或关闭linux内核支持的功能，比如 linux 默认不支持ntfs文件系统(ntfs文件系统是windows的文件系统), 但实际上内核是支持的，只是编译时没有打开！
+	如果要使linux支持ntfs文件系统，就要重新编译内核，在内核中增加ntfs文件系统驱动模块！
+	
+	在有些定制硬件的公司，都是在现有内核的基础上定制特性，比如专业做硬件防火墙的公司，在编译内核时就只选择支持防火墙的特性，不需要的特性全部不要，样内核编译出来就特别精简，特别小！
+	所以做硬件的公司定制内核的场景比较多一些，运维工程师很少编译内核！
+	
+	
+测试linux默认是否支持NTFS文件系统：	
+	在VMware中添加一个硬盘，选择使用物理硬盘，选择设备(PhysicalDrive0表示第一块硬盘，PhysicalDrive1表示第二块硬盘，依次类推)，选择"使用单个分区", 选择一个NTFS文件系统的分区，然后下一步，然后完成！
+		// 扫描新磁盘
+		echo - - - > /sys/class/scsi_host/host0/scan;echo - - - > /sys/class/scsi_host/host1/scan;echo - - - > /sys/class/scsi_host/host2/scan
+		// 可以看到识别出来了
+		lsblk -f
+		//虽然能识别，但是内核不支持，挂载的时候会出错, 假如 /dev/sdb2 就算刚刚添加的NTFS文件系统分区
+		mount /dev/sdb2 /mnt/
+		mount: /mnt: unknown filesystem type 'ntfs'
+	
+	
+	
+编译linux内核需要用到一个配置文件，这个文件决定了内核支持哪些功能，这个配置文件在系统的"/boot"目录下，通过这个配置文件也可以知道当前linux系统支持哪些功能：
+		
+	[root@localhost ~]#wc -l /boot/config-3.10.0-1160.el7.x86_64
+	6529 /boot/config-3.10.0-1160.el7.x86_64
+	
+	[root@localhost ~]#cat /boot/config-3.10.0-1160.el7.x86_64 | head
+	#
+	# Automatically generated file; DO NOT EDIT.
+	# Linux/x86_64 3.10.0-1160.el7.x86_64 Kernel Configuration
+	#
+	CONFIG_64BIT=y
+	CONFIG_X86_64=y
+	CONFIG_X86=y
+	CONFIG_INSTRUCTION_DECODER=y									
+	CONFIG_OUTPUT_FORMAT="elf64-x86-64"
+	CONFIG_ARCH_DEFCONFIG="arch/x86/configs/x86_64_defconfig"
+	......省略
+	
+	[root@localhost ~]#cat /boot/config-3.10.0-1160.el7.x86_64 | grep NTFS
+	# CONFIG_NTFS_FS is not set														# 可以看到"CONFIG_NTFS_FS"参数没有被设置
+
+	[root@localhost ~]#cat /boot/config-3.10.0-1160.el7.x86_64 | grep CONFIG_EXT4_FS
+	CONFIG_EXT4_FS=m
+
+	配置文件中的值有些是y，有些是m，区别如下：
+		y表示集成在内核文件中，例如 " /boot/vmlinuz-3.10.0-1160.el7.x86_64"这个文件就算内核文件
+		m表示把功能以模块方式提供，也就是独立文件方式提供，比如 CONFIG_EXT4_FS 的配置就是m, 如下：
+			updatedb
+			locate ext4.ko
+			/usr/lib/modules/4.18.0-240.el6.x86_64/kernel/fs/ext4/ext4.ko.xz
+	
+	
+内核模块文件的存放位置：
+	// "/lib/modules/"下的文件夹以内核版本命名，文件夹里面就是内核驱动，这里面的文件很多都是ko文件，ko就算驱动模块文件
+	[root@localhost ~]#ll /lib/modules/
+	total 8
+	drwxr-xr-x. 7 root root 4096 Aug 20  2021 3.10.0-1160.el7.x86_64
+	drwxr-xr-x. 7 root root 4096 Oct 29 14:59 5.4.220-1.el7.elrepo.x86_64
+				
+	
+7.2 编译安装内核实战案例，详情见PDF！
+	注意地方1：
+		[root@centos8 linux]#vim .config
+		#修改下面三行
+		# CONFIG_MODULE_SIG=y 						#注释此行，如果不注释这行,编译还要签名
+		CONFIG_SYSTEM_TRUSTED_KEYS="" 				#修改此行，如果修改，会编译失败
+		# CONFIG_DEBUG_INFO_BTF=y 					#linux-5.8.5版本后需要注释此行
+		
+	注意地方2：
+		[root@centos8 linux]#make -j 2 				#或者两步实现："make -j 2 bzImage"这一步编译内核，"make -j 2"这一步编译模块！
+		
+	注意地方3：安装模块和安装内核分为两步
+		[root@centos8 linux]#make modules_install	#安装模块
+		[root@centos8 linux]#make install			#安装内核
+		
+	注意地方4：配置EPEL源
+		EPEL源是标配，不配置EPEL源，很多包装不了
+			
+	注意地方5：
+		// 这个命令直接在虚拟机上运行，如果在远程终端运行，界面可能会乱
+		make menuconfig
+	
+		// 定义内核版本，比如"3.10.0-1160.el7.x86_64"中的"-1160.el7.x86_64"这部分内容可以自己定义
+		
+		// 找到"NTFS file system support"这项，按空格键，会自动切换值。"M"表示模块化,"*"表示集成在内核文件中
+		// 也可以把"NTFS debugging support"以及"NTFS write support"这两项打开(按空格切换为"M"或"*"), 然后就可以支持 NTFS 调试 以及 NTFS写操作！
+	
+	注意地方6：
+		不要在远程终端编译，容易编译失败，直接登录本机系统终端编译。
+		为了预防万一终端挂了(终端挂了，编译也就失败了)，最好在后台运行，剥离与终端的关系，有以下三种方式：
+			nohup COMMAND &>/dev/null &
+			screen；COMMAND
+			tmux；COMMAND
+	
+	注意地方7：
+		// 安装完成后，安装内核模块，实际上就是拷贝过程，把模块拷贝到"/lib/modules/内核版文件夹/"这个目录下
+		make modules_install
+		
+		// 生成内核文件，实际上就是把编译好的内核文件拷贝到"/boot"目录下
+		make install
+		
+		// 然后重启，在启动界面的"选择菜单界面"选择新内核启动系统！
+		reboot
+		
+		// 查看系统是否支持ntfs文件系统，如果能支持，就会显示出来
+		lsmod | grep ntfs
+		
+		lsblk -f
+		
+		// 如果能成功挂载，说明系统已经支持NTFS文件系统。
+		mount /dev/sdb2 /mnt/
+	
+		注意：ntfs文件系统挂载到Linux的目录后，只支持读ntfs文件系统里的文件，不能往ntfs文件系统里写文件！
+	
+	
+	注意地方8：卸载自己编译安装的内核
+		如果内核是通过手动编译安装，删的时候就不能用rpm包卸载的方式，只能手动删！
+		
+		卸载内核的方式：
+			rm -rf "/lib/modules/内核版文件夹/"			# 这个文件中放的就是驱动等文件 
+			rm -rf /boot/*内核版本名*					# 删除相应的内核版本
+			find /boot -name "*内核版本名*" -delete		# 删除残留文件
+			grub2-mkconfig -o > /boot/grub2/grub.cfg	# 最好再重新生成下grub文件
+			reboot										# 重启
+			
+7.6 交叉编译
+		// 编译的目标平台与当前平台不相同，使用ARCH参数指定CPU架构
+		make ARCH=arch_name
+		
+		// 获取特定目标平台的使用帮助
+		make ARCH=arch_name help
+		
+		示例：
+			make ARCH=arm help
+		
+	
+7.7 systemd 特性
+	Systemd：从 CentOS 7 版本之后开始用 systemd 实现init进程，系统启动和服务器守护进程管理器，负责在系统启动或运行时，激活系统资源，服务器进程和其它进程
+	相同的硬件配置， CentOS7 启动比 CentOS6 块，因为 CentOS7 支持并行启动。
+	
+	centos5、6、7 启动的区别：假如有1、2、3、4个服务需要开机启动，2服务依赖于 1 服务，4服务依赖于3服务
+		centos5：1、2、3、4 顺序启动
+		centos6：1、2 串行启动， 3、4 串行启动，这个串行启动的服务可以并行，也就是说，没有依赖关系的服务可以并行启动
+		centos7：不管有没有依赖关系都并行启动。因为在启动阶段，并不会去访问服务，所以在启动阶段不按照依赖关系启动也没有关系
+	
+	Systemd新特性：
+		系统引导时实现服务并行启动
+		按需启动守护进程
+		自动化的服务依赖关系管理。比如访问一个服务，Systemd再激活这个服务，类似于 centos6 中的 xinetd 服务
+		同时采用socket式与D-Bus总线式激活服务
+		socket与服务程序分离
+		向后兼容sysv init脚本
+		使用systemctl 命令管理，systemctl命令固定不变，不可扩展，非由systemd启动的服务，systemctl无法与之通信和控制
+		系统状态快照
+		
+	
+systemd 核心概念：unit
+		unit表示不同类型的systemd对象，通过配置文件进行标识和配置；文件中主要包含了系统服务、监听socket、保存的系统快照以及其它与init相关的信息
+		
+	Unit类型：
+		#查看unit类型，service、socket、socket这三种类型用的最多
+		[root@centos8 ~]#systemctl -t help
+		Available unit types:
+		service									# 这些service就类似于centos6上面的服务
+		socket
+		target									# 这里的target，实际上就是centos6中的runlevel
+		device
+		mount
+		automount
+		swap
+		timer
+		path
+		slice
+		scope
+		
+	Unit类型说明：	
+		service unit: 文件扩展名为.service, 用于定义系统服务
+		Socket unit: .socket, 定义进程间通信用的socket文件，也可在系统启动时，延迟启动服务，实现按需启动
+		Target unit: 文件扩展名为.target，用于模拟实现运行级别
+		Device unit: .device, 用于定义内核识别的设备
+		Mount unit: .mount, 定义文件系统挂载点
+		Snapshot unit: .snapshot, 管理系统快照
+		Swap unit: .swap, 用于标识swap设备
+		Automount unit: .automount，文件系统的自动挂载点
+		Path unit: .path，用于定义文件系统中的一个文件或目录使用,常用于当文件系统变化时，延迟激活服务，如：spool 目录
+	
+	unit的配置文件：
+		/usr/lib/systemd/system #每个服务最主要的启动脚本设置，类似于之前的/etc/init.d/。这些脚本的后缀以Unit类型结尾，比如 xxxx.server、yyyy.socket、zzzz.target。一看就知道属于哪个Unit类型
+		/lib/systemd/system		#ubutun的对应目录
+		/run/systemd/system 	#系统执行过程中所产生的服务脚本，比上面目录优先运行
+		/etc/systemd/system 	#管理员建立的执行脚本，类似于/etc/rcN.d/Sxx的功能，比上面目录优先运行
+
+
+7.8  systemctl管理系统服务 service unit
+	
+	命令：
+		systemctl COMMAND name.service
+		说明：
+			name.service 中的".service"可以省略 ！
+			systemctl COMMAND 后可以跟多个服务一起操作 ！	
+		
+	#启动：相当于service name start
+	systemctl start name.service			// 临时生效，重启失效
+	
+	#停止：相当于service name stop
+	systemctl stop name.service				// 临时生效，重启失效
+	
+	#重启：相当于service name restart
+	systemctl restart name.service
+	
+	#查看状态：相当于service name status
+	systemctl status name.service
+	
+	#禁止自动和手动启动：
+	systemctl mask name.service							// 禁止启动服务，有些服务上面的功能和某些服务冲突，就需要禁止这个服务启动。centos6没有这样的功能
+	
+	#取消禁止
+	systemctl unmask name.service
+	
+	#查看某服务当前激活与否的状态：
+	systemctl is-active name.service
+	
+	#查看所有已经激活的服务：
+	systemctl list-units --type|-t service
+	
+	#查看所有服务：
+	systemctl list-units --type service --all			//  --all 也可以缩写为 -a
+	systemctl list-units --type service -a
+	
+	#设定某服务开机自启，相当于chkconfig name on
+	systemctl enable name.service					// 永久生效
+	
+	#设定某服务开机禁止启动：相当于chkconfig name off
+	systemctl disable name.service					// 永久生效
+	
+	#查看所有服务的开机自启状态，相当于chkconfig --list
+	systemctl list-unit-files --type service
+	
+	#用来列出该服务在哪些运行级别下启用和禁用：chkconfig –list name
+	ls /etc/systemd/system/*.wants/name.service
+	
+	#查看服务是否开机自启：
+	systemctl is-enabled name.service
+	
+	#列出失败的服务
+	systemctl --failed --type=service
+	
+	#开机并立即启动或停止
+	systemctl enable --now postfix
+	systemctl disable --now postfix
+	
+	#查看服务的依赖关系：
+	systemctl list-dependencies name.service
+	
+	#杀掉进程：
+	systemctl kill unitname	
+	
+	#显示服务状态
+	systemctl list-unit-files --type service --all
+	状态解析：
+		loaded 					Unit配置文件已处理
+		active(running) 		一次或多次持续处理的运行
+		active(exited)			成功完成一次性的配置
+		active(waiting) 		运行中，等待一个事件
+		inactive 				不运行
+		enabled 				开机启动
+		disabled 				开机不启动
+		static 					开机不启动，但可被另一个启用的服务激活
+		indirect 				重定向到别处
+	
+	# 重新加载某个服务的配置文件，如果新安装了一个服务，归属于 systemctl 管理，要使新服务的服务程序配置文件生效，需重新加载。
+	systemctl reload-daemon  		// 加载新的unit 配置文件 
+	
+	
+示例1：centos7安装nginx
+	[root@localhost ~]#yum -y install nginx
+	
+	[root@localhost ~]#rpm -ql nginx
+	/usr/bin/nginx-upgrade
+	/usr/lib/systemd/system/nginx.service		// 安装的时候自动生成了"nginx.service"这个文件，这个ngingx.server就相当于centos6上面的服务脚本 
+	
+	[root@localhost ~]#systemctl status nginx
+	● nginx.service - The nginx HTTP and reverse proxy server
+	   Loaded: loaded (/usr/lib/systemd/system/nginx.service; disabled; vendor preset: disabled) 	// 中间的那个 disabled 说明开机不启动， vendor preset 表示服务的默认启动状态
+	   Active: inactive (dead)
+	
+	// 设置为开机启动以及立即启动
+	[root@localhost ~]#systemctl enable --now nginx.service		// 等价于 systemctl enable nginx.service; systemctl start nginx.service; 这两步操作
+	Created symlink from /etc/systemd/system/multi-user.target.wants/nginx.service to /usr/lib/systemd/system/nginx.service.
+	
+	root@localhost ~]#systemctl status nginx.service
+	● nginx.service - The nginx HTTP and reverse proxy server
+	   Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; vendor preset: disabled)
+	   Active: active (running) since Tue 2022-11-22 00:52:43 CST; 1min 1s ago
+	  Process: 2476 ExecStart=/usr/sbin/nginx (code=exited, status=0/SUCCESS)
+	  Process: 2473 ExecStartPre=/usr/sbin/nginx -t (code=exited, status=0/SUCCESS)
+	......省略
+	
+	
+示例2：ubuntu安装nginx	
+		
+	[ubuntu@ubuntu1804 ~]#apt install nginx	
+	
+	[ubuntu@ubuntu1804 ~]#dpkg -L nginx					// 如果没有"nginx.service"这个文件，是因为依赖关系，装了一些其他包，这个文件在其它包中
+
+	[ubuntu@ubuntu1804 ~]#dpkg -L nginx-core
+	
+	[ubuntu@ubuntu1804 ~]#dpkg -L nginx-common			// 可以看到nginx.service"这个文件在common包中
+	
+	[ubuntu@ubuntu1804 ~]#systemctl status nginx		// 从结果可以看到，装上后自动启动服务,并设置为开机启动
+	● nginx.service - A high performance web server and a reverse proxy server
+	   Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; vendor preset: enabled)
+	   Active: active (running) since Tue 2022-11-22 01:20:33 CST; 1min 1s ago	
+	......省略
+	
+	// 可以看到，在centos和Ubuntu上普遍采用了systemd
+	[ubuntu@ubuntu1804 ~]#pstree -p
+	systemd(1)─┬─NetworkManager(693)─┬─{NetworkManager}(720)
+			   │                     └─{NetworkManager}(724)
+			   ├─VGAuthService(680)	
+	......省略
+
+
+示例3：centos7、8 版本兼容 sevice 以及 chkconfig 命令
+	
+	// centos7 使用 service 实际上是被重定向到了 systemctl
+	[root@centos7 ~]#service nginx restart 
+	Redirecting to /bin/systemctl restart nginx.service			
+
+	// 如果出现下面的错误，是因为不是使用root权限运行这个命令
+	[centos-user@centos7 ~]$ service nginx restart						// 注意：这个权限要使用root权限运行
+	Redirecting to /bin/systemctl restart nginx.service
+	Failed to restart nginx.service: The name org.freedesktop.PolicyKit1 was not provided by any .service files
+	See system logs and 'systemctl status nginx.service' for details.
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+扩展
+	[root@localhost ~]#df
+	Filesystem              1K-blocks    Used Available Use% Mounted on
+	devtmpfs                  1918632       0   1918632   0% /dev
+	tmpfs                     1930644       0   1930644   0% /dev/shm
+	tmpfs                     1930644   11844   1918800   1% /run
+	tmpfs                     1930644       0   1930644   0% /sys/fs/cgroup
+	/dev/mapper/centos-root  36805060 3070300  33734760   9% /					# 操作系统的根
+	/dev/sda1                 1038336  188008    850328  19% /boot				# GRUB的根
+	tmpfs                      386132       0    386132   0% /run/user/0
+
+
+	// blkid主要用来对系统的块设备(包括交换分区)所使用的文件系统类型、LABEL、UUID等信息进行查询
+	[root@localhost ~]#blkid
+	/dev/sr0: UUID="2020-11-04-11-36-43-00" LABEL="CentOS 7 x86_64" TYPE="iso9660" PTTYPE="dos"
+	/dev/sda1: UUID="5749bb60-3729-4dfb-84dd-232108cc4944" TYPE="xfs"
+	/dev/sda2: UUID="RkGwX7-oVcW-vbNu-Jo7f-b1Hs-Epb5-3yZkBO" TYPE="LVM2_member"
+	/dev/mapper/centos-root: UUID="6048e3e7-c9d9-4ebc-b0fa-ba0aa27ddfa6" TYPE="xfs"
+	/dev/mapper/centos-swap: UUID="111c047b-93f2-4df8-b54d-93fd9933465a" TYPE="swap"
+
+
+
+
+
+
+
+

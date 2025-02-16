@@ -1,0 +1,549 @@
+1 haproxy的静态调度算法
+	HAProxy通过固定参数 balance 指明对后端服务器的调度算法，该参数可以配置在listen或backend选项中。
+	HAProxy的调度算法分为静态和动态调度算法，但是有些算法可以根据参数在静态和动态算法中相互转换。
+	
+	静态调度算法:
+		按照事先定义好的规则轮询公平调度，不关心后端服务器的当前负载、连接数和响应速度等，
+		且无法实时修改权重(只能为0和1,不支持其它值)，只能靠重启HAProxy生效。
+	
+	动态算法：
+		基于后端服务器状态进行调度适当调整，新请求将优先调度至当前负载较低的服务器，
+		且权重可以在haproxy运行时动态调整无需重启。
+
+1.1 socat 工具
+	对服务器动态权重和其它状态可以利用 socat工具进行调整，Socat 是 Linux 下的一个多功能的网络工具，名字来由是Socket CAT(nc)，相当于netCAT的增强版.
+	Socat 的主要特点就是在两个数据流之间建立双向通道，且支持众多协议和链接方式。如 IP、TCP、 UDP、IPv6、Socket文件等
+
+	Socket文件是同一个主机上两个服务通讯的媒介，可以直接把报文发送到socket文件，通过socket文件连接两个网络通信的程序。
+	如果通信的程序不在同一台主机上，就只有通过网络实现通信。
+
+	yum -y install socat
+
+	# 下面命令等价于直接运行"socat stdio /var/lib/haproxy/haproxy.sock"然后输入help
+	echo "help" | socat stdio /var/lib/haproxy/haproxy.sock		# 不是所有socket都支持通信，不是所有socket支持的功能都一样，可以查看help文档
+
+	echo "show backend" | socat stdio /var/lib/haproxy/haproxy.sock
+
+
+	# 如果一个socket文件对应两个进程，发指令的时候不知道是哪个目标进程接收了，所以需要一个进程对应一个socket文件，这里假如有两个HAProxy进程
+	# 权重设为0，相当于实现了优雅下线，生产中可以使用脚本实现自动化
+	echo "set weight {BacnendName}/{ServerName} 0" | socat stdio /var/lib/haproxy/haproxy.sock1  
+	echo "set weight {BacnendName}/{ServerName} 0" | socat stdio /var/lib/haproxy/haproxy.sock2
+
+	#如果静态算法，如:static-rr，可以更改weight为0或1，但不支持动态更改weight为其它值，否则会提示下面信息
+	[root@centos7 ~]#echo "set weight magedu-test-80/web1 2" | socat stdio /var/lib/haproxy/haproxy.sock
+	Backend is using a static LB algorithm and only accepts weights '0%' and '100%'.
+
+	详见PDF ===>> "4.1.1 socat 工具"
+
+1.2 静态调度算法
+
+	static-rr：
+		基于权重的轮询调度,不支持运行时利用socat进行权重的动态调整(只支持0和1)及后端服务器慢启动,其后端主机数量没限制,相当于LVS中的 wrr
+		支持的后端服务器数量不受限制
+		
+	first：此调度算法基本不用
+
+	示例：
+		listen web_host
+			bind 10.0.0.7:80,:8801-8810,10.0.0.7:9001-9010
+			mode http
+			log global
+			# static-rr是静态的轮询算法, roundrobin 是动态的轮询算法
+			balance static-rr
+			# "10.0.0.17" 是server的名称，推荐用后端服务器的IP命名
+			server 10.0.0.17 10.0.0.17:80 weight 1 check inter 3000 fall 2 rise 5	
+			server 10.0.0.27 10.0.0.27:80 weight 2 check inter 3000 fall 2 rise 5
+
+	详见PDF ===>> "4.1.2 static-rr"
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 haproxy的动态调度算法	& 3 haproxy的调度算法RDP和iptables
+	
+	动态调度算法特点：可以不重启服务，实现动态修改权重！
+
+2.1 roundrobin：默认调度算法,此算法使用广泛
+		基于权重的轮询动态调度算法，支持权重的运行时调整
+		HAProxy中的roundrobin支持慢启动(新加的服务器会逐渐增加转发数)
+		其每个后端backend中最多支持4095个real server，支持对real server权重动态调整
+		
+	leastconn：支持权重，但是优先根据当前连接最少的后端服务器进行调度,比较适合长连接的场景使用，比如：MySQL、游戏业务等场景
+		
+	random：
+		在1.9版本开始增加 random的负载平衡算法，其基于随机数作为一致性hash的key，随机负载平衡对于大型服务器场或经常添加或删除服务器非常有用
+		支持weight的动态调整，weight较大的主机有更大概率获取新请求	
+
+2.2 其他算法：即可作为静态算法，又可以通过选项成为动态算法
+	
+	(1).五种其它算法：
+	
+		source：默认为静态方式，但是可以通过hash-type选项更改
+			源地址hash，基于用户源地址hash并将请求转发到后端服务器，后续同一个源地址请求将被转发至同一个后端web服务器
+			此方式当后端服务器数据量发生变化时，会导致很多用户的请求转发至新的后端服务器
+	
+		uri：默认为静态方式，也可以通过hash-type选项更改
+			基于对用户请求的URI的左半部分或整个uri做hash，再将hash结果对总权重进行取模后，根据最终结果将请求转发到后端指定服务器
+			适用于后端是缓存服务器(例如Varnish缓存服务器)场景，默认是静态算法。注意：此算法基于应用层，所以只支持 mode http ，不支持 mode tcp
+			
+			URI 和 URL：
+				<scheme>://<user>:<password>@<host>:<port>/<path>;<params>?<query>#<frag>
+				左半部分：/<path>;<params>
+				整个uri：/<path>;<params>?<query>#<frag>
+		
+		url_param：默认为静态方式，也可以通过hash-type选项更改
+			url_param对用户请求的url中的 params 部分中的一个参数key对应的value值作hash计算，并由服务器总权重相除以后派发至某挑出的服务器；
+			通常用于追踪用户，以确保来自同一个用户的请求始终发往同一个real server，如果无没key，将按roundrobin算法
+	
+		hdr：默认为静态方式，也可以通过hash-type选项更改
+			针对用户每个http头部(header)请求中的指定信息做hash。比如根据浏览器的类型(mobile还是pc)返回对应的页面
+		
+		rdp-cookie：默认为静态方式，也可以通过hash-type选项更改.
+			
+			rdp-cookie对于windows远程桌面的负载，使用cookie保持会话，默认是静态
+			
+				rdp(RemoteDesktopProtocol)协议：
+					windows的远程桌面，使用的端口是3389
+					可以多方连接到同一个机器上，互相操作同一个桌面。注意：需要相关配置，才能多方同时远程同一个windows桌面!
+	
+	
+			使用 HAProxy 的 rdp-cookie 算法实现windows远程桌面的负载
+				详见PDF ===>> " rdp-cookie 一致性hash配置示例" 
+			
+			
+			不使用HAProxy服务，使用 iptables 规则也可以实现RDP协议转发。注意：这种方式不支持负载，只支持转发
+				
+				通信模型：Window客户端桌面远程工具通过LInux服务器实现远程到Window主机
+					客户端和Windows在不同网段: 
+						Window客户端(172.16.0.2)桌面远程工具 <<=======>> (172.16.0.100)Linux服务器(10.0.0.8) <<=======>> Window机器(10.0.0.200)
+					客户端和Windows在同一网段: 
+						Window客户端(10.0.0.3)桌面远程工具 <<=======>> Linux服务器(10.0.0.8) <<=======>> Window机器(10.0.0.1)
+					
+				# 必须开启ip转发功能
+				sysctl -w net.ipv4.ip_forward=1
+				
+				# 客户端和Windows在不同网段需要下面命令,将发送给 172.16.0.100:3389 的包转发给 10.0.0.200:3389.注意后端服务器需要将iptables主机配置为网关.  
+				iptables -t nat -A PREROUTING -d 172.16.0.100 -p tcp --dport 3389 -j DNAT --to-destination 10.0.0.200:3389	# DNAT是对目的地址转换
+		
+				# 客户端和Windows在同一网段需要再执行下面命令
+				iptables -t nat -A PREROUTING -d 10.0.0.8 -p tcp --dport 3389 -j DNAT --to-destination 10.0.0.1:3389   	# DNAT是对目的地址转换
+				# 如果不加这条规则，访问的源地址没有变，10.0.0.1 的响应包就直接回到 10.0.0.3，而绕过了 10.0.0.8 ，所以需要加SNAT，对源地址进行转换
+				iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -j SNAT --to-source 10.0.0.8								# SNAT是对源地址转换
+				
+	(2).上面五种算法，都支持 hash-type 选项，hash-type 选项的值有 map-base(map-base取模法,默认值) 和 consistent(一致性hash)
+		map-base：
+			取模法，对source地址进行hash计算，再基于服务器总权重的取模，最终结果决定将此请求转发至对应的后端服务器。
+			当使用 source 算法时，map-base 是 hash-type 的默认值，也就是默认静态方式！
+		consistent：
+			一致性hash，当服务器的总权重发生变化时，对调度结果影响是局部的，不会引起大的变动，该hash算法是动态的，
+			支持使用 socat等工具进行在线权重调整，支持慢启动
+	
+	详见PDF ===>> "4.3 其他算法"
+	
+	
+2.3 算法总结 和 各算法使用场景
+	
+	详见PDF ===>> "4.3.6 算法总结"
+	详见PDF ===>> "4.3.7 各算法使用场景"
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 haproxy基于cookie实现会话粘性及状态页
+
+4.1 会话保持三种方案：
+	会话绑定：
+		只要是同一个人来就固定往同一个服务器调度。可以基于源地址hash，但是力度态粗糙。
+		可以基于cookie，每个浏览器都有一个独立的cookie，更精准。缺点是如果后端的一个服务器挂了，那么这台服务器上的cookie的seesion的信息也就没有了
+	
+	session复制：后端每个服务器都相互复制其它机器的session信息，这样每台机器都保存了所有的session，但是比较消耗内存！
+	
+	session 服务器：用redis集群保存session
+	
+4.2	基于cookie的会话保持。这种方式现在用的比较少
+	详见PDF ===>> "5.1 基于cookie的会话保持"
+
+4.3 HAProxy状态页
+	
+	状态页配置项:
+		stats enable 			# 基于默认的参数启用stats page
+		stats hide-version 		# 将状态页中haproxy版本隐藏
+		stats refresh <delay> 	# 设定自动刷新时间间隔，单位s(秒)，配置时可以直接写数字，不用跟单位。默认不自动刷新
+		stats uri <prefix> 		# 自定义stats page uri，默认值：/haproxy?stats
+		stats realm <realm> 	# 账户认证时的提示信息，有些浏览器不支持。 示例：stats realm HAProxy\
+		stats auth <user>:<passwd> #认证时的账号和密码，可定义多个用户,每行指定一个用户.默认：no
+		stats admin { if | unless } <cond> 	#启用stats page中的管理功能
+
+	详见PDF ===>> "5.2 HAProxy状态页"
+
+	HAProxy状态页可以用来作为HAProxy服务器健康检测的一个方式。同样的，Nginx状态页也可以用来作为Nginx服务器健康检测的一个方式。
+
+4.4 IP透传
+	
+	# 将抓到的包保存为"dump-tcp.pcap"文件，然后可以把这个文件导入到wireshark，以图像化显示包的详细信息
+	tcpdump tcp -i eth0 -nn port ! 22 -w dump-tcp.pcap -v
+	
+	四层IP透传配置示例：
+		# haproxy 作为代理服务器
+		listen web_http_nodes
+			bind 172.16.0.100:80
+			# 不支持http协议
+			mode tcp 							
+			balance roundrobin
+			# 开启"send-proxy"协议后，如果bind的端口和后端服务器的端口不一样，访问可能会失败，提示拒绝连接，这个需确认!
+			# 开启"send-proxy"协议后，如果Nginx没有开启"proxy_protocol",访问可能失败，返回"400 Bad Request"，这个需确认!
+			server web1 www.example.com:80 send-proxy check inter 3000 fall 3 rise 5 	#添加"send-proxy"表示透传IP
+		
+		# nginx 作为后端web服务器
+		http {
+			# 在访问日志中通过变量$proxy_protocol_addr 记录透传过来的客户端IP
+			log_format main '$remote_addr - $remote_user [$time_local] "$request" "$proxy_protocol_addr"'
+			server {
+				# 添加"proxy_protocol"，才能接收到HAProxy透传过来的IP，添加后也将无法直接访问此网站，只能通过四层代理访问
+				listen 80 proxy_protocol; 	
+				server_name www.example.com;
+		......
+	
+	注意：
+		四层IP透传是指将客户端机器的IP透传到后端服务器，不是客户端走NAT协议后的公网地址！
+		四层IP透传使用场景非常少，了解即可！
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 haproxy实现IP透传及报文首部修改压缩等
+
+5.1 七层IP透传
+	
+	# 在安装HAProxy后，在 defaults 配置中默认就开启了七层IP透传
+	defaults
+		mode                    http
+		log                     global
+		option                  httplog
+		option                  dontlognull
+		option http-server-close
+		# 这里 forwardfor 就保存了客户端主机的IP地址，[ except <network> ] 表示自此处指定的网络时不予添加此首部，如haproxy自身所在网络
+		option forwardfor       except 127.0.0.0/8
+		......
+
+5.2 http报文修改，代理服务器可以修改 请求报文 和 响应报文
+	
+	以下相关指令在2.0版本过时，在2.1版本中已经取消：
+		reqadd和reqdel在请求报文添加删除字段
+		rspadd与rspidel在响应报文中添加与删除字段
+	
+	2.1版本及以上版本用下面指令http-request和http-response代替, 可以在 listen、frontend、backend 块中使用
+		http-request						# 既可以加载 frontend，也可以加在 backend，随便一个都生效
+			http-request add-heade
+			http-request del-header
+		http-response						# 既可以加载 frontend，也可以加在 backend，随便一个都生效
+			http-response add-heade
+			http-response del-header
+			
+			
+	示例：使用"先删除再添加Header"实现修改 response header
+		frontend web_server
+			http-response del-header server 				# 删除 response header
+			http-response add-header server  	MyServer	# 添加 response header
+			.....
+	
+	扩展：
+		X-* 标头是自定义标头，它们不是HTTP标准的一部分，但可以在HTTP响应中使用。它们通常用于传递额外的信息，例如跟踪、安全和诊断信息。
+	
+5.3 自定义日志格式。注意：如果HAProxy服务器的压力很大，建议不开启日志记录功能!
+	
+	defaults
+		mode                    http
+		log                     global	#开启记录日志
+		log 127.0.0.1 local2 info 		# 定义全局的syslog服务器
+		
+	frontend web_server
+		log global			# 表示继承全局日志，比如继承格式、保存位置等
+		option httplog		# 用http日志格式(类似于apache web服务的日志格式)记录日志，这里定义的格式就会替代从全局继承过来的格式
+		bind :80
+		server web1 10.0.0.18:80 check
+		
+	详见PDF ===>> "5.5 自定义日志格式"
+
+5.4 压缩功能。HAProxy支持压缩，但是会消耗性能。建议在后端服务器开启压缩，不在HAProxy服务器压缩!
+	
+	配置：
+		compression algo <algorithm> ... #启用http协议中的压缩机制，常用算法有 gzip，deflate
+			# 压缩算法<algorithm>支持下面类型：
+			identity #debug调试使用的压缩方式
+			gzip #常用的压缩方式，与各浏览器兼容较好
+			deflate #有些浏览器不支持
+			raw-deflate #新式的压缩方式
+		
+		#要压缩的文件类型
+		compression type <mime type> ... 
+	
+	示例：
+		listen web_server
+			mode http
+			bind :80
+			server 10.0.0.18 10.0.0.18:80 check
+			server 10.0.0.28 10.0.0.28:80 check	
+			compression algo gzip deflate					# 可以同时指定两种压缩算法
+			compression type text/html text/css text/plain			
+
+5.5 web服务器状态监测
+	
+	三种状态监测方式：
+		基于四层的传输端口做状态监测，此为默认方式。但是端口正常不一定服务正常
+		基于指定 URI 做状态监测,需要访问整个页面资源,占用更多带宽
+		基于指定 URI 的request请求头部内容做状态监测，占用较少带宽,建议使用此方式
+
+
+	基于四层的传输端口做状态监测存在的问题：
+		模拟端口正常但服务没启动：
+			systemctl start httpd
+			systemctl enable httpd 
+			systemctl start httpd.socket
+			# 在centos7及以后的版本中，systemd可以实现端口和服务分离的功能，就是端口可以打开，但是服务可以不启动。
+			# systemd像一个代理，能打开端口并监听80，如果有人访问80，systemd就会临时激活httpd
+			systemctl enable httpd.socket
+			reboot
+			systemctl stop httpd
+			ss -ntlp  						# 可以看到80端口已被监听，但httpd服务没有启动
+		
+		后端访问：
+			telnet 10.0.0.18 80 	# 可以建立连接，但是httpd服务没起来
+			curl 10.0.0.18   		# 可以建立连接，httpd服务能起来。如果配置文件有错，服务不能起来，socket也会被关闭
+	
+	
+	基于应用层http协议进行健康性检测示例：
+		listen web_server
+			mode http		
+			bind :80
+			
+			# 启用七层健康性检测，支持tcp和http模式，向后端服务器发送option指令实现健康检查
+			# option httpchk 				
+			
+			# 访问后端服务器一个页面实现现健康检查，加重后端服务器的负担
+			# option httpchk GET /index.html	
+			
+			# 默认HTTP版本是1.0，指定为1.1，HTTP/1.1强制要求必须有Host字段，Host的名字可以随便写
+			# option httpchk GET /index.html HTTP/1.1\r\nHost:\ HereIsHostField	
+			
+			# 使用HEAD减少网络流量。head表示只响应报文头，而不响应内容。可以专门做一个用于服务健康检查的响应页 
+			option httpchk HEAD /index.html HTTP/1.1\r\nHost:\ HereIsHostField
+			
+			# http-check expect status 200				# 期望出现200的状态码
+			http-check expect ! rstatus ^5 				# 支持正则表达式。这里表示不希望出现5开头的状态码
+			
+			server 10.0.0.18 10.0.0.18:80 check	   	 	# check是四层检查，通过后端服务器80端口建立三次握手实现健康检查
+			server 10.0.0.28 10.0.0.28:80 check
+		
+	详见PDF ===>> "5.7 web服务器状态监测"
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 haproxy的ACL实现灵活的调度和控制
+	访问控制列表（ACL，Access Control Lists）
+		是一种基于包过滤的访问控制技术，它可以根据设定的条件对经过服务器传输的数据包进行过滤(条件匹配)，即对接收到的报文进行匹配和过滤，
+		基于请求报文头部中的源地址、源端口、目标地址、目标端口、请求方法、URL、文件后缀等信息内容进行匹配并执行进一步操作，比如允许其通过或丢弃
+
+6.1 ACL配置选项
+	acl 	<aclname> 	<criterion> 	[flags] 	[operator] 	[<value>]
+	acl 	名称 		匹配规范 		匹配模式 	具体操作符 	操作对象类型
+
+6.2 ACL-Name
+	ACL名称，可以使用大字母A-Z、小写字母a-z、数字0-9、冒号：、点.、中横线和下划线，并且严格区分大
+	
+6.3 ACL-criterion, 定义ACL匹配规范，即：判断条件
+	
+	# 返回第一个主机头和请求的路径部分的连接(下面的例子中是两个"#"中间的内容，实际"#"是没有的),该请求从主机名开始,并在问号之前结束,对虚拟主机有用
+	<scheme>://<user>:<password>@#<host>:<port>/<path>;<params>#?<query>=<frag>		# 文档上有错误，<query>#<frag> 改正为 <query>=<frag>
+		base : exact string match		
+		base_beg : prefix match
+		base_dir : subdir match
+		base_dom : domain match
+		base_end : suffix match
+		base_len : length match
+		base_reg : regex match
+		base_sub : substring match
+
+	# 提取请求的URL路径(下面的例子中是两个"#"中间的内容，实际"#"是没有的)，该路径从第一个斜杠开始，并在问号之前结束（无主机部分）
+	<scheme>://<user>:<password>@<host>:<port>#/<path>;<params>#?<query>=<frag>		# 文档上有错误，<query>#<frag> 改正为 <query>=<frag>
+	path : exact string match
+	path_beg : prefix match 			# 请求的URL开头，如/static、/images、/img、/css
+	path_end : suffix match 			# 请求的URL中资源的结尾，如 .gif .png .css .js .jpg .jpeg
+	......
+		
+	# 提取请求中的整个URL(下面的例子中是两个"#"中间的内容，实际"#"是没有的)
+	# 一个典型的应用是具有预取能力的缓存，以及需要从数据库聚合多个信息并将它们保存在缓存中的网页门户入口，推荐使用path
+	<scheme>://<user>:<password>@<host>:<port>#/<path>;<params>?<query>=<frag>#	   
+		url ：exact string match
+		url_beg : prefix match
+
+	详见PDF ===>> "5.8.1.2 ACL-criterion"
+	
+6.4 ACL-flags
+	-i 不区分大小写
+	-m 使用指定的pattern匹配方法
+	-n 不做DNS解析
+	-u 禁止acl重名，否则多个同名ACL匹配或关系
+
+6.5 ACL-operator
+	整数比较：
+		eq、ge、gt、le、lt
+	字符比较：
+		- exact match (-m str) :字符串必须完全匹配模式
+		- substring match (-m sub) :在提取的字符串中查找模式，如果其中任何一个被发现，ACL将匹配
+		- prefix match (-m beg) :在提取的字符串首部中查找模式，如果其中任何一个被发现，ACL将匹配
+		- suffix match (-m end) :将模式与提取字符串的尾部进行比较，如果其中任何一个匹配，则ACL进行匹配
+		- subdir match (-m dir) :查看提取出来的用斜线分隔（“/"）的字符串，如其中任一个匹配，则ACL进行匹配
+		- domain match (-m dom) :查找提取的用点（“."）分隔字符串，如果其中任何一个匹配，则ACL进行匹配
+
+6.6  ACL-value
+	The ACL engine can match these types against patterns of the following types :
+		- Boolean #布尔值
+		- integer or integer range #整数或整数范围，比如用于匹配端口范围
+		- IP address / network #IP地址或IP范围, 192.168.0.1 ,192.168.0.1/24
+		- string--> www.magedu.com
+		  exact #精确比较
+		  substring #子串
+		  suffix #后缀比较
+		  prefix #前缀比较
+		  subdir #路径， /wp-includes/js/jquery/jquery.js
+		  domain #域名，www.magedu.com
+		- regular expression #正则表达式
+		- hex block #16进制	
+	
+6.7 多个ACL的组合调用方式
+	与：隐式（默认）使用
+	或：使用“or" 或 “||"表示
+	否定：使用 "!" 表示
+	
+	示例：
+		if valid_src valid_port #与关系，ACL中A和B都要满足为true，默认为与
+		if invalid_src || invalid_port #或，ACL中A或者B满足一个为true
+		if ! invalid_src #非，取反，不满足ACL才为true
+	
+6.8 ACL(访问控制列表)示例-域名匹配，这种方式可以实现虚拟主机
+	frontend magedu_http_port
+		bind 10.0.0.7:80
+		mode http
+		balance roundrobin
+		log global
+		option httplog
+		#定义ACL
+		acl pc_domain     hdr_dom(host) -i www.example.org		# 如果客户端请求的host是www.example.org，就放在pc_domain这个ACL
+		acl mobile_domain hdr_dom(host) -i mobile.example.org
+		# 引用ACL
+		use_backend pc_hosts if pc_domain	# 如果客户端请求的host在pc_domain这个ACL中，就使用pc_hosts这个backend里面的后端服务器响应
+		use_backend mobile_hosts if mobile_domain
+		default_backend pc_hosts 			# 所有ACL都不匹配,则使用的默认backend		
+	
+6.8 ACL示例-基于源IP或子网调度访问，可以实现拒绝某些地区或国家访问!
+	
+	场景1：
+		# 如果客户端请求的IP为 10.0.0.6，或属于 172.18.0.0/16 网段，就放在 ip_range_test 这个ACL
+		acl ip_range_test src 172.18.0.0/16 10.0.0.6 	# 基于源地址的ACL,定义多个ACL的顺序无关
+	
+	场景2：
+		acl ip_range_test2 src 172.18.0.200
+		use_backend pc_hosts if ! ip_range_test2  # 表示请求地址只要不是172.18.0.200，由pc_hosts这个backend里面的后端服务器响应
+		
+6.9 基于源地址的访问控制示例
+	
+	acl acl_deny_src src 10.0.0.6 192.168.0.0/24
+	# block if acl_deny_src							# 2.1版本后，不再支持block，使用 http-request deny
+	http-request deny if acl_deny_src 				# 拒绝 ip 为 10.0.0.6、	或属于192.168.0.0/24网段的请求
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 haproxy的ACL的高级用法和实现自定议错误
+
+7.1 ACL示例-匹配浏览器类型
+	
+	详见PDF ===>> "5.8.6 ACL示例-匹配浏览器类型"
+	
+7.2 ACL示例-基于文件后缀名实现动静分离
+	
+	# 允许多个条件属于同一个ACL
+	acl acl_static path_beg -i /static /images /javascript 					# 基于路径的ACL
+	acl acl_static path_end -i .jpg .jpeg .png .gif .css .js .html .htm 	# ACL同名为"或"关系
+
+	详见PDF ===>> "5.8.8 ACL-匹配访问路径实现动静分离"
+
+7.3 ACL示例-预定义ACL使用
+	
+	
+	# 引用预定义的ACL，多个ACL默认为"与"关系。 下面的定义表示拒绝 TRACE 方法并且HTTP协议为1.1的请求
+	http-request deny if METH_TRACE HTTP_1.1 	
+
+		测试：
+			# 访问成功, -0 表示使用 http_1.0
+			curl -Iv -XTRACE -0  http://{HAProxyServerIP}
+			# 访问失败, 默认为 http_1.1
+			curl -Iv -XTRACE  http://{HAProxyServerIP}
+	
+	
+	# "||" 和 "or"  都可以表示 "或" 关系
+	http-request deny if METH_TRACE || HTTP_1.1
+	http-request deny if METH_TRACE or HTTP_1.1	
+	
+	详见PDF ===>> "5.8.9 ACL示例-预定义ACL使用"
+	
+7.4 自定义 HAProxy 错误界面
+	
+	格式：
+		errorfile <code> <file>
+			<code> #HTTP status code.支持200, 400, 403, 405, 408, 425, 429, 500, 502，503,504
+			<file> #包含完整HTTP响应头的错误页文件的绝对路径。 建议后缀".http"，以和一般的html文件相区分
+	
+	示例1：适合 HAProxy 2.1之前的版本
+		defaults
+			no option http-use-htx 							#支持html文件,此设置和版本有关，2.1不支持
+			errorfile 503 /usr/local/haproxy/html/503.html	
+	
+	示例2：适合 HAProxy 2.1及之后的版本
+		cat /apps/haproxy/html/503.http
+		defaults
+			errorfile 503 /usr/local/haproxy/html/503.http
+			......
+		
+		# 错误页面如果".http"后缀，要在这个文件中手动加上响应报文的头部。
+		# 因为HAProxy不是web服务器，不能像Nginx一样自动添加首部字段。如果不加，重启HAProxy服务时会因配置文件错误而启动失败
+		cat /usr/local/haproxy/html/503.http	
+		HTTP/1.1 503 Service Unavailable
+		Content-Type:text/html;charset=utf-8	
+		
+		<!DOCTYPE html>
+		<html lang="en">
+		<head>
+		......
+		</body>
+	
+	详见PDF ===>> "5.9.1 基于自定义的错误页面文件"	
+	
+7.5 基于http重定向错误页面
+	
+	defaults
+		errorloc 503 http://www.example.com/error_pages/503.html
+	
+	详见PDF ===>> "5.9.2 基于http重定向错误页面"
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展-1:
+	HAProxy的配置有时候变更后使用"ystemctl reload haproxy"不生效，需要使用"ystemctl restart haproxy"重启后才生效
+
+扩展-2: 如果后端服务器时https，HAProxy 该如何配置？
+	listen web_server
+		# mode http		# 如果mode设置为http，客户端访问将会报错，因为代理服务器不会参与SSL的加解密，所以需要将mode设为tcp
+		mode tcp
+		bind :443
+		server 10.0.0.18 10.0.0.18:443 check
+		server 10.0.0.28 10.0.0.28:443 check
+
+
+
+
+
+
+
+
+
+
+

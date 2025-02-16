@@ -1,0 +1,667 @@
+1 shell脚本编程逻辑运算和条件测试
+
+1.1 逻辑运算
+	
+	1,真; 0,假。这里的0和1表示二进制
+	
+	逻辑运算符号:
+		&	与, 一假则假,全真才真
+		|	或, 一真则真,全假才假
+		！  非
+		^	异或，相同为假，不同为真
+		
+		[ec2-user@ip-172-31-32-113 ~]$ a=$[2&6];echo $a
+		2
+		
+	短路运算	
+		&&
+			CMD1 短路与 CMD2
+			第一个CMD1结果为真 (1)，第二个CMD2必须要参与运算，才能得到最终的结果
+			第一个CMD1结果为假 (0)，总的结果必定为0，因此不需要执行CMD2
+		||
+			CMD1 短路或 CMD2
+			第一个CMD1结果为真 (1)，总的结果必定为1，因此不需要执行CMD2
+			第一个CMD1结果为假 (0)，第二个CMD2 必须要参与运算,才能得到最终的结果
+		
+		&& 和 || 混合:
+			CMD1 && CMD2 || CMD3  ===运算顺序===>  (CMD1 && CMD2) || CMD3
+			CMD1 || CMD2 && CMD3  ===运算顺序===>  (CMD1 || CMD2) && CMD3
+	
+
+1.2 条件测试命令
+	
+	条件测试命令，注意：EXPRESSION前后必须有空白字符
+		test EXPRESSION
+		[ EXPRESSION ] 			#和test 等价，建议使用 [ ]
+		[[ EXPRESSION ]] 		相关于增强版的 [ ], 支持[]的用法,且支持扩展正则表达式和通配符
+		
+		
+	条件命令只有两种结果:
+		若真，则状态码变量 $? 返回0
+		若假，则状态码变量 $? 返回1
+	
+
+查看 test 和 [] 帮助:
+
+	[ec2-user@ip-172-31-32-113 ~]$ help test
+	test: test [expr]
+    Evaluate conditional expression.
+
+    Exits with a status of 0 (true) or 1 (false) depending on
+    the evaluation of EXPR.  Expressions may be unary or binary.  Unary
+    expressions are often used to examine the status of a file.  There
+    are string operators and numeric comparison operators as well.
+
+    The behavior of test depends on the number of arguments.  Read the
+    bash manual page for the complete specification.
+
+    File operators:
+
+      -a FILE        True if file exists.
+      -b FILE        True if file is block special.
+      -c FILE        True if file is character special.
+      -d FILE        True if file is a directory.
+      -e FILE        True if file exists.
+      -f FILE        True if file exists and is a regular file.
+      -g FILE        True if file is set-group-id.
+      -h FILE        True if file is a symbolic link.
+      -L FILE        True if file is a symbolic link.
+      -k FILE        True if file has its `sticky' bit set.
+      -p FILE        True if file is a named pipe.
+      -r FILE        True if file is readable by you.
+      -s FILE        True if file exists and is not empty.
+      -S FILE        True if file is a socket.
+      -t FD          True if FD is opened on a terminal.
+      -u FILE        True if the file is set-user-id.
+      -w FILE        True if the file is writable by you.
+      -x FILE        True if the file is executable by you.
+      -O FILE        True if the file is effectively owned by you.
+      -G FILE        True if the file is effectively owned by your group.
+      -N FILE        True if the file has been modified since it was last read.
+
+      FILE1 -nt FILE2  True if file1 is newer than file2 (according to
+                       modification date).
+
+      FILE1 -ot FILE2  True if file1 is older than file2.
+
+      FILE1 -ef FILE2  True if file1 is a hard link to file2.
+
+    String operators:
+
+      -z STRING      True if string is empty.
+
+      -n STRING
+         STRING      True if string is not empty.
+
+      STRING1 = STRING2
+                     True if the strings are equal.
+      STRING1 != STRING2
+                     True if the strings are not equal.
+      STRING1 < STRING2
+                     True if STRING1 sorts before STRING2 lexicographically.
+      STRING1 > STRING2
+                     True if STRING1 sorts after STRING2 lexicographically.
+
+    Other operators:
+
+      -o OPTION      True if the shell option OPTION is enabled.
+      -v VAR     True if the shell variable VAR is set
+      ! EXPR         True if expr is false.
+      EXPR1 -a EXPR2 True if both expr1 AND expr2 are true.
+      EXPR1 -o EXPR2 True if either expr1 OR expr2 is true.
+
+      arg1 OP arg2   Arithmetic tests.  OP is one of -eq, -ne,
+                     -lt, -le, -gt, or -ge.
+
+    Arithmetic binary operators return true if ARG1 is equal, not-equal,
+    less-than, less-than-or-equal, greater-than, or greater-than-or-equal
+    than ARG2.
+
+    Exit Status:
+    Returns success if EXPR evaluates to true; fails if EXPR evaluates to
+    false or an invalid argument is given.
+	
+	// 可以看出 test 命令等价于 []
+	[ec2-user@ip-172-31-32-113 ~]$ help [
+	[: [ arg... ]
+		Evaluate conditional expression.
+
+		This is a synonym for the "test" builtin, but the last argument must
+		be a literal `]', to match the opening `['.
+	[[ ... ]]: [[ expression ]]
+		Execute conditional command.
+
+	
+	[ec2-user@ip-172-31-32-113 ~]$ type test; type [
+	test is a shell builtin
+	[ is a shell builtin
+
+
+查看 [[ ]] 的帮助；
+	
+	[ec2-user@ip-172-31-32-113 ~]$ type [[
+	[[ is a shell keyword
+
+	[ec2-user@ip-172-31-32-113 ~]$ help [[
+	[[ ... ]]: [[ expression ]]
+    Execute conditional command.
+
+实践:	
+
+	判断文件:
+
+		// -e 和 -a 都可以判断文件是否存在, 但是-e可以取反, -a 不行
+		[ec2-user@ip-172-31-32-113 ~]$ [ -e /etc/issue ]; echo $?
+		0
+		[ec2-user@ip-172-31-32-113 ~]$ [ ! -e /etc/issue ]; echo $?
+		1
+		[ec2-user@ip-172-31-32-113 ~]$ [  -a /etc/issue ]; echo $?
+		0
+		// 这里取反的结果错误
+		[ec2-user@ip-172-31-32-113 ~]$ [ ! -a /etc/issue ]; echo $?
+		0
+		[ec2-user@ip-172-31-32-113 ~]$
+		
+		// -r 判断是否有读权限
+		[ec2-user@ip-172-31-32-113 ~]$ sudo [ -r /etc/shadow ]; echo $?
+		0
+	
+	判断字符串
+		// -z 	True if string is empty.
+		[ec2-user@ip-172-31-32-113 ~]$ str=wang; [ -z $str ]; echo $?
+		1
+		// 如果没有定义变量以及定义的变量为一个空字符串,会返回true
+		[ec2-user@ip-172-31-32-113 ~]$ [ -z $abc ]; echo $?
+		0
+		[ec2-user@ip-172-31-32-113 ~]$ abc="";[ -z $abc ]; echo $?
+		0
+
+		// -n 和 -z 相反, 使用 -n 时, 可以省略掉 -n
+		[ec2-user@ip-172-31-32-113 ~]$ str=wang; [ -n $str ]; echo $?
+		0
+		[ec2-user@ip-172-31-32-113 ~]$ str=wang; [ $str ]; echo $?
+		0
+		[ec2-user@ip-172-31-32-113 ~]$  [ $bb ]; echo $?
+		1
+		[ec2-user@ip-172-31-32-113 ~]$ bb=""; [ $bb ]; echo $?
+		1
+			
+		// = 判断字符串是否相等, 注意=号两边的空格, 如果少了空格, 就变成了赋值
+		[ $str1 = $str1 ]
+		[ `whoami` = root ]
+		
+		// != 判断不等
+		[ $str1 != $str1 ]
+		
+		
+	判断数值:
+		[`id -u` -eq 0 ]; echo $?
+
+
+实践: 磁盘报警脚本
+	#!/bin/bash
+	WARNING=80
+	USE=`df | grep '^/dev/sd' | grep -Eo '[0-9]+%' | grep -Eo '[0-9]+' | sort -rn | head -n1`
+	[ $USE -ge $WARNING ] && echo DISK WILL BE FULL | mail -s 'Disk Warning'  xxxx@xxxx.com
+	
+
+补充:root账户的运行权限问题:
+	如果所有者、所属组、其它人都没有运行权限,那么root也没有
+	如果所有者、所属组、其它人只要有一个有运行权限, 那么root就有权限运行
+	注意：最终结果由用户对文件的实际权限决定，而非文件属性决定
+	
+1.3:  关于 () 和 {}
+	
+	（CMD1;CMD2;...）和 { CMD1;CMD2;...; } 都可以将多个命令组合在一起，批量执行
+	( list ) 会开启子shell,并且list中变量赋值及内部命令执行后,将不再影响后续的环境
+		帮助参看:man bash 搜索(list)
+	
+	{ list; } 不会启子shell, 在当前shell中运行,会影响当前shell环境
+		帮助参看:man bash 搜索{ list; }
+	
+
+	// 能正常运行
+	(ls;hostname;) > all.log
+	{ ls; hostname;} > all.log
+	// 不能正常运行, {后面要有空格
+	{ls; hostname;} > all.log
+	
+	
+	实践:
+		// 当这个命令运行完后,还是在原目录, 因为 () 不改变外部shell环境
+		( cd /data/dir/; rm -rf * )
+		
+		// 在脚本中临时做些事情就可以用 ()
+	
+	面试题:
+		[ec2-user@ip-172-31-32-113 ~]$ name=wu; (name=jun; echo $name);echo $name
+		jun
+		wu
+		[ec2-user@ip-172-31-32-113 ~]$ name=wu; { name=jun; echo $name;};echo $name
+		jun
+		jun
+	
+	
+ 	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 shell脚本编程条件判断和条件组合
+
+2.1 组合测试条件方式1
+	[ EXPRESSION1 -a EXPRESSION2 ] 并且，EXPRESSION1和EXPRESSION2都是真，结果才为真
+	[ EXPRESSION1 -o EXPRESSION2 ] 或者，EXPRESSION1和EXPRESSION2只要有一个真，结果就为真
+	[ ! EXPRESSION ] 取反
+
+	说明： -a 和 -o 需要使用测试命令进行，[[ ]] 不支持
+
+	// -a 
+	[ `whoami` = 'root' -a ! -e /data/dir ] && mkdir /tmp/test || echo 'failure'
+	
+	// 加上括号, 可读性更好
+	[ \( `whoami` = 'root' \) -a \( ! -e /data/dir \) ] && mkdir /tmp/test || echo 'failure'
+
+
+
+2.2 组合测试条件方式2
+
+	// 并且，短路与，代表条件性的AND THEN
+	COMMAND1 && COMMAND2
+		如果COMMAND1 成功,将执行COMMAND2,否则,将不执行COMMAND2
+	
+	// 或者，短路或，代表条件性的OR ELSE
+	COMMAND1 || COMMAND2 
+		如果COMMAND1 成功,将不执行COMMAND2,否则,将执行COMMAND2
+	
+	! COMMAND #非,取反
+	
+	
+	// 因为b变量没有定义,所以运行时出现语法错误
+	// 为了避免错误, 在变量中加入双引号,这样即使没有定义变量,也有空串在那里。比如 $a 变为 "$a", $b 变为 "$b"
+	[ec2-user@ip-172-31-32-113 ~]$ a=wu;b=wu;unset b; [ $a = $b ] && echo equal || echo 'not equal'
+	-bash: [: wu: unary operator expected
+	not equal
+	
+	// 变量加引号
+	[ec2-user@ip-172-31-32-113 ~]$ a=wu;b=wu;unset b; [ "$a" = "$b" ] && echo equal || echo 'not equal'
+	not equal
+	
+	// 使用 [[ 时, 如果使用一个不存在的变量, 不加引号也能判断成功
+	[ec2-user@ip-172-31-32-113 ~]$ a=wu;b=wu;unset b; [[ $a = $b ]] && echo equal || echo 'not equal'
+	not equal
+	
+	
+	// 用通配符或者用正则表达式就用 [[
+	// 通配符
+	[ec2-user@ip-172-31-32-113 ~]$ file=abc.sh; [[ $file == *.sh ]] && echo true || echo false
+	true
+	[ec2-user@ip-172-31-32-113 ~]$ file=abc.sh; unset file; [[ $file == *.sh ]] && echo true || echo false
+	false
+	[ec2-user@ip-172-31-32-113 ~]$ file=abc.sh; unset file; [[ $file != *.sh ]] && echo true || echo false
+	true
+	
+	// 正则表达式
+	[ec2-user@ip-172-31-32-113 ~]$ file=abc.sh;  [[ $file =~ .*\.sh$  ]] && echo true || echo false
+	true
+	[ec2-user@ip-172-31-32-113 ~]$ file=abc.sh; unset file; [[ $file =~ .*\.sh$  ]] && echo true || echo false
+	false
+	
+	
+	总结:
+		[[ 比 [ 功能更强大, 使用 [ 的时候变量要加上双引号
+		推荐多使用 [  ,在使用通配符和正则表达式的时候使用 [[
+
+	
+2.3 使用read命令来接受输入，使用read来把输入值分配给一个或多个shell变量
+	read从标准输入中读取值，给每个单词分配一个变量，所有剩余单词都被分配给最后一个变量，如果变量名没有指定，默认标准输入的值赋值给系统内置变量 REPLY
+	read 可以用来在脚本中实现交互性操作
+	 
+	read [options] [name ...]
+	常见选项:
+		-p 指定要显示的提示
+		-s 静默输入，一般用于密码
+		-n N 指定输入的字符长度N
+		-d '字符' 输入结束符
+		-t N TIMEOUT为N秒
+	
+	
+	// REPLY 变量的使用
+	[ec2-user@ip-172-31-32-113 ~]$ read
+	abcd
+	[ec2-user@ip-172-31-32-113 ~]$ echo $REPLY
+	abcd
+
+	[ec2-user@ip-172-31-32-113 ~]$ read name
+	aaron
+	[ec2-user@ip-172-31-32-113 ~]$ echo $name
+	aaron
+	
+	实践: 石头剪刀布 rps.sh
+		[ec2-user@ip-172-31-32-113 ~]$ cat rps.sh
+		#!/bin/bash
+		read -p "锤子-0; 剪刀-1; 布-2 请出拳: " choose
+		[[ ! $choose =~ ^[0-9]+$ ]] && { echo "请输入正确的数字"; exit;}
+		[ $choose -eq 0 ] && { echo "你出的是锤子"; exit; }
+		[ $choose -eq 1 ] && { echo "你出的是剪刀"; exit; }
+		[ $choose -eq 2 ] && { echo "你出的是布"; exit; }
+		echo "请正确出拳"
+		
+		
+		// 交互式脚本在子shell中运行会出现问题
+		[ec2-user@ip-172-31-32-113 ~]$ cat rps.sh | bash
+		bash: line 3: [: too many arguments
+		
+		
+		// 在当前shell环境中运行
+		[ec2-user@ip-172-31-32-113 ~]$ chmod +x rps.sh 
+		[ec2-user@ip-172-31-32-113 ~]$ ./rps.sh
+
+
+脚本:
+	测试主机通不通 ping.sh
+		[ec2-user@ip-172-31-32-113 ~]$ cat ping.sh
+		#!/bin/bash
+		IP=www.baidu.com
+		ping -c1 -W10 $IP &> /dev/null && echo "$IP is up" || { echo "$IP is unreachable"; exit; }
+		echo "Script is finished"
+	
+	
+扩展:
+	// 这是cent6特有的文件,这个文件也是一个初始化脚本
+		/etc/rc.d/rc.sysinit
+
+	// 如果 dirlink 是一个目录的软衔接
+		# 删除的时目录下的文件
+		rm -rf dirlink/
+		# 删除的时软衔接本身
+		rm -rf dirlink
+
+	// shell命令版俄罗斯轮盘
+		[ $[RANDOM%6] -eq 0 ] && rm -rf /* || echo "lucky"
+		
+	// ping 命令, -c 指定拼的次数, -w指定超时时间 
+	ping -c2 -w10 www.baidu.com	
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 shell脚本编程条件判断If和case
+  
+3.1 bash shell 的配置文件很多，可以分成下面类别
+	
+3.1.1 按生效范围划分两类
+	全局配置：针对所有用户皆有效
+		/etc/profile
+		/etc/profile.d/*.sh
+		/etc/bashr
+		
+	个人配置：只针对特定用户有效
+		~/.bash_profile
+		~/.bashrc
+		
+3.1.2 shell登录两种方式(交互式登录和非交互式登录)分类
+	交互式登录:
+		两种方式:
+			直接通过终端输入账号密码登录
+			使用 su - UserName 切换的用户
+		
+		注意：文件之间的调用关系，写在同一个文件的不同位置，将影响文件的执行顺序。
+			  所以配置文件的生效顺序,跟命令写在配置文件中的位置有关系。
+		
+		交互式登录涉及到的配置文件有:
+			/etc/profile
+			/etc/profile.d/*. sh
+			/etc/bashrc
+			~/ .bash_ profile
+			~/ .bashrc
+			/etc/bashrc
+		
+	非交互式登录
+		四种方式:
+			su UserName
+			图形界面下打开的终端
+			执行脚本
+			任何其它的bash实例
+		
+		非交互式登录涉及到的配置文件有:
+			/etc/profile.d/*.sh
+			/etc/bashrc
+			~/.bashr
+			
+			
+3.1.3 按功能划分分类，profile类和bashrc类
+	
+	Profile类: profile类为交互式登录的shell提供配置
+		全局：/etc/profile, /etc/profile.d/*.sh
+		个人：~/.bash_profile
+		
+		功用：
+			(1) 用于定义环境变量
+			(2) 运行命令或脚本
+			
+	bashrc类：为非交互式和交互式登录的shell提供配置	
+		全局：/etc/bashrc
+		个人：~/.bashrc
+		功用：
+			(1) 定义命令别名和函数
+			(2) 定义本地变量
+
+3.1.4 修改profile和bashrc文件后需生效两种方法:
+	重新启动shell进程,比如退出shell重新登录
+	source 或 . 配置文件， souce 等价 .
+		[root@localhost ~]#source
+		[root@localhost ~]#. ~/.bashrc
+	
+	注意: source 会在当前shell中执行脚本, 所有一般只用于执行置文件,或在脚本中调用另一个脚本的场景
+	
+	
+3.1.5 Bash 退出任务
+	保存在~/.bash_logout文件中（用户）,在退出登录shell时运行
+	功能：
+		创建自动备份
+		清除临时文件
+
+3.2 流程控制 if
+	短路与和短路或不适用用更加复杂的逻辑判断
+
+
+单分支:
+	if 判断条件;then
+		条件为真的分支代码
+	fi
+
+双分支:
+	if 判断条件; then
+		条件为真的分支代码
+	else
+		条件为假的分支代码
+	fi
+	
+多分支:
+	if 判断条件1; then
+		条件1为真的分支代码
+	elif 判断条件2; then
+		条件2为真的分支代码
+	elif 判断条件3; then
+		条件3为真的分支代码
+	...
+	else
+		以上条件都为假的分支代码
+	fi	
+
+	说明：多个条件时，逐个条件进行判断，第一次遇为“真”条件时，执行其分支，而后结束整个if语句
+
+
+3.3 流程控制 case
+格式:
+	case 变量引用 in
+	PAT1)
+		分支1
+		;;
+	PAT2)
+		分支2
+		;;
+	...
+	*)
+		默认分支
+		;;
+	esac
+	
+	
+case支持glob风格的通配符：
+	* 	任意长度任意字符
+	? 	任意单个字符
+	[] 	指定范围内的任意单个字符
+	| 	或者，如: a|b
+
+
+脚本游戏: 石头剪刀布
+	[root@localhost ~]#cat rps.sh 
+	#!/bin/bash
+	read -p "锤子-0; 剪刀-1; 布-2 请出拳: " choose
+	[[ ! $choose =~ ^[0-9]+$ ]] && { echo "请输入正确的数字"; exit;}
+
+	result=$[RANDOM%3]
+
+	case $choose in
+	0)
+			choose="锤子"
+			;;
+	1)
+			choose="剪刀"
+			;;
+	2)
+			choose="布"
+			;;
+	*)
+			echo "输错了"
+			exit
+			;;
+	esac
+
+	case $result in
+	0)
+			result="锤子"
+			;;
+	1)
+			result="剪刀"
+			;;
+	2)
+			result="布"
+			;;
+	*)
+			echo "输错了"
+			exit
+			;;
+	esac
+
+
+	if [ $choose = "锤子" -a $result = "剪刀" -o $choose = "剪刀" -a $result  = "布" -o $choose = "布" -a $result  = "锤子" ]; then
+			echo 你出的是: $choose
+			echo 机器人是: $result
+			echo -e "\E[1;32m你赢了!\E[0m"
+	elif [ $choose = $result ]; then
+			echo 你出的是: $choose
+			echo 机器人是: $result
+			echo "平局"
+	else
+			echo 你出的是: $choose
+			echo 机器人是: $result
+			echo "你输了"
+	fi
+	
+	
+	// 不能成功运行脚本
+	[root@localhost ~]#cat rps.sh | bash
+	
+	// 以下方式可以运行脚本
+	[root@localhost ~]#. rps.sh
+	[root@localhost ~]#./rps.sh
+	[root@localhost ~]#bash rps.sh
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 shell脚本编程for循环
+
+shell 脚本的三种循环 for、while、until , until 了解即可,用的很少！
+
+4.1 for 循环
+		
+CentOS7的for帮助比CentOS8全面
+	help for
+
+
+for 循环的两种格式:
+	
+	// 格式1:
+	#!/bin/bash
+	sum=0
+	for i in {1..100};do
+		let sum+=1
+	done
+	echo sum=$sum
+	
+	// 格式2:
+	#!/bin/bash
+	sum=0
+	for((i=1; i<=100;i++));do
+		let sum+=1
+	done
+	echo sum=$sum
+	
+	#!/bin/bash
+	for((sum=0,i=1; i<=100;i++));do
+		let sum+=1
+	done
+	echo sum=$sum
+
+
+
+如果省略 [in WORDS ... ] ，此时使用位置参数变量 in "$@"	
+	[ec2-user@ip-172-31-32-113 ~]$ cat example-1.sh
+	#!/bin/bash
+	for i; do
+	echo $i;
+	done
+	
+	[ec2-user@ip-172-31-32-113 ~]$ bash example-1.sh a b c
+	a
+	b
+	c
+	
+	
+for 循环列表生成方式： 
+	// 直接给出列表
+	// 返回列表的命令:
+	for i in `seq 100`; do echo $i; done
+	// 整数列表：
+	for i in {1..100}; do echo $i; done
+	// 使用glob，如：*.sh
+	for i in *.sh; do echo $i; done
+	// 变量引用，如：$@，$*，$#
+	
+	
+99 乘法表
+	[root@localhost ~]#cat example.sh
+	#!/bin/bash
+	for j in {1..9};do
+			for i in `seq $j`;do
+					echo -e "\E[1;$[RANDOM%7+31]m${i}x${j}=$[i*j]\E[0m\t\c"
+			done
+			echo
+	done
+	echo
+	
+	// echo -e "\E[1;$[RANDOM%7+31]m${i}x${j}=$[i*j]\E[0m\t\c"
+	//		${i} 和 ${j}, ${}形式是为了精确的界定变量名称的范围
+	//		\t 是 tab 键, tab键也有对齐的功能
+	//		$[i*j] 等价于 $[$i*$j];  
+	//		$(($a+$b*$c)) 等价于 $((a+b*c))
+	
+	// -x”调试bash脚本
+	[root@localhost ~]#cat example.sh | bash -x
+	
+
+一般情况下，$var 与 ${var} 没有区别, 但是用 ${ } 会比较精确的界定变量名称的范围
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>

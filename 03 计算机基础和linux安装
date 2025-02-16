@@ -1,0 +1,112 @@
+
+1 计算机基础和linux安装
+
+1.1 bc 是Linux下的计算器，默认输入输出是十进制，ibase 设置输入进制,  obase 设置输出进制
+
+#为10时可不设置ibase和obase的值，obase要尽量放在ibase前，因为ibase设置后，后面的数字都是以ibase的进制来换算的
+#二进制转十六进制,转换完成后使用"quit"推出bc
+[root@localhost ~]# bc
+bc 1.06.95
+Copyright 1991-1994, 1997, 1998, 2000, 2004, 2006 Free Software Foundation, Inc.
+This is free software with ABSOLUTELY NO WARRANTY.
+For details type `warranty'. 
+obase=16
+ibase=2
+101101110111
+B77
+quit
+
+#十进制转二进制
+[root@localhost ~]# echo "obase=2;254" |bc
+11111110
+
+#十六进制转10进制
+[root@localhost ~]# echo "obase=10;ibase=16;FF" | bc
+255
+
+#算数运算
+[root@localhost ~]# echo "2*3" | bc
+6
+
+#算数运算+进制转换
+[root@localhost ~]# echo "obase=2;2*3" | bc
+110
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 服务器硬件组成
+
+2.1 lscpu 查看CPU参数
+[root@localhost ~]# lscpu
+Architecture:          x86_64
+CPU op-mode(s):        32-bit, 64-bit
+Byte Order:            Little Endian
+CPU(s):                2
+On-line CPU(s) list:   0,1
+Thread(s) per core:    1
+Core(s) per socket:    2
+Socket(s):             1
+NUMA node(s):          1
+Vendor ID:             GenuineIntel
+CPU family:            6
+Model:                 60
+Model name:            Intel(R) Xeon(R) CPU E3-1231 v3 @ 3.40GHz
+Stepping:              3
+CPU MHz:               3392.153
+BogoMIPS:              6784.30
+Hypervisor vendor:     VMware
+Virtualization type:   full
+L1d cache:             32K
+L1i cache:             32K
+L2 cache:              256K
+L3 cache:              8192K
+NUMA node0 CPU(s):     0,1
+
+
+2.2 查看系统位数
+
+[root@localhost ~]# getconf LONG_BIT
+64
+
+[root@localhost ~]# arch
+x86_64
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 操作系统相关技术和Unix历史
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 Linux各种版本的安装
+
+[内核官网](https://www.kernel.org/)
+
+[centos 替代品 Rocky Linux](https://rockylinux.org/)
+
+4.1 查看内核版本
+
+[root@localhost ~]# uname -r
+3.10.0-1160.el7.x86_64
+
+// 3.10.0-1160.el7 就是内核版本
+// 3 -> 主版本号、
+// 10 -> 次版本号
+// 0 -> 末版本号
+// 1160 -> 打包版本号
+// e17 -> 厂商版本
+
+
+4.2 reboot 重启主机
+
+4.3 SSH 登录
+
+#使用 ec2-user 这个用户登录远程主机
+ssh ec2-user@16.163.80.7
+
+#"-p"表示指定SSH端口,如果不加用户名,默认会使用伪终端所在机器的用户名. 比如windows的用户名为aaron j wu,登录远程linux主机
+ssh -p 22 192.168.32.101
+aaron j wu@192.168.32.101's password:
+
+#也可以用域名代替IP
+ssh -p 22 root@xx.xx.com

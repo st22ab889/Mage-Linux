@@ -1,0 +1,419 @@
+2 集群和分布式架构介绍
+
+	系统性能扩展方式：
+		Scale UP：垂直扩展，向上扩展,增强，性能更强的计算机运行同样的服务
+		Scale Out：水平扩展，向外扩展,增加设备，并行地运行多个服务调度分配问题，Cluster
+
+2.1 集群(Cluster): 为解决某个特定问题将多台计算机组合起来形成的单个系统
+	Cluster分为三种类型：
+		LB：Load Balancing
+		HA：High Availiablity,避免SPOF（single Point Of failure）。SLA是高可用常用的统计指标
+			MTBF：正常时间
+			MTTR：故障时间
+			A = MTBF /（MTBF+MTTR）	 		# A的值(0,1)之间：99%,99.5%,99.9%,99.99%,99.999%
+		HPC：High-performance computing
+	
+2.2 分布式：
+	分布式系统是一种计算和数据处理的方式，它将计算任务或数据分散到多个计算机或节点中进行处理
+	分布式存储：Ceph，GlusterFS，FastDFS，MogileFS
+	分布式计算：hadoop，Spark
+
+2.3 LB Cluster 负载均衡集群
+	硬件：F5 Big-IP 等
+	软件：
+		lvs：四层负载, 阿里云四层SLB(Server Load Balance)使用的就是lvs
+		nginx：支持四层和七层负载，同时也是web服务器，阿里云七层SLB使用的就是基于nginx二次开发的Tengine
+		haproxy：支持四层和七层调度,不提供web服务器功能。
+		其他LB软件：ats(Apache Traffic Server，yahoo捐助给apache)、perlbal(Perl 编写)、pound
+	注：通常使用 lvs 四层负载，使用 nginx 和 haproxy 做七层负载！ 
+		
+2.4 负载均衡的会话保持
+	session sticky：同一用户调度固定服务器
+	session replication：每台服务器拥有全部session
+	session server：专门的session服务器
+	
+2.5 HA 高可用集群实现
+	keepalived：vrrp协议，目前方案
+	Ais：应用接口规范，过时方案
+		heartbeat
+		cman+rgmanager(RHCS)
+		coresync_pacemaker
+
+
+扩展-1: DNS实现的三种办法：host文件、nis、dns
+
+扩展-2: 通过多ISP(Internet Service Provider,互联网服务提供商)接入互联网，实现ISP高可用
+	
+	优势：提高网络可靠性(实现接入互联网线路一主一备)、优化网络性能、实现负载均衡和流量管理
+
+	解决方案：
+		(1)使用智能DNS（或称为动态DNS）:
+			使用智能DNS服务可以根据用户的网络条件（如ISP、地理位置等）返回不同的IP地址，包含对SIP进行健康检查功能。
+			假如同时接入电信和移动的ISP，当电信线路出现问题时，智能DNS可以检测到这种情况，并自动将请求解析到移动的公网IP。
+		
+			智能DNS能够基于用户的ISP网络状况、地理位置智能地解析域名, 选择最优的解析地址。
+			当企业接入多个ISP时，可以将用户请求路由到距离最近的或性能最佳的服务器。
+		
+		(2)选择支持多SIP接入的防火墙
+			假如防火墙同时接入电信和移动的ISP，并且ISP线路正常，启动智能DNS，防火墙将接收来自不同的SIP网络流量，相当于提升了网络带宽
+			防火墙需要实现高可用！
+			
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 LVS的NAT工作模式实现原理
+
+3.1 LVS（Linux Virtual Server）：因为LVS只提供代理，并不真正处理用户请求，所以称为"Linux Virtual Server"
+
+	#查看内核是否支持LVS，如果有 IPVS 相关的配置说明就支持LVS
+	grep -i -C 10 ipvs /boot/config-{x.xx.x}-{xxxx}.{exx}.x86_64
+	
+	注意：
+		LVS 对后端服务器不做健康性检查，所以单独的LVS没有实际的生产价值，需要配合 keepalived
+
+3.2 LVS 集群术语
+	VS(Virtual Server)：指LVS服务器这台机器，并不提供真正服务，也称为 Director Server(DS) 或 Dispatcher(调度器) 或 Load Balancer
+	RS(Real Server)：后端服务器，提供真正服务, 相当 nginx 的 upstream server，haproxy 的 backend server
+	CIP：Client IP
+	VIP：Virtual serve IP， VS外网的IP
+	DIP：Director IP，VS内网的IP
+	RIP：Real server IP，后端服务器的IP 
+	
+	访问流程：CIP <--> VIP == DIP <--> RIP	
+
+3.3 LVS 集群的工作模式
+	lvs-nat：修改请求报文的目标IP,多目标IP的DNAT(DNAT本来是一对一的,但LVS-nat实现了多目标IP，实现了负载均衡)
+		请求报文和响应报文都必须经由LVS转发，所以易于成为系统瓶颈！ 
+		当流量进入到 iptables 的 FORWARD 转到 INPUT，LVS会截断将VIP改为RIP，流量就会绕过 INPUT 直达 POSTROUTING，然后流量发出给RIP
+		LVS服务器上不要制定iptables规则，最好关闭iptables，以免互相影响！
+		LVS 和 RS 之间可以加路由器，但是一般不加！
+		RS的网关可以指向 Load Balance，也可以指向自己的路由器
+		原理详见PDF！	
+		
+	lvs-dr(Direct Routing)：操纵封装新的MAC地址，速度最快，效率最高，默认模式，企业用的最多的模式，重点！
+		注意事项：
+			LVS 和 RS 要在同一个物理网络，之间不能有路由器，只能通过交换机连接，因为ARP不能跨网段
+			LVS 和 RS 的LO网卡(环回接口)都要配置一样的VIP。
+				问题：默认的回环地址都是127.0.0.1，为什么在同一网络中地址不冲突
+				回答：因为默认的回环地址是"scope host", 用于主机内部通信，不涉及其他网络设备或中间节点
+				      VIP虽然也是配置在回环地址的网卡上，但是VIP是"scope global"(全局地址),允许设备与网络上的其他设备进行通信
+			不支持端口映射，后端server用的端口号和用户访问的端口号必须一致，因为整个过程不修改原始的网络层和传输层的信息,只修改数据链路层
+				ip属于传输层
+				端口属于传输层
+		
+		如何对外隐藏MAC地址（通过内核参数控制）：
+			关闭ARP应答！
+			关闭ARP通告(主动告诉其它机器自己的Mac地址)！
+		
+	lvs-tun(隧道模式)：在原请求IP报文之外新加一个IP首部
+		LVS 和 RS 之间可以跨城市，跨网络！
+		tun模式相当于跨网段的DR模型！
+		和DR模型一样，不支持端口映射！隧道模式会在原报文头上再加上一个报文头，保存隧道的源地址和目的地地址，所以隧道模式会涉及到网络层和数据链路层
+			不涉及到传输层，所以不支持端口映射，端口属于传输层!
+		后端服务器(RS)的OS须支持隧道功能
+		
+		用的不多，因为大多数情况下，LVS和RS在同一个网段！
+	
+	lvs-fullnat：修改请求报文的源和目标IP
+		不仅改目标地址，也改源地址
+		VIP是公网地址，但不一定，因为实际工作中 LVS 前面还有防火墙，通过NAT的连到LVS
+		支持端口映射
+		
+		应用场景更少，这种fullnat模式本身lVS服务器还不支持，需要修改OS内核源代码实现
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  
+
+4 LVS的DR和TUN工作模式实现原理
+
+	详见PDF!
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 LVS的12种调度算法和ipvsadm命令使用
+
+5.1 根据其调度时是否考虑各RS当前的负载状态分为两种：静态方法和动态方法
+	静态方法：不考虑后端服务器的状态
+		RR(roundrobin)：轮询,较常用
+		WRR(Weighted RR)：加权轮询,较常用
+		SH(Source Hashing)：实现session sticky，源IP地址hash；将来自于同一个IP地址的请求始终发往第一次挑中的RS，从而实现会话绑定
+		DH(Destination Hashing)：目标地址哈希，第一次轮询调度至RS，后续将发往同一个目标地址的请求始终转发至第一次挑中的RS
+			典型使用场景是正向代理缓存场景中的负载均衡,如: Web缓存
+	
+	动态方法：考虑后端服务器的状态。Overhead 这个值用来记录后端不同服务器的负载，值越小的RS将被调度
+		LC(least connections)：最小连接算法，适用于长连接应用
+			Overhead=activeconns(活动连接)*256+inactiveconns(非活动连接)
+		WLC(Weighted LC)：带权重的最少连接，默认调度方法,较常用	
+			Overhead=(activeconns*256+inactiveconns)/weight
+		SED(Shortest Expection Delay)：初始连接高权重优先,只检查活动连接,而不考虑非活动连接	
+			Overhead=(activeconns+1)*256/weight
+		NQ(Never Queue)：第一轮均匀分配，后续SED
+		LBLC(Locality-Based LC)：动态的DH算法，使用场景：根据负载状态实现正向代理,实现WebCache等
+		LBLCR(LBLC with Replication)：带复制功能的LBLC，解决LBLC负载不均衡问题，从负载重的复制到负载轻的RS,,实现Web Cache等
+		
+		# 内核版本4.15版本后新增调度算法：FO(Weighted Fail Over)和OVF(Overflow-connection)
+		FO:属于静态算法
+		OVF:属于动态算法
+
+		详见PDF
+		
+5.2 ipvs 和 Netfilter 一样，属于内核功能
+	Netfilter 的用户空间工具是 iptables
+	ipvs 的用户空间工具是 ipvsadm，LVS只是个负载均衡服务的名称，如同HAProxy是个负载均衡服务的名称
+	
+	yum -y install ipvsadm
+	rpm -ql ipvsadm				# 查看ipvsadm包所包含的文件
+	
+	
+5.3 程序包：ipvsadm	
+	ipvsadm.service						# Unit File
+	usr/sbin/ipvsadm					# 主程序	
+	usr/sbin/ipvsadm-save				# 规则保存工具	
+	usr/sbin/ipvsadm-restore			# 规则重载工具
+	etc/sysconfig/ipvsadm-config		# 配置文件	
+	etc/sysconfig/ipvsadm				# ipvs调度规则文件
+	
+5.4 ipvsadm 命令	
+	核心功能
+		管理集群服务：增、删、改
+		管理集群中的RS(后端服务器)：增、删、改
+		查看
+	
+	#管理集群服务
+	ipvsadm -A|E -t|u|f service-address [-s scheduler] [-p [timeout]] [-M netmask] [--pe persistence_engine] [-b sched-flags]
+		-A|E 							# A=ADD, E=Edit
+		-t|u|f 			 				# t=tcp, u=udp, f=firewall MARK(标记，一个数字)
+		service-address 				# LVS vip 的 ip:port
+		-s scheduler					# 指定集群调度算法，默认 WLC(Weighted LC 带权重的最少连)
+	ipvsadm -D -t|u|f service-address 		# 删除
+	ipvsadm –C 								# 清空创建的集群
+	ipvsadm –R 								# 重载,相当于ipvsadm-restore
+	ipvsadm -S [-n] 						# 保存,相当于ipvsadm-save
+	
+	
+	#管理集群中的RS
+	ipvsadm -a|e -t|u|f service-address -r server-address [-g|i|m] [-w weight]
+		-a|e							# a=add, e=edit
+		-t|u|f							# t=tcp, u=udp, f=firewall MARK
+		service-address					# LVS vip 的 ip:port
+		server-address					# 后端服务的 ip:port
+		[-g|i|m]						# 指定集群工作模式，g -> gateway(dr类型，默认), i -> ipip(tun类型), m -> masquerade(nat类型)
+	ipvsadm -d -t|u|f service-address -r server-address		# 删除指定的RS										
+	ipvsadm -Z [-t|u|f service-address]		# 清空计数器
+	ipvsadm -L|l [options]					# 查看
+		--numeric, -n：以数字形式输出地址和端口号		# 注意，n放在L的后面，比如 ipvsadm -Ln
+		--exact：扩展信息，精确值
+		--connection，-c：当前IPVS连接输出
+		--stats：统计信息
+		--rate ：输出速率信息
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 LVS的NAT实战案例
+
+6.1 环境:共四台主机，客户端到LVS网络连接使用"仅主机模式", LVS 到 RS 网络连接使用"NAT模式"
+	一台： 
+		internet client：192.168.10.6/24 GW:无 仅主机
+		
+	一台：lvs
+		eth1 仅主机 192.168.10.100/16						# 这个网卡使用仅主机模式，这个网卡的地址就是 VIP
+		eth0 NAT 10.0.0.8/24								# 这个网卡使用NAT模式，网关用不上，可以删除
+			hostnamectl set-hostname lvs.example.com
+			exit
+			yum -y install ipvsadm		# ipsv是内核功能，默认开启，ipvsadm是管理工具，通过这个工具配置规则后，规则马上生效
+			vim /etc/sysctl.conf		# 开启ip_forward，输入内容 net.ipv4.ip_forward=1
+			sysctl -p
+			reboot 			# 配置网卡、ip后，重启主机
+			
+			ipvsadm -A -t 192.168.10.100:80 -s rr
+			ipvsadm -a -t 192.168.10.100:80 -r 10.0.0.7 -m			# 如果 RS 和 LVS 的端口一样，RS的端口可以省略
+			ipvsadm -a -t 192.168.10.100:80 -r 10.0.0.17:8080 -m		
+			
+			ss -ntl			# 可以看到80端口并没有被监听，因为监听端口是应用程序在监听，而LVS用的是内核的功能，ss命令也不会显示内核监听80
+			
+		注意：IPforward 如果不启动，RS响应的包到达LVS，但LVS却无法把包响应给客户端
+			原因是netfilter实现的五表五链，从图里可以看到，请求的包不经过FORWARD，响应的包要经过FORWARD
+			
+	两台RS：
+		RS1: 10.0.0.7/24 GW：10.0.0.8 NAT
+			hostnamectl set-hostname rs1.example.com
+			exit 								# 退出重新连接使修改后的hostname生效
+			yum -y install httpd;hostname -I > /var/www/html/index.html;systemctl enable --now httpd
+			网关改为 10.0.0.8 
+			systemctl restart network
+			route -n							# 查看路由
+			
+		RS2: 10.0.0.17/24 GW：10.0.0.8 NAT
+			hostnamectl set-hostname rs2.example.com
+			exit
+			yum -y install httpd;hostname -I > /var/www/html/index.html;systemctl enable --now httpd
+			网关改为 10.0.0.8 
+			systemctl restart network			
+			route -n
+	
+	搭建后进行测试：
+		while :;do curl 192.168.10.100;sleep 0.5;done
+	
+	详细过程见PDF!
+
+6.2 LVS 的 Service文件：
+
+	# "LVPS"是内核自带功能，不是应用层服务，不支持开启或停止。LVPS有规则就会按规则工作，没有规则就不工作
+	# "ipvsadm.service" 只是用来控制加载或卸载(卸载的同时序列化规则到文件)规则，通过这种方式实现类似于服务的启动和停止功能
+	[root@lvs ~l#cat /usr/lib/systemd/system/ipvsadm.service
+	......
+	[Service]
+	Type=oneshot
+	# 恢复配置规则到内存
+	ExecStart=/bin/bash -c "exec /sbin/ipvsadm-restore < /etc/sysconfig/ipvsadm"
+	# 保存内存中的配置规则到文件
+	ExecStop=/bin/bash -c "exec /sbin/ipvsadm-save -n > /etc/sysconfig/ipvsadm"		
+	# 清空内存中的配置规则
+	ExecStop=/sbin/ipvsadm -C
+	RemainAfterExit=yes
+	......
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+7 LVS的DR模式单网段实战案例
+
+7.1 LVS-DR模式单网段(vip和DIP、RIP在物理和逻辑上都是同一网段)案例
+	
+	注意事项：ip、网关、子网掩码 一定要配置正确，任何配置错误都都可能导致失败
+	
+	环境：五台主机, 客户端到路由器网络连接使用"仅主机模式", 路由器 到 交换机 网络连接使用"NAT模式"， LVS 和 RS 连接交换机
+		
+		一台：客户端 eth0:仅主机 192.168.10.6/24 GW:192.168.10.200
+		
+		一台：ROUTER , 启用 IP_FORWARD
+			eth0 :NAT 10.0.0.200/24
+			eth1: 仅主机 192.168.10.200/24
+				hostnamectl set-hostname router.example.com
+				exit						# 退出后重新连接
+				nmcli connection reload	 	# 配置好两个网卡以及IP后运行
+				nmcli connection			
+				nmcli connection {网卡name} # 如果配置的ip没生效，重新up相应的网卡
+				vim /etc/sysctl.conf		# 开启ip_forward，输入内容 net.ipv4.ip_forward=1
+				
+		一台：LVS
+			# DIP, 网关可以随便配,但不能没有,因为没有网关就没有路由,包就不会往下转,如果有网关就会尝试往下转包.如果LVS要连外网，需要正确配网关
+			eth0:NAT:DIP:10.0.0.8/24  GW:10.0.0.200	
+			lo:10.0.0.100/32								# VIP					
+				yum -y install ipvsadm
+				ifconfig lo:1 10.0.0.100/32
+				ipvsadm -A -t 10.0.0.100:80 -s rr				
+				ipvsadm -a -t 10.0.0.100:80 -r 10.0.0.7 -g	# DR不支持端口映射，所以lVS和RS的端口要一致，因为DR模式只修改数据链路层，上面的网络层不动			
+				ipvsadm -a -t 10.0.0.100:80 -r 10.0.0.17 -g	
+				ipvsadm -Ln
+				
+		两台RS：
+			RS1：
+				eth0:NAT:10.0.0.7/24 	GW：10.0.0.200
+				lo:10.0.0.100/32							# VIP
+					# 关闭回环网卡的ARP应答和通告，下面是临时关闭，永久关闭需在 /etc/sysctl.conf 文件中配置
+					echo 1 > /proc/sys/net/ipv4/conf/all/arp_ignore	   # 1：只有ARP请求数据包所请求的IP地址属于当前网卡的IP地址，才会回应ARP响应数据包。
+					echo 2 > /proc/sys/net/ipv4/conf/all/arp_announce  # 2：忽略数据包的源IP，使用能与目标主机会话的最佳地址来作为发送ARP的Sender IP。
+					echo 1 > /proc/sys/net/ipv4/conf/lo/arp_ignore	  
+					echo 2 > /proc/sys/net/ipv4/conf/lo/arp_announce
+					# 修改LO回环网卡地址，临时修改
+					ifconfig lo:1 10.0.0.100/32
+			
+			RS2：
+				eth0:NAT:10.0.0.17/24 	GW：10.0.0.200	
+				lo:10.0.0.100/32							# VIP
+					echo 1 > /proc/sys/net/ipv4/conf/all/arp_ignore	
+					echo 2 > /proc/sys/net/ipv4/conf/all/arp_announce
+					echo 1 > /proc/sys/net/ipv4/conf/lo/arp_ignore		# 1：只有ARP请求数据包所请求的IP地址属于当前网卡的IP地址，才会回应ARP响应数据包。
+					echo 2 > /proc/sys/net/ipv4/conf/lo/arp_announce	# 2：忽略数据包的源IP，使用能与目标主机会话的最佳地址来作为发送ARP的Sender IP。
+					ifconfig lo:1 10.0.0.100/32
+	
+	搭建后进行测试：
+		while :;do curl 10.0.0.100;sleep 0.5;done
+
+	
+	详细过程见PDF!
+	
+	
+7.2	注意事项
+
+	注意事项_1：
+		RS的VIP必须要绑定在LO(回环)网卡上，因为eth0的网卡需要用来LVS和RS之间的通信，vip如果在eth0网卡上，需要禁用ARP，会导致eth0不能通信
+		LVS的VIP可以不用绑定在LO(回环)网卡，但习惯性绑定在LO网卡，好处是LO是个虚拟网卡，只要不人为去管理，地址不会随着网络状态而丢失，相对稳定
+		地址绑定在物理网卡，不会随着物理网卡的问题而丢失地址，比如物理网卡坏了！
+	
+	
+	注意事项_2：
+		VIP如果配置在LO网卡上，必须使用32bit子网掩码，如果VIP绑定在eth0上，可以是其它netmask
+		
+		假如本机的回环网卡的地址是 172.16.0.100/24
+			在本机 ping 172.16.0.111 ，结果成功，事实上，只要 ping "172.16.0.100/24" 这个网段中的任意地址都会成功
+		
+		回环网卡的特性：
+			在回环网卡配置地址后,只要是和这个地址在一个网段的地址，都认为是在回环网卡上配置的(换句话说,这个网段的地址都被回环网卡接管),所以都能ping通.
+			回环网卡上的地址没有路由！
+		
+		实验-1：
+			环境：
+				路由器：
+					eth0 :NAT 172.16.0.200/24
+					eth1: 仅主机 192.168.10.200/24
+				主机：
+					eth0:NAT:DIP:10.0.0.8/24  GW:10.0.0.200	
+					lo:172.16.0.100/24
+					
+			如主机LO网卡的地址的子网掩码不是32bit,当路由器发送过来一个包,包的源IP刚好和LO地址在同一网段,响应包只发送到了本机的回环网卡(在本地内核转圈),根本不走网络
+			这也是为什么在作为路由器的主机上输入"arp -n"看到"172.16.0.100"的mac地址为 "(incomplete)"
+			在主机上输入"route -n"看不到到达"172.16.0.0/24"的路由，因为回环网卡上的地址没有路由！
+			
+		实验-2：
+			环境：
+				路由器：
+					eth0 :NAT 10.0.0.200/24		eth0:1 172.16.0.200/24
+					eth1: 仅主机 192.168.10.200/24
+				主机：
+					eth0:NAT:DIP:10.0.0.8/24  GW:10.0.0.200	
+					lo:172.16.0.100/32
+					
+			如主机LO网卡的地址的子网掩码是32bit(相当于网段只有这一个地址),当路由器发送过来一个包, 包的源IP和LO地址不在同一网段, 响应包就会发到网络
+			在作为路由器的主机上输入"arp -n"看到"172.16.0.100"的mac地址正常
+			在主机上输入"route -n"同样看不到到达"172.16.0.0/24"的路由，因为回环网卡上的地址没有路由，但是不影响响应包发送到网络。原因如下：
+				路由表中有一条路由是:
+					Destination			Gateway		Genmask		Flags  Metric   Ref  Use  UseIface
+					0.0.0.0			    10.0.0.200  0.0.0.0     UG      100      0    0   eth0
+				数据包会发送到"10.0.0.200"这个网关，也就是路由器的eth0网卡的地址，但路由器的eth0网卡还配了"172.16.0.200/24"这个地址，所以路由器可以处理这个包
+				
+		总结：回环网卡上的地址在同一网段，进来出不去，子网掩码配成32，不是这个地址都会走网络.
+
+		
+7.3 arp_ignore 和 arp_announce
+	
+	arp_ignore：主要控制主机如何响应收到的ARP请求
+		0：默认值。回复对任何网络接口上的任何本地 IP 地址的 ARP 请求。
+		1：只回复目标 IP 地址是接收 ARP 请求的网络接口上的 IP 地址的 ARP 请求。
+		2：只回复目标 IP 地址是接收 ARP 请求的网络接口上的主 IP 地址的 ARP 请求。
+		3：不回复任何 ARP 请求，但会发送 ARP 请求。
+		4-7：这些值用于更特殊的场景，如 VMware ESX。
+		8：不回复任何 ARP 请求，也不发送 ARP 请求。
+		
+	arp_announce 则主要影响主机在发送ARP请求时选择哪个网络接口
+	    0：(默认值)- 允许使用任一网络接口配置的IP地址（即任一本地地址），通常就是待发送的IP数据包的源IP地址。
+		1: 尽量避免使用不属于该发送网卡子网的本地地址作为发送arp请求的源IP地址
+		2：主机会选择与目标 IP 地址相关联(意味着接口上配置了与目标 IP 地址相同的或同一子网的 IP 地址)的网络接口来发送 ARP 请求
+
+
+7.4 DR模式后端服务器为什么要配置VIP
+	一旦LVS调度器选定了后端真实服务器，它会修改数据包的目标MAC地址为所选服务器的MAC地址，但数据包的源地址和目标地址（即VIP）保持不变。
+	这样，数据包就能够直接通过局域网发送到后端真实服务器，后端真实服务器处理完请求后，由于数据包的源地址和目标地址仍然是VIP和客户端的IP地址，
+	因此它可以直接将响应数据包发送给客户端。
+		
+	猜测：如果后端服务器没有配VIP，当有一个数据包到达的时候，服务器发现本机网络接口并没有VIP这个地址，会认为这是一个不属于自己的包，然后讲起丢弃！
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展：
+	LVS+ Keepalived + Nginx 是一种高性能、高可用的Web服务器架构。
+	LVS 负责分发负载，Keepalived 提供健康检查和故障转移，Nginx 处理实际的HTTP请求。	
+	
+
+

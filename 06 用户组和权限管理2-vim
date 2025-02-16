@@ -1,0 +1,619 @@
+5 文本编辑之神vim
+
+文本编辑种类：
+	全屏编辑器：nano（字符工具）, gedit(图形化工具), vi, vim
+	行编辑器：sed
+
+5.1 vim
+	vi: Visual editor，文本编辑器，是 Linux 必备工具之一，功能强大，学习曲线较陡峭，学习难度大
+	vim: VIsual editor iMproved ，和 vi 使用方法一致，但功能更为强大，不是必备软件。vim甚至可以比编辑二进制文件。
+		yum -y install vim
+
+	可以在配置文件中设置打开vi就等于vim.
+		[root@localhost ~]#alias vi
+		alias vi='vim'
+	
+vim [OPTION]... FILE...
+	常用选项:
+		+# 	打开文件后，让光标处于第#行的行首，+默认行尾
+		+/	PATTERN 让光标处于第一个被PATTERN匹配到的行行首
+		-b 	file 二进制方式打开文件
+		-d 	file1 file2… 比较多个文件，相当于 vimdiff
+		-m 	file 只读打开文件
+		-e 	file 直接进入ex模式，相当于执行ex file
+		-y 	file Easy mode (like "evim", modeless)，直接可以操作文件，ctrl+o 回到命令模式; :wq 保存退出;  :q! 不保存退出
+
+vim 配置文件:
+	全局生效:
+		/etc/vimrc		
+	用户生效,用户的家目录下创建 .vimrc 文件,需要自己创建
+		/home/aaron/.vimrc
+	
+	在配置文件可以设置缩进的空格数: 不同的版本tab键默认缩进的空格数不一样!!
+
+
+命令模式快捷键
+	在句子间移动, .结束 或 空格隔开就算一个句子,实验没效果
+		) 	下一句
+		( 	上一句
+		
+	段落间移动, 中间有个空行就算段落
+		} 	下一段
+		{ 	上一段
+	
+
+补充: dd 命令
+	dd 命令用于读取、转换并输出数据。 可从标准输入或文件中读取数据，根据指定的格式来转换数据，再输出到文件、设备或标准输出。
+		
+		//	if=文件名：输入文件名，默认为标准输入。即指定源文件。
+		//	of=文件名：输出文件名，默认为标准输出。即指定目的文件。	
+		//	bs=bytes：同时设置读入/输出的块大小为bytes个字节。
+		//	count=blocks：仅拷贝blocks个块，块大小等于bs指定的字节数。
+		[root@localhost ~]#dd if=/dev/zero of=bin.img bs=1 count=3
+		3+0 records in
+		3+0 records out
+		3 bytes (3 B) copied, 0.000133233 s, 22.5 kB/s
+		
+		[root@localhost ~]#hexdump -C bin.img
+		00000000  00 00 00                                          |...|
+		00000003
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 文本编辑之神vim
+
+6.1 扩展命令模式
+
+6.2 命令模式
+
+6.3 可视化模式
+
+6.4 多文件模式
+
+6.5 多窗口模式
+
+6.6 vim的寄存器(有多个剪切板)
+
+6.7 标记和宏(macro), 可以记录操作
+
+6.8 编辑二进制文件
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 文件处理工具
+
+7.1 查看文本内容 cat
+	
+格式：cat [OPTION]... [FILE]...
+
+常见选项:
+	-E：显示行结束符$
+	-A：显示所有控制符
+	-n：对显示出的每一行进行编号
+	-b：非空行编号
+	-s：压缩连续的空行成一行
+
+
+cat 支持标准输入：
+	
+	// 命令可以用来获取 socket 的统计信息，此命令输出的结果类似于 netstat 输出的内容，但它能显示更多更详细的 TCP 连接状态的信息，且比 netstat 更快速高效
+	[root@localhost ~]#ss -ntl | cat -A
+	State      Recv-Q Send-Q Local Address:Port               Peer Address:Port              $
+	LISTEN     0      128          *:22                       *:*                  $
+	LISTEN     0      100    127.0.0.1:25                       *:*                  $
+	LISTEN     0      128       [::]:22                    [::]:*                  $
+	LISTEN     0      100      [::1]:25                    [::]:*                  $
+	
+	// 输入什么就打印什么
+	[root@localhost ~]#cat
+	linux
+	linux
+	unix
+	unix
+	^C
+	
+	// 实际上就是把标准输出重定向到文件
+	[root@localhost ~]#cat > abc.txt
+	linux
+	unix
+	^C
+	[root@localhost ~]#cat abc.txt
+	linux
+	unix
+	[root@localhost ~]#
+	
+	
+	// 多行重定向, 场景: 在脚本里生成配置文件
+	[root@localhost ~]#cat > abc.txt << EOF
+	> test
+	> file
+	> EOF
+	[root@localhost ~]#cat abc.txt
+	test
+	file
+	[root@localhost ~]#
+
+	
+7.2  显示行号 nl, 相当于cat -b
+	
+
+	//空行加行号
+	cat -n FILE
+	
+	//空行不加行号
+	nl FILE
+	cat -b FILE
+
+
+7.3 逆向显示文本内容 tac , cat 倒着写就是 tac 
+	
+	格式:
+		tac FILE
+	
+	[root@localhost ~]#seq 3 | tac
+	3
+	2
+	1
+	
+	// 注意和 tac 的区别, tac 是行逆向显示, rev 将同一行的内容逆向显示
+	[root@localhost ~]#echo {1..3} > abc.txt ; echo {a..c} >> abc.txt;  rev abc.txt
+	3 2 1
+	c b a
+	
+	
+	
+7.4  查看非文本内容
+	hexdump
+		-n length 只格式化输入文件的前length个字节。
+		-C 输出规范的十六进制和ASCII码。
+		-b 单字节八进制显示。
+		-c 单字节字符显示。
+		-d 双字节十进制显示。
+		-o 双字节八进制显示。
+		-x 双字节十六进制显示。
+		-s 从偏移量开始输出
+		
+	od, od 即 dump files in octal and other formats
+		[root@localhost ~]#echo {a..z} | tr -d ' '|od -t x
+		0000000 64636261 68676665 6c6b6a69 706f6e6d
+		0000020 74737271 78777675 000a7a79
+		0000033
+		
+		echo {a..z} | tr -d ' '|od -t x1
+		
+		echo {a..z} | tr -d ' '|od -t x1z
+		
+	xxd
+		[root@localhost ~]#echo {a..z} | tr -d ' '|xxd
+		0000000: 6162 6364 6566 6768 696a 6b6c 6d6e 6f70  abcdefghijklmnop
+		0000010: 7172 7374 7576 7778 797a 0a              qrstuvwxyz.	
+	
+7.5 more 和 less
+
+more
+	more FILE
+		空格翻页
+		回车翻行
+		显示最后一行自动退出	
+	
+	-d: 显示翻页及退出提示
+		more -d FILE	
+			q  退出
+	
+	
+	
+less, 功能比more更强大, man 就用的less
+	less FILE
+		空格翻页
+		回车翻行
+		page up		// 向上翻页
+		page down	// 向下翻页
+		/文本      	// 搜索
+		n			// 跳到下一个匹配
+		N			// 跳到上一个匹配
+		q			// 退出
+
+	测试 more
+		ls -R  /etc/ | more
+	
+	测试 less
+	ls -R  /etc/ | less
+	
+
+7.6 显示文件或标准输入的前面行 head
+
+	head [OPTION]... [FILE]...
+	选项:	
+		-c # 指定获取前#字节
+		-n # 指定获取前#行,#如果为负数,表示从文件头取到倒数第#前
+		-# 同上
+	
+	
+	// 默认看前10行
+	head a.txt
+	
+	// 查看前3行
+	haed -n3 a.txt      // n可以省略,  head -3 a.txt  
+	cat seq.log | head -n3
+	
+	// 查看倒数3行以前的行
+	cat seq.log | head -n-3
+
+	//看前三个字节，一个汉字就占三个字节
+	[root@localhost ~]#echo abcdef | head -c3
+	abc
+	[root@localhost ~]#echo 中国 | head -c3
+	中
+	
+	// 生成12位随机密码
+	cat /dev/urandom | tr -dc '[:alnum:]' | head -c12
+	
+		
+7.7 查看文件或标准输入的倒数行 tail
+	tail [OPTION]... [FILE]...
+	选项:
+		-c # 指定获取后#字节
+		-n # 指定获取后#行,如果#是负数,表示从第#行开始到文件结束
+		-# 同上
+		-f 跟踪显示文件fd新追加的内容,常用日志监控，相当于 --follow=descriptor,当文件删除再新建同名文件,将无法继续跟踪文件
+		-F 跟踪文件名，相当于--follow=name --retry，当文件删除再新建同名文件,将可以继续跟踪文件
+		tailf 类似 tail –f，当文件不增长时并不访问文件,节约资源,CentOS8无此工具
+	
+	
+	//默认显示后10行
+	cat seq.log | tail
+	
+	//显示后3行
+	cat seq.log | tail -n3
+	cat seq.log | tail -3
+	
+	//查看文本从正数三行到最后行
+	cat seq.log | tail -n +3
+	
+	
+	// 只取文本的第二行
+	ifconfig eth0 | head -n2 | tail -n1
+	ifconfig eth0 | tail -n +2 | head -n1	
+	
+	// 跟踪文件的变化
+	tail -f seq.log
+	
+	// message 日志用的非常多, 里面可以记录操作系统发生的事, 比如查个U盘
+	tail -f /var/log/message
+	
+
+7.8 按列抽取文件 cut , cut 命令可以提取文本文件或STDIN数据的指定列
+	
+	cut [OPTION]... [FILE]...
+	选项:
+		-d DELIMITER: 指明分隔符，默认tab
+		-f FILEDS:
+			#: 第#个字段,例如:3
+			#,#[,#]：离散的多个字段，例如:1,3,6
+			#-#：连续的多个字段, 例如:1-6
+			混合使用：1-3,7
+		-c 按字符切割
+		--output-delimiter=STRING指定输出分隔符
+	
+	// 显示 passwd 文件的1和3列,且只显示两行
+	[root@localhost ~]#cut -d: -f1,3 /etc/passwd | head -2
+	root:0
+	bin:1
+	
+	// 显示倒数以上的行到第一行,并只显示第3列和9列
+	ll /etc | tail -n +2 | tr -s " " | cut -d" " -f3,9
+
+	// 磁盘使用大于80%报警,如果监控失效,硬盘满了,系统崩溃了。为了防止这种情况,先建一个特别大的文件,占个地,发现满了,把这个文件删了就有多余空间了
+	[root@localhost ~]#df | tail -n +2 |tr -s " " | cut -d" " -f5
+	0%
+	0%
+	1%
+	0%
+	6%
+	15%
+	0%
+	
+	// 查看此栏利用率并取消%分号
+	df | tail -n +2 |tr -s " " | cut -d" " -f5 |tr -d %
+	或
+	df | tail -n +2 |tr -s " " | cut -d" " -f5 |cut -d % -f1
+	或
+	df | tail -n +2 |tr -s " " % | cut -d" " -f5 
+	
+	
+	// 按字符切割, 切每列的44-46位字符
+	ll | tail -n +2 |cut -c44-46
+	
+	
+7.9 合并多个文件同行号的列到一行 paste
+	
+	paste [OPTION]... [FILE]...
+	选项:
+		-d 	#分隔符：指定分隔符，默认用TAB
+		-s 	#所有行合成一行显示
+	
+	[root@localhost ~]#seq 2 > f1.txt ; cat f1.txt
+	1
+	2
+	
+	[root@localhost ~]#echo {a..c} > f2.txt ; cat f2.txt
+	a b c
+	
+	[root@localhost ~]#paste f1.txt f2.txt
+	1       a b c
+	2
+	
+	
+	// 用冒号隔开把合并的行隔开。场景: 一个文件放用户名, 一个文件放密码, 两个文件合在一起
+	[root@localhost ~]#paste -d: f1.txt f2.txt
+	1:a b c
+	2:
+	
+	// 用@号隔开
+	[root@localhost ~]#paste -d@ f1.txt f2.txt
+	1@a b c
+	2@
+	
+	
+	// 把每个文件的所有行合成一行显示, 再把每个文件合在一起,最终成为一个多行文件
+	[root@localhost ~]#paste -s f1.txt f2.txt
+	1       2
+	a b c
+	
+	// 通过命令实现 1 加到 99的原理:
+	[root@localhost ~]#seq 3
+	1
+	2
+	3
+	[root@localhost ~]#seq 3 | paste -s
+	1       2       3
+	[root@localhost ~]#seq 3 | paste -d+ -s
+	1+2+3
+	[root@localhost ~]#seq 3 | paste -d+ -s | bc
+	6
+	
+	
+7.6 文本分析工具 
+	文本数据统计 	wc
+	文本排序 		sort
+	去重			uniq
+
+wc 命令可用于统计文件的行总数、单词总数、字节总数和字符总数
+	可以对文件或STDIN中的数据统计
+	
+	常见选项:
+		-l 		只计数行数
+		-w 		只计数单词总数
+		-c 		只计数字节总数
+		-m 		只计数字符总数
+		-L 		显示文件中最长行的长度
+	
+	[root@localhost ~]#cat abc.txt
+	1 2 3
+
+	a b c
+
+	abcd
+	[root@localhost ~]#
+	
+	// 统计文件多少行、多少个单词、多少个字节
+	[root@localhost ~]#wc abc.txt
+	 5  7 19 abc.txt				// 5行,7个单词,19个字节
+	
+	
+	// -l 只统计行
+	[root@localhost ~]#wc -l abc.txt
+	5 abc.txt
+	
+	// 只统计行,不显示文件名
+	[root@localhost ~]#cat abc.txt | wc -l
+	5	
+	
+	// 统计当前文件夹有多少个文件
+	[root@localhost ~]#ll /etc/ | wc -l
+	182	
+		
+	
+	// 安装	words
+	yum provides /usr/share/dict/linux.words
+	yum -y install words
+	
+	// 修改密码时提示密码太简单, 密码中包含的一些单词就是从这个字典查出来的
+	[root@localhost ~]#wc -l /usr/share/dict/linux.words
+	479828 /usr/share/dict/linux.words
+		
+	
+	
+sort 文本排序, 不改变原始文件
+	sort [options] file(s)
+	常见选项:
+		-r 执行反方向（由上至下）整理
+		-R 随机排序
+		-n 执行按数字大小整理
+		-h 人类可读排序,如: 2K 1G
+		-f 选项忽略（fold）字符串中的字符大小写
+		-u 选项（独特，unique），合并重复项，即去重
+		-tc 选项使用c做为字段界定符
+		-k# 选项按照使用c字符分隔的 # 列来整理能够使用多次
+		
+	//默认按照字符顺序排序
+	sort /etc/passwd
+	
+	// 使用用户uid排序,指定按数字排序, -t 分隔符; -k 第几列; -n 按数字排
+	sort -t: -k3 -n /etc/passwd
+	
+	// -r 倒叙排
+	sort -t: -k3 -nr /etc/passwd
+
+	// 取最大的分区利用率
+	[root@localhost ~]#df | tail -n +2 | tr -s " " % | cut -d% -f5 | sort -nr | head -n1
+	15
+	
+	
+去重 uniq, uniq命令从输入中删除前后相接的重复的行, 注意是针对行
+	
+	uniq [OPTION]... [FILE]...
+	常见选项:
+		-c: 显示每行重复出现的次数
+		-d: 仅显示重复过的行
+		-u: 仅显示不曾重复的行
+	
+	[root@localhost ~]#cat abc.txt
+	a
+	b
+	b
+	c
+	dd
+	bb
+	bb
+	cc
+	c
+	c
+	a
+	a
+	
+	// -c 重复了几次
+	[root@localhost ~]#uniq -c abc.txt
+      1 a
+      2 b
+      1 c
+      1 dd
+      2 bb
+      1 cc
+      2 c
+      2 a
+      1
+	
+	
+	生产实践案例: 假如有一个log文件, 里面保存着访问者的信息, 以空格为分隔符 ,第1列是 IP
+	
+	// 取出访问者IP
+	cut -d' ' -f1 access.log
+	
+	// 排序,去重,并查出每个IP的访问次数
+	[root@localhost ~]#cut -d' ' -f1 access.log | sort | uniq -c
+
+	// 统计前10名访问次数最多的访问者
+	cut -d' ' -f1  access.log | sort | uniq -c | sort -nr | head
+
+	// 只显示重复的行 -d
+	#uniq -d access.log
+	
+	// 只显示不重复的行 -u
+	uniq -u access.log
+	
+	
+	面试题: 两个文件中有些行一样,有些行不一样
+		查看两个文件重复的行？
+			cat f1.txt f2.txt | sort |uniq -d
+		
+		查看两个文件不重复的行？
+			cat f1.txt f2.txt | sort |uniq -u
+
+
+7.6  比较文件
+	diff		比较两个文件之间的区别
+	patch		复制在其它文件中进行的改变（要谨慎使用）
+	vimdiff		相当于 "vim -d"
+	cmp			查看二进制文件的不同
+
+diff
+
+	sort [options] file(s)
+	常见选项:
+		-u 选项来输出“统一的（unified）”diff格式文件，最适用于补丁文件
+	
+
+	// 比较两个文件的不一样
+	diff f1.txt f2.txt
+	
+	// 更容易看懂的格式 -u
+	diff -u f1.txt f2.txt
+	
+	
+patch
+	
+	sort [options] file(s)
+	常见选项:
+		-b 选项来自动备份改变了的文件
+
+	
+	// 比较文件存档, 可以通过存档文件找回丢失的文件
+	diff -u f1.txt f2.txt > diff.log
+	
+	// 如果 f2.txt 丢失,可以找回来, -b 备份
+	cp f1.txt  f1.txt.bak			// 先备份f1.txt, 因为找回来的文件将会覆盖f1.txt
+	pathc -b f1.txt diff.log  		// 找回文件,并命名为 f1.txt, 将会覆盖f1.txt, 所以需要先备份 f1.txt
+	
+vimdiff  
+	vimdiff 相当于 "vim -d"
+	
+	// 比较 f1 和 f2
+	vim -d f1.txt f2.txt
+	:qa	或 :qall						// 退出			
+	
+	vimdiff f1.txt f2.txt
+	::qa	或 :qall					// 退出	
+	
+
+cmp
+	// "/bin/dir" 和 "/bin/ls" 大小一样,但不是同一个文件,可以从inode节点号可以看出
+	[root@localhost ~]#ll -i /bin/dir /bin/ls
+	101011377 -rwxr-xr-x. 1 root root 117608 Aug 20  2019 /bin/dir
+	101011398 -rwxr-xr-x. 1 root root 117608 Aug 20  2019 /bin/ls
+	
+	
+	// 比较
+	[root@localhost ~]#cmp /bin/dir /bin/ls
+	/bin/dir /bin/ls differ: byte 645, line 1			// 表示从第645个字节开始字节不一样
+	
+	// 跳过前735个字节,观察后面30个字节
+	[root@localhost ~]#hexdump -s 640 -Cn 30 /bin/ls
+	00000280  47 4e 55 00 aa f0 56 15  b6 c9 1d 3c bb 07 6a f8  |GNU...V....<..j.|
+	00000290  1a ef f5 31 c5 d7 df d9  03 00 00 00 7c 00        |...1........|.|
+	0000029e
+	[root@localhost ~]#hexdump -s 640 -Cn 30 /bin/dir
+	00000280  47 4e 55 00 34 a6 1a 14  51 10 be 66 62 a0 1c 2d  |GNU.4...Q..fb..-|
+	00000290  16 82 3d 92 6a fe 5a 88  03 00 00 00 7c 00        |..=.j.Z.....|.|
+	0000029e
+	[root@localhost ~]#
+
+=================================================================================
+
+扩展命令:
+	sz 命令是利用ZModem协议来从Linux服务器传送文件到本地，一次可以传送一个或多个文件。
+		常用参数
+			-a       ：  以文本方式传输（ascii）。
+			-b       ：  以二进制方式传输（binary）。
+			-e       ：  对控制字符转义（escape），这可以保证文件传输正确。
+
+		注：
+			如果能够确定所传输的文件是文本格式的，使用 sz -a files
+			如果是二进制文件，使用 sz -be files
+
+
+	scp 
+		从本地复制到远程
+			scp -r /root/lk root@43.224.34.73:/home/lk/cpfile
+			
+		从远程复制到本地
+			scp -r root@43.224.34.73:/home/lk /root
+			
+	seq 命令可以输出连续的数字，或者输出固定间隔的数字，或者输出指定格式的数字
+		常用选项:
+			-s指定输出的分隔符，默认为\n，即默认为回车换行
+			-W指定为定宽输出，不能和 -f 一起用
+			-f按照指定的格式输出，不能和 -w 一起使用
+		
+		[root@localhost ~]#seq -s+ 10
+		1+2+3+4+5+6+7+8+9+10
+		[root@localhost ~]#seq -s+ 10 20
+		10+11+12+13+14+15+16+17+18+19+20
+		[root@localhost ~]#seq -s "`echo -e "\t"`" 9 11
+		9       10      11
+			
+	tr 命令可以对来自标准输入的字符进行替换、压缩和删除。它可以将一组字符变成另一组字符，经常用来编写优美的单行命令，作用很强大。
+		-c或——complerment：取代所有不属于第一字符集的字符；
+		-d或——delete：删除所有属于第一字符集的字符；
+		-s或--squeeze-repeats：把连续重复的字符以单独一个字符表示；
+		-t或--truncate-set1：先删除第一字符集较第二字符集多出的字符。

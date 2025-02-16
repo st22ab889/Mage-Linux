@@ -1,0 +1,1462 @@
+
+1 文本处理三剑客之sed的高级用法
+
+1.1 修改网卡名称: 在 centos7 上是根据内核识别硬件状态,自动添加网卡名称,如果有多台机器导致网卡名不一样,不能统一管理,所以需要改网卡名称!
+	一般网卡命名为 eth0, 如果有多个网卡,依次命名为 eth1、eth2 等   centos4、centos5 都是这个名称!
+	
+	
+	[root@localhost ~]#ifconfig
+	ens33: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+			inet 192.168.32.101  netmask 255.255.255.0  broadcast 192.168.32.255
+			inet6 fe80::c43d:9a53:ab7e:efdc  prefixlen 64  scopeid 0x20<link>
+			ether 00:0c:29:f9:a9:0f  txqueuelen 1000  (Ethernet)
+			RX packets 1228  bytes 100592 (98.2 KiB)
+			RX errors 0  dropped 0  overruns 0  frame 0
+			TX packets 897  bytes 100366 (98.0 KiB)
+			TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+	
+	
+	// 在 GRUB_CMDLINE_LINUX 这行追加" net.ifnames=0" 
+	[root@localhost ~]#cat /etc/default/grub
+	GRUB_TIMEOUT=5
+	GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
+	GRUB_DEFAULT=saved
+	GRUB_DISABLE_SUBMENU=true
+	GRUB_TERMINAL_OUTPUT="console"
+	GRUB_CMDLINE_LINUX="crashkernel=auto rd.lvm.lv=centos/root rd.lvm.lv=centos/swap rhgb quiet"
+	GRUB_DISABLE_RECOVERY="true"
+	
+	
+	// 下面三种写法都可以修改
+	// sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s@"$@ net.ifnames=0"@' /etc/default/grub
+	// sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s#"$# net.ifnames=0"#' /etc/default/grub
+	[root@localhost ~]#sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s#(.*)"$#\1 net.ifnames=0"#' /etc/default/grub
+	
+	
+	[root@localhost ~]#cat /etc/default/grub
+	GRUB_TIMEOUT=5
+	GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
+	GRUB_DEFAULT=saved
+	GRUB_DISABLE_SUBMENU=true
+	GRUB_TERMINAL_OUTPUT="console"
+	GRUB_CMDLINE_LINUX="crashkernel=auto rd.lvm.lv=centos/root rd.lvm.lv=centos/swap rhgb quiet net.ifnames=0"
+	GRUB_DISABLE_RECOVERY="true"
+	
+	
+	// linux 修改开机启动参数后，使用grub2-mkconfig 命令使得参数设置有效
+	// ubuntu 使用 "grub-mkconfig -o /boot/grub/grub.cfg >& /dev/null" 此命令
+	[root@localhost ~]#grub2-mkconfig -o /boot/grub2/grub.cfg						# "/etc/grub2.cfg"是"/boot/grub2/grub.cfg"的软衔接，所以也可以写成"grub2-mkconfig -o /etc/grub2.cfg"，也就是为grub2生成其配置文件
+	Generating grub configuration file ...
+	Found linux image: /boot/vmlinuz-3.10.0-1160.el7.x86_64
+	Found initrd image: /boot/initramfs-3.10.0-1160.el7.x86_64.img
+	Found linux image: /boot/vmlinuz-0-rescue-1ac11172d2f343c09c155ddd71b49e48
+	Found initrd image: /boot/initramfs-0-rescue-1ac11172d2f343c09c155ddd71b49e48.img
+	done
+	
+	
+	// 创建 ifcfg-eth0, 如果原先网卡配置文件可以使用, 直接拷贝重命名就可以，然后 name 和 DEVICE 的值改为 eth0
+	[root@localhost ~]#cp /etc/sysconfig/network-scripts/ifcfg-ens33  /etc/sysconfig/network-scripts/ifcfg-eth0
+	
+	
+	// 重启系统生效
+	[root@localhost ~]#reboot
+	Connection to 192.168.32.101 closed by remote host.
+	Connection to 192.168.32.101 closed.
+	
+	
+	参考资料； 
+		Linux – Biosdevname & net.ifnames			https://blog.csdn.net/a746742897/article/details/119386926
+		CentOS 7下修改默认网卡名为eth0的两种方法	https://www.cnblogs.com/liangjingfu/p/9843477.html
+	
+	
+
+1.2 sed还支持变量。使用场景: 不同的机器安装同一个服务，配置文件有些变量的值可能不一样配置文件文件中有些变量的值可能不一样
+
+	[root@localhost ~]#name=root
+	// 不能用单引号,单引号里面的内容会被认为是字符串
+	[root@localhost ~]#sed -nr "/$name/p" /etc/passwd
+	root:x:0:0:root:/root:/bin/bash
+	operator:x:11:0:operator:/root:/sbin/nologin
+
+	// 这种用法可以
+	[root@localhost ~]#sed -nr '/'$name'/p' /etc/passwd
+	root:x:0:0:root:/root:/bin/bash
+	operator:x:11:0:operator:/root:/sbin/nologin
+
+	
+	
+	示例: 使用变量改配置文件
+	
+	[root@localhost ~]#port=8080
+	[root@localhost ~]#cat test.config
+	Listen 80
+	#ServerName www.example.com:80	
+	
+	
+	[root@localhost ~]#sed -ri.bak -e 's/^Listen 80/Listen '$port'/' -e "/ServerName/c ServerName `hostname`:$port"  test.config
+	
+	[root@localhost ~]#cat test.config
+	Listen 8080
+	ServerName localhost.localdomain:8080
+	
+	[root@localhost ~]#ls test.config*
+	test.config  test.config.bak
+	[root@localhost ~]#
+
+
+
+1.3 sed 高级用法,sed 中除了模式空间，还另外还支持保持空间（Hold Space）,利用此空间，可以将模式空间中的数据，临时保存至保持空间，从而后续接着处理，实现更为强大的功能
+	常见的高级命令:
+		P 打印模式空间开端至\n内容，并追加到默认输出之前
+		h 把模式空间中的内容覆盖至保持空间中
+		H 把模式空间中的内容追加至保持空间中
+		g 从保持空间取出数据覆盖至模式空间
+		G 从保持空间取出内容追加至模式空间
+		x 把模式空间中的内容与保持空间中的内容进行互换
+		n 读取匹配到的行的下一行覆盖至模式空间
+		N 读取匹配到的行的下一行追加至模式空间
+		d 删除模式空间中的行
+		D 如果模式空间包含换行符，则删除直到第一个换行符的模式空间中的文本，并不会读取新的输入行，而使用合成的模式空间重新启动循环。如果模式空间不包含换行符，则会像发出d命令那样启动正常的新循环
+	
+	
+	[root@localhost ~]#seq 10 | sed -n 'n;p'
+	2
+	4
+	6
+	8
+	10
+
+	[root@localhost ~]#seq 10 | sed 'N;s/\n//'
+	12
+	34
+	56
+	78
+	910
+
+	[root@localhost ~]# seq 4 | sed '1!G;h;$!d'
+	4
+	3
+	2
+	1
+
+	[root@localhost ~]#seq 4 | tac
+	4
+	3
+	2
+	1
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+2 软件运行和编译过程及库调用机制
+
+2.1 包管理工具
+
+	rpm：rpm包管理机制有缺陷,比如说最大的问题就是依赖性问题，而且解决不了。所以在实际生产中不用rpm这种方式直接安装包，而是使用yum
+	
+	yum 和 dnf: dnf是centos8新出来的，dnf和yum用法一样，是主流的软件安装方法
+		在实际生产中，要用yum或dnf安装，还可能搭建公司内部的yum仓库服务器，因为有些公司或组织不能连外网
+	
+		
+	注意: 
+		并不是所有软件都做成包了，尤其是频繁更新的开源软件，所以在企业中大部分的软件，如果想用指定的版本，通常要用编译安装的方法
+		下载软件的时候，要下载稳定版进行安装。不能用太旧的版本和主线版(最新的测试版)。
+	
+
+2.1 软件运行和编译
+	
+	// 查看man帮助
+	[root@localhost ~]#man ldd
+	
+	[root@localhost ~]#which ls
+	alias ls='ls --color=auto'
+        /usr/bin/ls
+	
+	// 查看二进制程序所依赖的库文件
+	[root@localhost ~]#ldd /usr/bin/ls
+        linux-vdso.so.1 =>  (0x00007ffcaa1e7000)
+        libselinux.so.1 => /lib64/libselinux.so.1 (0x00007fd36998e000)
+        libcap.so.2 => /lib64/libcap.so.2 (0x00007fd369789000)
+        libacl.so.1 => /lib64/libacl.so.1 (0x00007fd369580000)
+        libc.so.6 => /lib64/libc.so.6 (0x00007fd3691b2000)
+        libpcre.so.1 => /lib64/libpcre.so.1 (0x00007fd368f50000)
+        libdl.so.2 => /lib64/libdl.so.2 (0x00007fd368d4c000)
+        /lib64/ld-linux-x86-64.so.2 (0x00007fd369bb5000)
+        libattr.so.1 => /lib64/libattr.so.1 (0x00007fd368b47000)
+        libpthread.so.0 => /lib64/libpthread.so.0 (0x00007fd36892b000)
+
+
+2.2 当系统出现问题, 可以使用系统的救援模式去修复错误配置, 每个系统的救援模式方式可能不一样
+	在VMvare安装centos，进入救援模式, 的方法
+	
+	前提: Vmware 中要加载好光盘文件,且勾选启动时连接。这种方法其实就是加载一个简化版的小linux，这个linux中带有一些基本命令
+	
+	方法一: 
+		点击"打开电源时进入固件" --> boot --> CD-ROM Deive --> Troubleshooting --> Rescue a CentOS system --> 1)Continue -> 回车 --> 运行命令
+	
+	方法二：
+		启动系统,在跑进度条的时候按下"Ctrl+G"或者点击启动页面(就是为了把鼠标定位到虚拟机中),然后按下 ESC 键 --> CD-ROM Drive --> 后面的操作和方法1一样
+	
+	
+	
+	//在救援模式中操作
+	sh-4.2# df -h
+	Filesystem  				Size	Used	Avail	Use%	Mounted on
+	/dev/mapper/centos-root 	36G 	2.1G 	34G 	6% 		/mnt/sysimage
+	/dev/sr0					4.4G	4.4G	  0	  100%		/run/install/repo
+	sh-4.2# 
+	
+	说明:
+		/mnt/sysimage  		这个目录就是原系统的根目录
+		/run/install/repo	这个目录是光盘挂载目录
+		注意: 挂载目录的位置不是固定的，一样的系统安装在不同的虚拟机上挂载的位置可能都不一样！！！
+	
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 rpm包管理器常用用法
+
+3.1  Autofs：Autofs与Mount/Umount的不同之处在于，它是一种看守程序。如果它检测到用户正试图访问一个尚未挂接的文件系统，它就会自动检测该文件系统，如果存在，那么Autofs会自动将其挂接。
+	另一方面，如果它检测到某个已挂接的文件系统在一段时间内没有被使用，那么Autofs会自动将其卸载。因此一旦运行了Autofs后，用户就不再需要手动完成文件系统的挂接和卸载。
+
+	
+	// 光盘挂载到目录，前提是加载了光盘文件。如果使用的是VMware，加载光盘后,还要点击已连接选项!!!
+	-----------------------------------------------------
+	/	#Ubuntu											/
+	/	root@ubuntu2004:~# apt install autofs -y		/
+	/	root@ubuntu2004:~# vim /etc/auto.master			/
+	/	/misc /etc/auto.misc							/
+	/	root@ubuntu2004:~# systemctl restart autof		/
+	-----------------------------------------------------
+	
+	
+	# CentOS, "rpm -q autofs"查看autofs这个软件有没有安装
+	[root@centos8 ~]#rpm -q autofs || yum -y install autofs
+	[root@centos8 ~]#systemctl enable --now autofs
+	
+	
+	// autofs 的配置文件,里面定义了光盘挂载在哪个目录下
+	[root@localhost test]#cat /etc/auto.master
+	/misc   /etc/auto.misc
+	/net    -hosts
+	
+	
+	// 因为 Autofs 的特性是要用才挂载,不用就不挂载,所以直接看不到misc目录下包含的光盘文件
+	// centos7和centos8的package目录路径不一样
+	[root@localhost /]#ls /misc/
+	[root@localhost /]#cd /misc/cd;ls
+	CentOS_BuildTag  EULA  images    LiveOS    repodata              RPM-GPG-KEY-CentOS-Testing-7
+	EFI              GPL   isolinux  Packages  RPM-GPG-KEY-CentOS-7  TRANS.TBL
+	[root@localhost cd]#ls /misc/
+	cd
+	
+
+3.2  rmp 包命令格式
+	
+	abrt-addon-ccpp-2.1.11-60.el7.centos.x86_64.rpm
+		
+		abrt-addon-ccpp-2.1.11  这部分是软件源码带的
+			abrt-addon-ccpp 	是软件名称
+			2.1.11 				是软件版本号
+		
+		-60.el7.centos.x86_64.rpm 这部分是红帽公司自己加的
+			60 		打包次数
+			el7 	EL是RedHatEnterpriseLinux的简写, EL7表示软件包可以在 Red Hat 7.x，CentOS 7.x，CloudLinux 7.x 进行安装。centos实际上来源于红帽公司的企业版.	
+			x86_64  表示CPU架构
+	
+	
+	常见的arch(架构)：
+		x86: i386, i486, i586, i686
+		x86_64: x64, x86_64, amd64
+		powerpc: ppc
+		跟平台无关：noarch
+	
+	
+3.3	RPM 软件包中的文件分类
+
+	RPM 软件包中包含如下文件:
+		二进制文件
+		库文件
+		配置文件
+		帮助文件
+
+	// 查看 RPM 软件包中包含的文件，如果安装包就包含了以下文件，属性文件属性、权限、存在路径等都已经设置好了
+	[root@localhost Packages]#rpm2cpio tree-1.6.0-10.el7.x86_64.rpm | cpio -tv
+	-rwxr-xr-x   1 root     root        62768 Jun 10  2014 ./usr/bin/tree
+	drwxr-xr-x   2 root     root            0 Jun 10  2014 ./usr/share/doc/tree-1.6.0
+	-rw-r--r--   1 root     root        18009 Aug 13  2004 ./usr/share/doc/tree-1.6.0/LICENSE
+	-rw-r--r--   1 root     root         4628 Jun 24  2011 ./usr/share/doc/tree-1.6.0/README
+	-rw-r--r--   1 root     root         4100 Jun 24  2011 ./usr/share/man/man1/tree.1.gz
+	177 blocks
+	
+
+	// 释放包内文件(了解)
+	rpm2cpio 包文件|cpio –id "*.conf" 
+	
+
+3.4	包管理器,安装、卸载、查询安装包
+	
+	主流的程序包管理器
+		redhat：rpm文件, rpm 包管理器，rpm：Redhat Package Manager，RPM Package Manager
+		debian：deb文件, dpkg 包管理器
+
+
+	为了让用户选择特定的包，所以把一些大的软件拆开为好几个小rpm(centos6以前不会拆,所有的东西都放在一个包)：
+		[root@localhost Packages]#ll httpd*
+		-rw-rw-r--.  4 root root 2846172 Oct 15  2020 httpd-2.4.6-95.el7.centos.x86_64.rpm
+		-rw-rw-r--.  4 root root  203780 Oct 15  2020 httpd-devel-2.4.6-95.el7.centos.x86_64.rpm
+		-rw-rw-r--. 14 root root 1409564 Oct 15  2020 httpd-manual-2.4.6-95.el7.centos.noarch.rpm
+		-rw-rw-r--.  4 root root   95136 Oct 15  2020 httpd-tools-2.4.6-95.el7.centos.x86_64.rpm	
+	
+	
+	程序包管理器相关文件
+		1. 包文件组成 (每个包独有)
+			包内的文件
+			元数据，如：包的名称，版本，依赖性，描述等
+			可能会有包安装或卸载时运行的脚本，安装或卸载会触发脚本的运行，不是每个包都有
+		2. 数据库(公共)：/var/lib/rpm
+			程序包名称及版本
+			依赖关系
+			功能说明
+			包安装后生成的各文件路径及校验码信息
+	
+		
+		查询包RPM里面有没有带脚本
+			格式： rpm -qp --scripts 包名称
+			// 如果带脚本,会打印出脚本内容,如果不带脚本不打印任何内容
+			[root@localhost Packages]#rpm -qp --scripts httpd-2.4.6-95.el7.centos.x86_64.rpm
+		
+		
+		安装RPM包后有一些公共的数据,会把这些数据放在一个数据库中：/var/lib/rpm
+			// 这个文件夹很重要,只要安装RPM包,就会把安装的这个RPM包以及这个包包含的文件列表都会放在这个文件夹
+			// 利用这个数据库就可以知道系统装了哪些包，这些包涵盖哪些文件以及文件属性
+			// 安装RPM包的时候会利用这个数据库查询是否已安装该包, 卸载的时候也就是根据这个数据库的记录去卸载
+			[root@localhost Packages]#ll /var/lib/rpm
+
+
+3.5 获取程序包的途径。软件包需要事先将源码进行编译后打包形成，获取包的途径如下：
+	
+	系统发版的光盘或官方网站
+		CentOS 镜像：
+			https://www.centos.org/download/
+			http://mirrors.aliyun.com
+			https://mirrors.huaweicloud.com/
+			https://mirror.tuna.tsinghua.edu.cn/
+			http://mirrors.sohu.com
+			http://mirrors.163.com
+		
+		Ubuntu 镜像：
+			http://cdimage.ubuntu.com/releases/
+			http://releases.ubuntu.com
+	
+	第三方组织提供
+		Fedora-EPEL：Extra Packages for Enterprise Linux
+			https://fedoraproject.org/wiki/EPEL
+			https://mirrors.aliyun.com/epel/
+			https://mirrors.cloud.tencent.com/epel/
+		Rpmforge：官网：http://repoforge.org/, RHEL推荐，包很全，即将关闭
+		Community Enterprise Linux Repository：http://www.elrepo.org，支持最新的内核和硬件相关包
+	
+	软件项目官方站点
+		http://yum.mariadb.org/10.4/centos8-amd64/rpms/
+		http://repo.mysql.com/yum/mysql-8.0-community/el/8/x86_64/
+	
+	搜索引擎: 注意：第三方包建议要检查其合法性，来源合法性,程序包的完整性
+		http://pkgs.org
+		http://rpmfind.net
+		http://rpm.pbone.net
+		https://sourceforge.net/
+	
+	自己制作
+		将源码文件，利用工具，如：rpmbuild，fpm 等工具制作成rpm包文件
+	
+	
+3.6 rpm 包管理器,CentOS 系统上使用rpm命令管理程序包。功能：安装、卸载、升级、查询、校验、数据库维护
+	
+	安装卸载一般不用，因为处理不了程序包的依赖关系。
+	查询经常使用
+	
+	格式：rpm {-i|--install} [install-options] PACKAGE_FILE…
+	常见选项:
+		-v: verbose   	可视化
+		-vv:
+		-h: 			以#显示程序包管理执行进度
+		-i：			安装
+		-q:				查询
+		-e:				下载
+		-l：			查看指定的程序包安装后生成的所有文件
+	
+	
+	// 查询一个软件包是否已安装
+	[root@localhost Packages]#rpm -q vsftpd
+	package vsftpd is not installed
+	
+	
+	// vh 表示显示安装过程和进度
+	[root@localhost Packages]#rpm -ivh vsftpd-3.0.2-28.el7.x86_64.rpm
+	Preparing...                          ################################# [100%]
+	Updating / installing...
+	   1:vsftpd-3.0.2-28.el7              ################################# [100%]
+	
+	
+	// 查看RPM包安装后,其中若干文件的放置路径
+	[root@localhost Packages]#rpm -ql vsftpd
+	/etc/logrotate.d/vsftpd
+	/etc/pam.d/vsftpd
+	/etc/vsftpd
+	
+	
+	// 卸载软件,只写软件名,不用写包全程
+	[root@localhost Packages]#rpm -e vsftpd ;  rpm -q vsftpd
+	package vsftpd is not installed
+	
+	
+	// -qi 查包的信息
+	[root@localhost Packages]#rpm -qi tree
+	Name        : tree
+	Version     : 1.6.0
+	Release     : 10.el7
+	Architecture: x86_64
+	
+	
+	// -qf 查看磁盘上的文件来自于哪个包
+	[root@localhost Packages]#rpm -qf /etc/issue
+	centos-release-7-9.2009.0.el7.centos.x86_64
+
+	
+	// -qc 只看包里面的配置文件
+	[root@localhost Packages]#rpm -qc centos-release
+	/etc/issue
+	/etc/issue.net
+	/etc/os-release
+	/etc/system-release-cpe
+	/etc/yum.repos.d/CentOS-Base.repo
+	/etc/yum.repos.d/CentOS-CR.repo
+	/etc/yum.repos.d/CentOS-Debuginfo.repo
+	/etc/yum.repos.d/CentOS-Media.repo
+	/etc/yum.repos.d/CentOS-Sources.repo
+	/etc/yum.repos.d/CentOS-Vault.repo
+	/etc/yum.repos.d/CentOS-fasttrack.repo
+	/etc/yum.repos.d/CentOS-x86_64-kernel.repo
+	/etc/yum/vars/contentdir
+	/etc/yum/vars/infra
+	
+	// 只看文档
+	[root@localhost Packages]#rpm -qd tree
+	/usr/share/doc/tree-1.6.0/LICENSE
+	/usr/share/doc/tree-1.6.0/README
+	/usr/share/man/man1/tree.1.gz
+	
+
+特殊案例1: 删除rpm包后如何安装文件(删除RPM包后YUM命令也不能用了)
+	
+	// 删除RPM包," --nodeps"表示忽略依赖关系, 即使其它包依赖RPM也照样删除
+	rpm -e rpm --nodeps
+	
+	// 在救援模式下操作，使用救援模式下的rpm命令重新给原系统安装rpm
+	// 这里假如原系统挂载到"/mnt/sysimage"目录, 而关盘文件挂载到"/run/install/repo"目录, 而光盘文件中提供了很多RPM包,其中就包含RPM本身这个包
+	rpm -ivh /run/install/repo/packages/rpm-4.11.3-45.el7.x86_64.rpm --root=/mnt/sysimage
+	
+	
+
+特殊案例2: 强制安装rpm包
+	
+	[root@localhost ~]#rpm -ql tree
+	/usr/bin/tree
+	/usr/share/doc/tree-1.6.0
+	/usr/share/doc/tree-1.6.0/LICENSE
+	/usr/share/doc/tree-1.6.0/README
+	/usr/share/man/man1/tree.1.gz
+	
+	// 删除 tree
+	[root@localhost ~]#rm -f /usr/bin/tree
+	[root@localhost ~]#tree
+	-bash: tree: command not found
+	
+	// 重新安装 tree 显示已安装, 如何重新安装
+	[root@localhost ~]#rpm -ivh /misc/cd/Packages/tree-1.6.0-10.el7.x86_64.rpm
+	Preparing...                          ################################# [100%]
+			package tree-1.6.0-10.el7.x86_64 is already installed
+	
+	
+	// 强制重新安装
+	[root@localhost ~]#rpm -ivh /misc/cd/Packages/tree-1.6.0-10.el7.x86_64.rpm --force
+	Preparing...                          ################################# [100%]
+	Updating / installing...
+	   1:tree-1.6.0-10.el7                ################################# [100%]
+	[root@localhost ~]#
+	
+	// tree 命令生效
+	[root@localhost ~]#tree
+	.
+	├── access.log
+	├── anaconda-ks.cfg
+	├── a.txt
+	├── example2.sh
+	├── nohup.out
+	├── rps.sh
+	├── systeminfo.sh
+	├── test
+	│   ├── a\ b
+	│   └── ssh.pem
+	├── test.config
+	├── test.config.bak
+	└── test.txt.bakup
+
+	
+	
+
+3.7 校验包是不是合法的,需要一个 public key 去校验
+	
+	// 在安装centos时,就默认把centos这个组织发布的所有包的key发在这里生成了一个文件， 这个文件实际上是个公钥，这个公钥需要导入才能检查RPM包的签名
+	// 在安装系统时已经默认导入
+	[root@localhost ~]#ll /etc/pki/rpm-gpg/
+	total 12
+	-rw-r--r--. 1 root root 1690 Oct 23  2020 RPM-GPG-KEY-CentOS-7
+	-rw-r--r--. 1 root root 1004 Oct 23  2020 RPM-GPG-KEY-CentOS-Debug-7
+	-rw-r--r--. 1 root root 1690 Oct 23  2020 RPM-GPG-KEY-CentOS-Testing-7
+	
+	// 手动导入示例
+	[root@localhost ~]#rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+	
+	// 查看已经导入的KEY
+	[root@localhost ~]#rpm -qa 'gpg-pubkey'
+	gpg-pubkey-f4a80eb5-53a7ff4b
+	gpg-pubkey-621e9f35-58adea78
+	
+	
+	// -K 检查签名是否正确
+	[root@localhost ~]#rpm -K /misc/cd/Packages/tree-1.6.0-10.el7.x86_64.rpm
+	/misc/cd/Packages/tree-1.6.0-10.el7.x86_64.rpm: rsa sha1 (md5) pgp md5 OK
+	
+	
+	
+	注意: 即使导入后更改或破坏了"/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7"这个文件,就会校验失败
+	
+	
+
+	// 检查包安装后的文件有没有被修改过,比如修改了权限等属性，修改了就会列出修改的地方，没有修改什么都不会打印
+	[root@localhost ~]#rpm -V tree
+		
+	
+扩展命令:	
+	
+	// 查看目录占用的空间
+	[root@localhost /]#du -sh *
+	
+	// 硬盘分区状态
+	[root@localhost /]#df -h
+
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 yum实现和配置文件(重点)
+	CentOS 使用 yum, dnf 解决rpm的包依赖关系
+	YUM: Yellowdog Update Modifier，rpm的前端程序，可解决软件包相关依赖性，可在多个库之间定位软件包
+	CentOS 8 用dnf 代替了yum ,不过保留了和yum的兼容性，配置也是通用的
+	
+	yum/dnf 是基于C/S 模式
+		yum 服务器存放rpm包和相关包的元数据库
+		yum 客户端访问yum服务器进行安装或查询等
+	
+
+4.1 yum客户端配置
+	
+	// "/etc/yum.conf"为所有仓库提供公共配置, cachedir时缓存目录, 保存包的相关的元数据文件
+	//  下面是 CentOS7 的配置文件,CentOS8这个配置文件不一样 
+	[root@localhost ~]#cat /etc/yum.conf
+	[main]
+	cachedir=/var/cache/yum/$basearch/$releasever
+	keepcache=0
+	debuglevel=2
+	logfile=/var/log/yum.log
+	exactarch=1
+	obsoletes=1
+	gpgcheck=1
+	plugins=1
+	installonly_limit=5
+	bugtracker_url=http://bugs.centos.org/set_project.php?project_id=23&ref=http://bugs.centos.org/bug_report_page.php?category=yum
+	distroverpkg=centos-release
+	
+	-----------------------------------------------------------------------------------------------------
+	\	范例：CentOS 8 配置文件																			\
+	\		[root@centos8 ~]#cat /etc/yum.conf															\			
+	\		[main]																						\		
+	\		gpgcheck=1 							#安装包前要做包的合法和完整性校验, 0 表示不检查			\
+	\		installonly_limit=3 				#同时可以安装3个包，最小值为2，如设为0或1，为不限制		\
+	\		clean_requirements_on_remove=True 	#删除包时，是否将不再使用的包删除						\
+	\		best=True 							#升级时，自动选择安装最新版，即使缺少包的依赖			\
+	-----------------------------------------------------------------------------------------------------
+	
+	// "/etc/yum.repos.d/" 这个目录下保存的是仓库的配置文件。
+	//		多个仓库配置可以写在一个 repo 文件中, 也可以分开写在 repo 文件中, 但是后缀需要以".repo"结尾
+	[root@localhost ~]#ll /etc/yum.repos.d/
+	total 44
+	-rw-r--r--. 1 root root 1664 Oct 23  2020 CentOS-Base.repo
+	-rw-r--r--. 1 root root 1309 Oct 23  2020 CentOS-CR.repo
+	-rw-r--r--. 1 root root  649 Oct 23  2020 CentOS-Debuginfo.repo
+	-rw-r--r--. 1 root root  314 Oct 23  2020 CentOS-fasttrack.repo
+	-rw-r--r--. 1 root root  630 Oct 23  2020 CentOS-Media.repo
+	-rw-r--r--. 1 root root 1331 Oct 23  2020 CentOS-Sources.repo
+	-rw-r--r--. 1 root root 8515 Oct 23  2020 CentOS-Vault.repo
+	-rw-r--r--. 1 root root  616 Oct 23  2020 CentOS-x86_64-kernel.repo
+	-rw-r--r--. 1 root root 1919 Aug 21  2021 docker-ce.repo
+	
+	
+	
+4.2  repo配置文件的写法
+	
+	repo仓库配置文件指向的定义：
+		# ID唯一,不要有空格
+		[repositoryID]
+		# name 是描述
+		name=Some name for this repository
+		baseurl=url://path/to/repository/
+		enabled={1|0}
+		gpgcheck={1|0}
+		gpgkey=URL
+		enablegroups={1|0}
+		failovermethod={roundrobin|priority}
+		roundrobin：意为随机挑选，默认值
+		priority:按顺序访问
+		cost= 默认为1000
+	
+	yum服务器的baseurl形式（注意：yum仓库指向的路径一定必须是repodata目录所在目录！！！）:
+		file:// 本地路径
+		http://
+		https://
+		ftp://
+		
+		示例:
+			baseurl=http://mirrors.aliyun.com/epel/$releasever/Everything/$basearch
+		
+	
+	yum的repo配置文件中可用的变量：
+		$releasever: 当前OS的发行版的主版本号，如：8，7，6
+		$arch: CPU架构，如：aarch64, i586, i686，x86_64等
+		$basearch：系统基础平台；i386, x86_64
+		$contentdir：表示目录，比如：centos-8，centos-7
+		$YUM0-$YUM9:自定义变量
+	
+	
+	变量从哪里来；
+		"/etc/yum.conf"中distroverpkg的值是centos-release，这个值指的是 redhat-release这个RPM包。
+		“distroverpkg=centos-release”的意思，其实是将 $releasever 设置为 centos-release 这个RPM包的版本号
+		
+		[root@localhost ~]#rpm -qi centos-release
+		Name        : centos-release
+		Version     : 7
+		Release     : 9.2009.0.el7.centos
+		Architecture: x86_64
+		Install Date: Fri 20 Aug 2021 07:20:32 PM CST
+		Group       : System Environment/Base
+		Size        : 44787
+		License     : GPLv2
+		Signature   : RSA/SHA256, Mon 26 Oct 2020 08:40:20 PM CST, Key ID 24c6a8a7f4a80eb5
+		Source RPM  : centos-release-7-9.2009.0.el7.centos.src.rpm
+		Build Date  : Fri 23 Oct 2020 10:53:59 PM CST
+		Build Host  : x86-01.bsys.centos.org
+		Relocations : (not relocatable)
+		Packager    : CentOS BuildSystem <http://bugs.centos.org>
+		Vendor      : CentOS
+		Summary     : CentOS Linux release file
+		Description :
+		CentOS Linux release files
+		
+	
+ 
+4.3 要把 extras 和 epel 源配置上, epel上有很多很好玩很丰富的包
+	
+	// extras 用的不多,但是偶尔会用以下, 比如可以通过 extras 来生成 epel源,  不过生成的epel源在国外, 所以建议还是自己写 epel
+	
+	// 列出源的信息
+	[root@localhost ~]#yum repolist
+   
+	// 列出eapl包
+    [root@localhost ~]#yum list epel*
+	Loaded plugins: fastestmirror
+	Repository 'extras' is missing name in configuration, using id
+	Repository 'epel' is missing name in configuration, using id
+	Loading mirror speeds from cached hostfile
+	 * base:
+	 * epel: mirrors.aliyun.com
+	 * extras: mirrors.aliyun.com
+	Available Packages
+	epel-release.noarch                                                    7-14                                         epel
+	epel-rpm-macros.noarch                                                 7-35                                         epel
+	epel-rpm-macros-systemd.noarch                                         7-35                                         epel 
+   
+   
+	// 装完之后会生成一个epel源的配置,这样epel源就不用手动配置,但是自动生成的源指向国外的镜像站点,下载安装里面的RPM包的时候会慢一些
+	yum install epel-release.noarch -y
+   
+   
+   	// 卸载 epel-release.noarch 这个包
+	yum remove epel-release.noarch
+   
+   
+   
+4.4 yum 其它命令  
+   
+    // 列出源的信息, centos8 要加上 -v 参数才会列出包的数量
+	[root@localhost ~]#yum repolist
+	Loaded plugins: fastestmirror
+	Loading mirror speeds from cached hostfile
+	 * base: mirrors.aliyun.com
+	 * extras: mirrors.bfsu.edu.cn
+	 * updates: mirrors.bfsu.edu.cn
+	repo id                                                  repo name                                                status
+	!base/7/x86_64                                           CentOS-7 - Base                                          10,072
+	!docker-ce-stable/7/x86_64                               Docker CE Stable - x86_64                                   183
+	!docker-ce-test/7/x86_64                                 Docker CE Test - x86_64                                     349
+	!extras/7/x86_64                                         CentOS-7 - Extras                                           515
+	!updates/7/x86_64                                        CentOS-7 - Updates                                        4,346
+	repolist: 15,465
+	
+
+	// 带@符号说明是已经装了的包, @anaconda 表示装系统时就默认安装了的包,其余的就是未安装的包
+	[root@localhost ~]#yum list | less 
+	audit-libs.x86_64                         2.8.5-4.el7                  @anaconda
+	audit-libs-python.x86_64                  2.8.5-4.el7                  @base
+	compat-gcc-44-c++.x86_64                  4.4.7-8.el7                  base
+
+	
+	// 列出没有装的包
+	yum list available
+
+	
+	// 列出已安装的包
+	yum list installed
+
+	
+	// 查看某个包有没有,支持通配符
+	yum list httpd
+	yum list *httpd*
+
+	
+	// 查看包的信息，即使没有安装也能查看包的信息
+	yum info sl
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 yum的私有仓库和内核升级
+
+5.1 yum的私有仓库
+	企业里面至少要两个源,系统源(就是光盘中的那个源, centos7光盘中有一个源, centos8光盘中有二个系统源,分别是BaseOS和AppStream两个源)和epel源
+	为了安全可靠，通常至少搭建两个一摸一样的yum服务器。
+
+方式1: 直接利用光盘中的源
+	
+	准备工作：
+		1. 关闭防火墙
+			systemctl disable --now firewalld
+		2. 关闭SELinux
+			vim /etc/selinux/config
+			SELinux=disabled
+		3.添加CD/DVD驱动器,然后加载centos光盘,开机后使用"scandisk"命令扫描出新加的驱动器
+	
+	// 安装http服务
+	yum -y install httpd
+	systemctl enable --now 
+	
+	// 验证http服务是否启动成功, 浏览器中访问本机IP 
+	
+	// "/var/www/html/"是存放网页的文件夹
+	cd /var/www/html/
+	
+	// 创建cnetos7和8的源路径
+	mkdir centos/{7,8} -pv
+	
+	// 挂载cnetos7和8的光盘
+	mount /dev/sr1 /var/www/html/centos/7
+	mount /dev/sr0 /var/www/html/centos/8
+	
+	// centos7光盘的根目录下就是 repodata 目录, 所以 baseurl 为 http://IP/centos/7
+	// centos8光盘的根目录下的BaseOS和AppStream有 repodata 目录, 所以 baseurl 分别为 http://IP/centos/8/BaseOS/ 和 http://IP/centos/8/AppStream/
+	
+	
+	//验证
+	yum repolist
+	// 查看 vsftpd 是否来自刚刚创建的私有仓库
+	yum repolist vsftpd
+	// 安装测试
+	yum install vsftpd -y
+	
+	
+方式2: 只有RPM包, 使用命令创建元数据
+		
+	// 使用命令 createrepo 创建元数据，首先安装这个包才才能使用这个命令
+	yum -y install createrepo
+	
+	
+	// rpm 包放在 myrepo 目录下
+	mkdir /data/myrepo; cd /data/myrepo
+	
+	// 运行后会在myrepo目录下生成repodata文件夹, 之后" /data/myrepo"就可以当作仓库使用
+	createrepo .
+	
+	
+方式3: 把互联网上的epel源的仓库拿过来在公司内部搭建仓库
+	
+	// 原理: 把互联网上的epel源的上万个RPM包下载下来,然后在本机创建
+	// 具体做法参考 PDF 文档
+	
+	
+	
+5.2 yum卸载包存在的问题
+	
+	//  yum安装包时会自动安装包的依赖包
+	//  	centos7在卸载的时候只卸载本身,不卸载依赖包。
+	//      centos8在卸载的时候会联通依赖包一起卸载！！！
+	yum remove httpd -y
+	
+	
+	
+	(重要)在centos7中, 如何连同依赖包一同卸载？
+	
+	// 查看安装历史
+	[root@localhost cd]#yum history
+	Loaded plugins: fastestmirror
+	Repository 'extras' is missing name in configuration, using id
+	Repository 'epel' is missing name in configuration, using id
+	ID     | Login user               | Date and time    | Action(s)      | Altered
+	-------------------------------------------------------------------------------
+		16 | root <root>              | 2022-10-29 12:02 | Install        |    5
+		15 | root <root>              | 2022-10-28 14:31 | Install        |    3
+		14 | root <root>              | 2022-10-22 18:11 | Install        |    1
+	
+	
+	// 使用"yum history info ID"命令就可以看到安装的软件已经相关的依赖包
+	[root@localhost cd]#yum history info 16
+	Loaded plugins: fastestmirror
+	Repository 'extras' is missing name in configuration, using id
+	Repository 'epel' is missing name in configuration, using id
+	Transaction ID : 16
+	Begin time     : Sat Oct 29 12:02:55 2022
+	Begin rpmdb    : 377:2ce284c7d989c3ec528412956f9d505bf1b2f436
+	End time       :            12:02:57 2022 (2 seconds)
+	End rpmdb      : 382:6490d0bb522da20bf0b279a5315e4a12441f7c7f
+	User           : root <root>
+	Return-Code    : Success
+	Command Line   : install httpd -y
+	Transaction performed with:
+		Installed     rpm-4.11.3-45.el7.x86_64                        @anaconda
+		Installed     yum-3.4.3-168.el7.centos.noarch                 @anaconda
+		Installed     yum-plugin-fastestmirror-1.1.31-54.el7_8.noarch @anaconda
+	Packages Altered:
+		Dep-Install apr-1.4.8-7.el7.x86_64                 @base
+		Dep-Install apr-util-1.5.2-6.el7.x86_64            @base
+		Install     httpd-2.4.6-95.el7.centos.x86_64       @base
+		Dep-Install httpd-tools-2.4.6-95.el7.centos.x86_64 @base
+		Dep-Install mailcap-2.1.41-2.el7.noarch            @base
+	history info
+	
+	
+	// 撤销 ID=16 这一步的操作, 相当于卸载了安装的包和依赖包 
+	[root@localhost cd]#yum history undo 16
+	Loaded plugins: fastestmirror
+	
+	
+	// 可以看到"ID=17"就是撤销操作
+	[root@localhost cd]#yum history
+	Loaded plugins: fastestmirror
+	Repository 'extras' is missing name in configuration, using id
+	Repository 'epel' is missing name in configuration, using id
+	ID     | Login user               | Date and time    | Action(s)      | Altered
+	-------------------------------------------------------------------------------
+		17 | root <root>              | 2022-10-29 12:09 | Erase          |    5
+		16 | root <root>              | 2022-10-29 12:02 | Install        |    5
+		15 | root <root>              | 2022-10-28 14:31 | Install        |    3
+	
+	
+	// 如果又想安装刚刚卸载的包,利用以下三个命令都可以做到:	
+	yum history redo 16			// 把"ID=16"这一安装记录重新操作一遍
+	yum history undo 17			// "ID=17"这一步是擦除, 撤销擦除就相当于是重新安装
+	yum install httpd -y
+
+
+	
+5.3 包组管理（用的不多）: 包组就是把若干个包组合在一起，形成包的分类。安装包组的话就是把这个组里面所有的包都装上
+	工作中一般用不上包组
+	
+	// 列出所有的包组
+	yum group list
+	
+	// 安装包组,包组名称一般有空格,所以要用双引号引起来,以安装图形界面示例
+	yum group install "Server with GUI"
+	
+	// 重新启动
+	reboot
+	
+	// 查看当前模式
+	run level
+	
+	// 切换到图形
+	init 5
+	
+	
+5.4 仓库缓存,指挥缓存元数据
+	
+	-------------------------------------------------------------------------------------------------------------------------------------------------------------
+	/	centos7 仓库缓存路径为: /var/lib/yum 																													/			
+	/		在centos7中,仓库缓存路径定义在"/etc/yum.conf"文件中!!!																								/
+	/																																							/
+	/	centos8 仓库缓存路径为: /var/lib/dnf 																													/
+	/		centos 8 默认使用dnf代替了yum，原yum配置文件（/etc/yum.conf）默认链接到dnf配置文件（/etc/dnf/dnf.conf）												/	
+	/		"/etc/dnf/dnf.conf"这个文件默认没有配置 cachedir , 所以默认仓库缓存路径为"/var/lib/dnf", 如果想自定义仓库缓存路径, 可以使用显示定义 cachedir 的值 	/
+	-------------------------------------------------------------------------------------------------------------------------------------------------------------
+	
+	// 清除缓存，
+	yum clean all
+	
+	// 如果发现没有清理干净,原因是根据配置文件来清理的,当配置文件改后,那改之前的缓存就不能清理了
+	du -sh /var/lib/yum
+	
+	// 直接删缓存,这样就能删干净
+	rm -rf /var/lib/yum/*
+	
+	// 现在随便运行一个yum命令就可以重新构建缓存，例如如下命令:
+	yum list
+	yum repolist
+	
+
+5.5 查看某个文件来自于哪个包
+
+	// rpm -qf 命令要求文件已经存在才能查看
+	rpm -qf /etc/issue
+	
+	// 通过一个文件名查看这个文件来自于哪个包，不管这个文件有没有在系统上存在都能查到。
+	yum provides libapr-1.so
+	
+	
+	// 但是有的时候不写路径查不到
+	yum provides libapr-1.so
+	
+	
+	// 如果查不到,就写通配符，但是这样会查出很多结果,需要自己去挑选正确的结果
+	yum provides */libapr-1.so
+	
+	
+	
+5.6 内核升级，在生产环境中，不是特别需要的情况下不会升级内核
+	在生产中，如果有特殊需求，但是只有新内核才有这样的特性，这种情况下就需要升级内核
+	
+方法一: 从内核官网下载源码编译安装
+
+方法二: 利用第三方的RPM包，这个第三方就是 elrepo (https://www.elrepo.org) 这个组织，它提供了很多硬件相关的包和内核
+	
+	
+	[root@localhost ~]#ls /etc/yum.repos.d/
+	bak  base.repo
+	
+	[root@localhost ~]#yum install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
+	
+	[root@localhost ~]#ls /etc/yum.repos.d/
+	bak  base.repo  elrepo.repo
+	
+	// 默认 elrepo-kernel 这个仓库被禁用了
+	[root@localhost ~]#yum repolist
+	elrepo                                                                                           | 3.0 kB  00:00:00
+	elrepo/primary_db                                                                                | 503 kB  00:00:21
+	repo id                              repo name                                                                    status
+	base/7/x86_64                        CentOS                                                                        4,070
+	elrepo                               ELRepo.org Community Enterprise Linux Repository - el7                          164
+	epel/7/x86_64                        epel                                                                         13,735
+	extras/7/x86_64                      extras                                                                          515
+	repolist: 18,484
+	
+	// 加上 all 参数表示禁用和不禁用repo的都一起显示出来
+	[root@localhost ~]#yum repolist all
+	repo id                      repo name                                                                   status
+	base/7/x86_64                CentOS                                                                      enabled:  4,070
+	elrepo                       ELRepo.org Community Enterprise Linux Repository - el7                      enabled:    164
+	elrepo-extras                ELRepo.org Community Enterprise Linux Extras Repository - el7               disabled
+	elrepo-kernel                ELRepo.org Community Enterprise Linux Kernel Repository - el7               disabled
+	elrepo-testing               ELRepo.org Community Enterprise Linux Testing Repository - el7              disabled
+	epel/7/x86_64                epel                                                                        enabled: 13,735
+	extras/7/x86_64              extras                                                                      enabled:    515
+	repolist: 18,484
+	
+	
+	// 启动 elrepo-kernel 仓库
+	vim /etc/yum.repos.d/elrepo.repo
+		[elrepo-kernel]
+		enabled=1
+	
+	// ml 的包是主线版，说白了就是测试版。要用lt版,lt是长期技术支持版,是安全稳定的
+	[root@localhost ~]#yum list *kernel*
+	kernel-lt.x86_64                                         5.4.220-1.el7.elrepo                              elrepo-kernel
+	kernel-ml.x86_64                                         6.0.5-1.el7.elrepo                                elrepo-kernel
+	kernel-ml-devel.x86_64                                   6.0.5-1.el7.elrepo                                elrepo-kernel
+	
+	
+	// 升级内核
+	[root@localhost ~]#yum install kernel-lt.x86_64 -y
+	
+	// 查看当前内核
+	[root@localhost ~]#uname -r
+	3.10.0-1160.el7.x86_64
+	
+	// 升级后原内核和新内核并存,在启动界面可以选择内核启动系统,这里选择新内核启动
+	reboot
+	
+	// 新内核可能和业务中的软件不兼容，如果不兼容的话还可以回到旧内核
+	[root@localhost ~]#uname -r
+	5.4.220-1.el7.elrepo.x86_64
+	
+	
+	// 同样可以使用如下方法卸载内核(注意:不能卸载当前正在使用的内核)
+	// 假如现在已经切回到就内核,卸载新内核有如下方法；
+	
+	方式1:
+		// 找到操作的ID
+		[root@localhost ~]#ryum history
+		-bash: ryum: command not found
+		[root@localhost ~]#yum history
+		Loaded plugins: fastestmirror
+		Repository 'extras' is missing name in configuration, using id
+		Repository 'epel' is missing name in configuration, using id
+		ID     | Login user               | Date and time    | Action(s)      | Altered
+		-------------------------------------------------------------------------------
+			20 | root <root>              | 2022-10-29 14:58 | Install        |    1
+			19 | root <root>              | 2022-10-29 14:21 | Install        |    1
+			18 | root <root>              | 2022-10-29 12:17 | Install        |    5
+	 
+		[root@localhost ~]#yum history info 20
+		Loaded plugins: fastestmirror
+		Repository 'extras' is missing name in configuration, using id
+		Repository 'epel' is missing name in configuration, using id
+		Transaction ID : 20
+		Begin time     : Sat Oct 29 14:58:47 2022
+		Begin rpmdb    : 383:bf2d49d3f91afabc4facb8d85a8adc8e13e5e055
+		End time       :            14:59:29 2022 (42 seconds)
+		End rpmdb      : 384:d59d63d00e29c89c5915ae5e9b695229d3f18d45
+		User           : root <root>
+		Return-Code    : Success
+		Command Line   : install kernel-lt.x86_64 -y
+	
+		// 卸载
+		yum history undo 20
+		
+	
+	方式2: 用 yum 命令卸载
+		yum remove kernel-lt.x86_64
+
+
+方法三: 方法二是在有网络的情况，如果没有网络怎么办 ，比如有台机器不能联网，或有些公司或组织不让联网，比如银行等
+	   
+	解决方法: 可以拿一个上网的机器把这个包以及依赖包下载下来。然后拷贝到不能联网的机器上!!!
+	
+	这里以nginx为例，下面命令在能上网的机器上操作:
+	
+	// 查看nginx来自于哪个源
+	yum list nginx
+	
+	// 查看安装nginx时的依赖包有哪些
+	yum install nginx
+	
+	// 把包自身以及依赖包下载到指定目录下,只下载不安装
+	yum install nginx --downloadonly --downloaddir=/data/nginx
+	
+	// 然后把这个目录拷贝到不能联网的机器上，然后使用rpm或yum命令安装,如下:
+	rpm -ivh /data/*.rpm
+	yum install /data/*.rpm
+	
+	
+注意: 
+	同一时间只能运行一个yum命令, 比如另一个窗口正在使用yum进行安装软件包,但还没有安装完成，再用yum命令做其它事情就会出现"Waiting for process with pid  xxxx to finish"
+	yum和dnf功能是一样的, dnf是centos8里面代替yum的,但是用法是兼容的！
+	
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+6 源码编译安装软件
+	对于大型软件一般是编译安装用的最多!!!
+	利用源码安装更加灵活!!!
+
+6.1 C 语言源代码编译安装过程。注意：安装前可以通过查看README，INSTALL获取帮助
+	
+	利用编译工具，通常只需要三个大的步骤
+	
+		./configure
+			(1) 通过选项传递参数，指定安装路径、启用特性等；执行时会参考用户的指定以及Makefile.in文件生成Makefile
+			(2) 检查依赖到的外部环境，如依赖的软件包
+		
+		make 根据Makefile文件，会检测依赖的环境，进行构建应用程序
+		
+		make install 复制文件到相应路径
+
+	
+	注: 有些小软件没有提供configure脚本,就只提供了Makefile
+
+	
+6.2 编译安装准备
+	准备：安装相关的依赖包
+		开发工具：make, gcc (c/c++编译器GNU C Complier)
+		开发环境：开发库（glibc：标准库），头文件，可安装开发包组 Development Tools
+		软件相关依赖包
+	
+	生产实践：基于最小化安装的系统建议安装下面相关包
+		yum install gcc make autoconf gcc-c++ glibc glibc-devel pcre pcre-devel openssl openssl-devel systemd-devel zlib-devel vim lrzsz tree tmux lsof tcpdump wget net-tools iotop bc bzip2 zip unzip nfs-utils man-pages
+	
+	
+6.3 编译安装
+	第一步：运行 configure 脚本，生成 Makefile 文件
+		其选项主要功能：
+			可以指定安装位置
+			指定启用的特性
+		
+		// 获取其支持使用的选项
+		./configure --help
+		
+		选项分类：
+			安装路径设定
+				--prefix=/PATH			：指定默认安装位置,默认为/usr/local/
+				--sysconfdir=/PATH		：配置文件安装位置
+				System types			：支持交叉编译
+			
+			软件特性和相关指定：
+				Optional Features: 可选特性
+					--disable-FEATURE
+					--enable-FEATURE[=ARG]
+				Optional Packages: 可选包
+					--with-PACKAGE[=ARG] 依赖包
+					--without-PACKAGE 禁用依赖关系
+		
+		注意：通常被编译操作依赖的程序包，需要安装此程序包的"开发"组件，其包名一般类似于name-devel-VERSION
+		
+	第二步：make
+	
+	第三步：make install
+	
+	
+6.4  安装后的配置	
+	
+	1. 二进制程序目录导入至PATH环境变量中，编辑文件/etc/profile.d/NAME.sh
+		export PATH=/PATH/TO/BIN:$PATH
+		
+	2. 相关用户及文件
+		有些开源软件编译完成后，还需要创建相关的用户及文件
+	
+	3. 导入帮助手册
+		编辑/etc/man.config|man_db.conf文件,添加一个MANPATH
+	
+
+6.5 安装案例之 tree
+
+	yum install gcc make -y
+	
+	wget http://mama.indstate.edu/users/ice/tree/src/tree-2.0.4.tgz
+	
+	// 源码习惯放在"/usr/local/src"目录下，tgz 就是 tar.gz 的简写
+	tar xvf tree-1.8.0.tgz -C  /usr/local/src
+	
+	
+	// tree 没有 configure 文件, 在 Makefile 中可以修改安装路径, 通过 prefix 这个变量设置
+	
+	// 然后cd 到 tree 源码目录, 用 make 命令进行编译
+	make
+	
+	// 编译完成后进行安装
+	make install
+	
+	// 验证, 安装后使用命令要加上路径，这里假如安装路径为"/apps/bin"
+	/apps/bin/tree 
+	/apps/bin/tree --version
+	
+	
+	// 如果不加路径运行命令有两种方法；
+		1.创建环境变量
+		2.创建软衔接，注意: tree的默认安装位置是" /usr/bin/",不要和老版本的tree冲突。这里假如创建的软衔接放在"/user/local/bin"目录下
+			ln -s /apps/bin/tree /user/bin/
+			ln -s /apps/bin/tree /user/local/bin
+			
+		注意: 如果"/user/bin/"和"/user/local/bin"都有tree命令,那么"/user/local/bin"优先级比较高, 因为运行命令时先找这个目录！！！
+			
+			
+	
+	// 再次使用tree命令,如果不生效或者还是用的老版本的tree,这时因为命令缓存
+	// 查看缓存
+	[root@localhost ~]#hash
+	hits    command
+	   2    /usr/bin/ls
+	   2    /usr/bin/tree
+	
+	// 清除缓存
+	[root@localhost ~]#hash -r
+	
+	// 再次运行
+	tree
+	
+	//默认无法查看 man，需要添加配置如下：
+	vim /etc/man_db.conf
+	MANDATORY_MANPATH /apps/tree/man
+	
+	
+	命令回顾:
+		// 查找命令所在的位置
+		[root@localhost ~]#which tree
+		/usr/bin/tree
+		
+		// PATH 打印出来的路径，从左到右的优先级依次变低, 也就是说一个命令如果在 第一个 路径中找到了, 就不会再继续找了
+		// 把二进制文件放在path所指的路径中
+		[root@localhost ~]#echo $PATH
+		/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+
+		// 查看运行的历史命令
+		history
+		
+		// 查看一个文件有多少行
+		wc -l 文件
+	
+	
+6.6 安装案例之 cmatrix
+	
+	// 编译工具以及相关依赖包要提前准备好
+	// 如果在编译源码过程中发现缺少编译依赖包, 再去下载安装, 重新编译可能还会提示错误(这个错误和之前一样,也可能不一样),这时候可以删除源文件,再重新解压编译。也就是说这些编译工具以及依赖包装晚了也不行,解决办法就是重来一遍
+	yum install gcc make autoconf ncurses-devel
+
+	cd /usr/local/src/
+	wget https://github.com/abishekvashok/cmatrix/releases/download/v2.0/cmatrix-v2.0-Butterscotch.tar
+	
+	
+	tar xvf cmatrix-v2.0-Butterscotch.tar
+	
+	cd cmatrix
+	
+	
+	// 查看 configure 配置说明 
+	./configure --help
+	
+	
+	./configure --prefix=/apps/cmatrix
+	
+	// 查看CPU信息
+	lscpu
+	
+	// 让make最多允许2个编译命令同时执行，这样可以更有效的利用CPU资源
+	make -j 2
+	
+	// 编译并安装
+	make && make install
+	
+	// 看是否已经安装到指定目录
+	tree /apps/cmatrix/
+	
+	
+	// 配置环境
+	echo 'PATH=/apps/cmatrix/bin:$PATH' > /etc/profile.d/cmatrix.sh
+	. /etc/profile.d/cmatrix.sh
+	
+	
+	// 如果不配置环境,也可以用软衔接实现
+	ln -sv /apps/cmatrix/bin/cmatrix /usr/local/bin/
+	
+	
+	// 运行, 参数不一样, 那样效果也不一样
+	cmatrix
+	cmatrix  -C red
+	cmatrix -a -b -C yellow
+	cmatrix -r
+	
+	// 配置帮助
+	vim /etc/man_db.conf
+	MANDATORY_MANPATH /apps/cmatrix/share/man
+	
+	// 查看帮助
+	man cmatrix
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 源码编译安装软件实战-httpd
+
+	
+	// 查询httpd相关信息,直接通过源查找
+	yum info httpd
+	
+	// 如果没有安装编译工具,先要安装编译工具以及依赖包
+	yum install gcc make autoconf ncurses-devel
+	
+	
+	wget --no-check-certificate https://dlcdn.apache.org/httpd/httpd-2.4.54.tar.bz2
+		
+		
+	// 如果出现解压失败, 需要安装 bzip2, 使用 "yum -y install bzip2" 进行安装
+	tar xvf httpd-2.4.54.tar.bz2
+	
+	cd httpd-2.4.54/
+
+	//  --prefix 表示软件安装路径, --sysconfdir 表示配置文件放置路径
+	./configure --prefix=/apps/httpd --sysconfdir=/etc/httpd --enable-ssl
+	
+	
+	// 在运行 configure 脚本的时候会报错缺少包, 报错什么就安装什么, 这里会反复运行 configure 脚本,  一直到完全运行成功为止
+	yum install apr-devel -y
+	yum install apr-util-devel -y
+	yum install pcre-devel-8.32-17.el7.x86_64 -y
+	yum install openssl-devel.x86_64 -y
+	
+	// 运行成功后会生成 Makefile 文件
+	[root@localhost httpd-2.4.54]#ll | grep Makefile
+	-rw-r--r--.  1 root root    12130 Oct 30 11:28 Makefile
+	
+	// 编译并安装
+	make j 2; make install
+
+
+	// 查看是否安装成功
+	tree /apps/httpd/
+	
+	
+	cd /apps/httpd/
+	
+	
+	tree /app/httpd
+	
+	// README文本 告诉这个软件的基本信息, 有些软件还会在这个文件说明如何去编译安装
+	cat README
+	
+	// 大多数软件会提供一个INSTALL文档，来说明怎么安装以及如何启动
+	[root@localhost httpd-2.4.54]#cat INSTALL
+		  For complete installation documentation, see [ht]docs/manual/install.html or
+	  http://httpd.apache.org/docs/2.4/install.html
+
+		 $ ./configure --prefix=PREFIX
+		 $ make
+		 $ make install
+		 $ PREFIX/bin/apachectl start
+	
+	// 配置环境, 也可以使用软衔接
+	echo 'PATH=/apps/httpd/bin:$PATH' > /etc/profile.d/httpd.sh
+	. /etc/profile.d/httpd.s
+	
+	
+	// 生产中一般是每个服务都有专有账户来运行,所以需要创建账号和组. "/var/www"是存放网页的目录,用它来作为家目录
+	groupadd -r -g 80 apache
+	useradd -r -g apache -s /sbin/nologin -d /var/www -c Apache -u 80 apache
+	
+	[root@localhost httpd-2.4.54]#id apache
+	uid=80(apache) gid=80(apache) groups=80(apache)
+	
+	
+	// 修改httpd配置文件,如果不修改, httpd运行的身份就默认是daemon, daemon这个身份不专业, 生产中一般是每个服务都有专有账户来运行
+	vim /etc/httpd/httpd.conf
+	User daemon
+	Group daemon
+	改为
+	User apache
+	Group apache
+	
+
+	------------------------------------------------------------------------------------
+	#	//如果没有配置环境变量 或 添加软衔接到path路径下,就需要写完整路径去运行软件	   #
+	#	/apps/httpd/bin/apachectl start												   #
+	#																				   #
+	#	// 运行软件																	   #
+	# 	apachectl start																   #
+	------------------------------------------------------------------------------------
+	
+	[root@localhost httpd-2.4.54]#apachectl start
+	AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using localhost.localdomain. Set the 'ServerName' directive globally to suppress this message
+	
+	apachectl stop
+	
+	// apache 启动出现上述错误的解决方法: 将 apache 的配置文件httpd.conf中的 ServerName 改成可用域名或如下配置 ServerName localhost:80
+	vim /etc/httpd/httpd.conf
+	#ServerName www.example.com:80
+	改为
+	ServerName www.example.com:80
+	
+	
+	apachectl start
+	
+	// 可以看到运行身份为 apache
+	[root@localhost httpd-2.4.54]#ps aux | grep apache
+	apache    25829  0.0  0.1 429452  4900 ?        Sl   12:37   0:00 /apps/httpd/bin/httpd -k start
+	apache    25830  0.0  0.1 429452  4276 ?        Sl   12:37   0:00 /apps/httpd/bin/httpd -k start
+	apache    25831  0.0  0.1 429452  4268 ?        Sl   12:37   0:00 /apps/httpd/bin/httpd -k start
+	
+	
+	// 浏览器中访问 http://192.168.32.101/, 如果浏览器中不能访问, 就需要关闭系统的SELinux和防火墙	
+	
+	//关闭防火墙
+	systemctl disable --now firewalld  
+	
+	//关闭SELinux(Security-Enhanced Linux),SELinux是美国国家安全局（NSA）对于强制访问控制的实现，是 Linux历史上最杰出的新安全子系统. nano是Unix和类Unix系统中的一个文本编辑器，是Pico的复制品。
+	nano /etc/selinux/config
+	SELINUX=disabled
+	
+	
+	// 再次访问 http://192.168.32.101/, 看到 httpd 主页说明成功!!!
+	
+	// 主页文件位于: /apps/httpd/htdocs/index.html
+	
+	
+	-----------------------------------------------------------------------------------------
+	/	扩展:																				/
+	/	// 查看帮助,可以看到也可以使用"httpd"实现启动和停止服务等操作						/
+	/	apachectl -h																		/
+	/																						/
+	/	// apachectl 和 httpd 命令都能实现启动和停止服务等操作								/
+	/	[root@localhost httpd-2.4.54]#ll /apps/httpd/bin/apachectl /apps/httpd/bin/httpd	/
+	/	-rwxr-xr-x. 1 root root   3416 Oct 30 11:28 /apps/httpd/bin/apachectl				/
+	/	-rwxr-xr-x. 1 root root 902760 Oct 30 11:34 /apps/httpd/bin/httpd					/
+	/																						/	
+	/																						/
+	/	// 启动停止服务																		/
+	/	/apps/httpd/bin/apachectl start														/					
+	/	/apps/httpd/bin/apachectl stop														/
+	/																						/	
+	/	/apps/httpd/bin/httpd -k start														/		
+	/	/apps/httpd/bin/httpd -k stop														/
+	/																						/
+	-----------------------------------------------------------------------------------------
+
+
+经验规律:
+	
+	运行configure脚本这一步可能会出现错误，如:
+		错误现象1:
+			configure: error: APR not found.  Please read the documentation.
+			configure: error: APR-util not found.  Please read the documentation.
+		
+		错误现象2:
+			checking for pcre-config... no
+			configure: error: pcre(2)-config for libpcre not found. PCRE is required and available from http://pcre.org/
+			
+		
+		错误现象3:
+			checking for OpenSSL version >= 0.9.8a... FAILED
+			configure: WARNING: OpenSSL version is too old
+	
+	
+	总结错误现象1: 看到 XXX not fount, 这个XXX一般是大写字母, 把这个大写字母变为小写,加上"-devel", 就是缺少的包名称,如下:
+		yum install apr-devel -y
+		yum install apr-util-devel -y
+	
+	总结错误现象2: 缺少某个文件, 先用yum查询这个文件属于哪个包,再安装这个包
+		yum provides */pcre-config
+		yum install pcre-devel-8.32-17.el7.x86_64 -y
+	
+	总结错误现象3: 依赖的包缺少或版本太旧,先用yum列出相关包, 再安装
+		yum list openssl*
+		yum install openssl-devel.x86_64 -y
+	
+
+yum 查询总结:
+	
+	// 缺少某个文件或包, 使用 provides 查询
+	yum provides */pcre-config
+
+	// 列出相关包,使用 list
+	yum list openssl*
+	
+	// provides 和 list 都是通过配置的源去查询, 所以不管这个文件或包有没有存在系统上都能查到 !!!
+
+虚拟网络控制台(VNC)是一款优秀的远程控制工具软件,VNC 是在基于 UNIX 和 Linux 操作系统的免费的开源软件,远程控制能力强大,高效实用,其性能可以和 Windows 和 MAC 中的任何远程控制软件媲美。

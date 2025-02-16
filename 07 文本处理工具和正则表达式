@@ -1,0 +1,371 @@
+
+
+1 基本正则表达式。通配符匹配文件名, 正则表达式匹配文件内容
+
+1.1 
+正则表达式分两类：
+	基本正则表达式：BRE Basic Regular Expressions
+	扩展正则表达式：ERE Extended Regular Expressions
+
+正则表达式的元字符分类：字符匹配、匹配次数、位置锚定、分组
+
+
+1.2 字符匹配
+	. 匹配任意单个字符，可以是一个汉字
+	[] 匹配指定范围内的任意单个字符，示例：[wang] [0-9] [a-z] [a-zA-Z]
+	[^] 匹配指定范围外的任意单个字符,示例：[^wang]
+	[:alnum:] 字母和数字
+	[:alpha:] 代表任何英文大小写字符，亦即 A-Z, a-z
+	[:lower:] 小写字母,示例:[[:lower:]],相当于[a-z]
+	[:upper:] 大写字母
+	[:blank:] 空白字符（空格和制表符）
+	[:space:] 包括空格、制表符(水平和垂直)、换行符、回车符等各种类型的空白,比[:blank:]包含的范围广
+	[:cntrl:] 不可打印的控制字符（退格、删除、警铃...）
+	[:digit:] 十进制数字
+	[:xdigit:]十六进制数字
+	[:graph:] 可打印的非空白字符
+	[:print:] 可打印字符
+	[:punct:] 标点符号
+	\w 		#匹配单词构成部分，等价于[_[:alnum:]]
+	\W 		#匹配非单词构成部分，等价于[^_[:alnum:]]
+	\S 		#匹配任何非空白字符。等价于 [^ \f\n\r\t\v]。
+	\s 		#匹配任何空白字符，包括空格、制表符、换页符等等。等价于 [ \f\n\r\t\v]。注意：Unicode 正则表达式会匹配全角空格符
+	
+	实践:
+		// 正则表达式 r..t 
+		grep r..t /etc/passwd
+		
+		// 正则表达式要用单引号或双引号引起来, 否则容易出错, 加上引号也会显得规范
+		grep "r..t" /etc/passwd
+
+		// "\." 表示转移.  
+		echo abc | grep "a\.t" 
+		
+		// 表示aaron中任意一个字符, [] 表示取一个
+		[aaron]
+		
+		// 匹配指定范围外的任意单个字符
+		[^aaron]
+		
+		// "a-d" 表示 abcd
+		file[a-d]
+		
+		ls | grep 'file[[:lower:]].txt'
+		
+1.3 匹配次数
+	* 			#匹配前面的字符任意次，包括0次，贪婪模式：尽可能长的匹配
+	.* 			#任意长度的任意字符
+	\? 			#匹配其前面的字符出现0次或1次,即:可有可无
+	\+ 			#匹配其前面的字符出现最少1次,即:肯定有且 >=1 次
+	\{n\} 		#匹配前面的字符n次
+	\{m,n\} 	#匹配前面的字符至少m次，至多n次
+	\{,n\} 		#匹配前面的字符至多n次,<=n
+	\{n,\} 		#匹配前面的字符至少n次
+	
+	实践:
+		// 匹配 o 两次
+		echo google | grep "go\{2\}gle"
+		
+		// 匹配前面的字符至少6次，至多30次
+		echo google | grep "go\{6,30\}gle"
+		
+		// 匹配前o任意次，包括0次
+		echo google | grep "go*gle"
+		
+		// .* 匹配任意长度的任意字符
+		echo google | grep "g.*gle"
+		
+		// \? 匹配其前面的字符出现0次或1次
+		echo google | grep "go\?gle"
+		
+		// \+ 匹配其前面的字符出现最少1次,即:肯定有且 >=1 次
+		echo google | grep "go\+gle"
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 基本正则表达式和扩展正则表达式
+
+2.1 位置锚定, 位置锚定可以用于定位出现的位置
+	^ 			#行首锚定, 用于模式的最左侧
+	$ 			#行尾锚定，用于模式的最右侧
+	^PATTERN$ 	#用于模式匹配整行
+	^$ 			#空行
+	^[[:space:]]*$ 		#空白行
+	\< 或 \b 			#词首锚定，用于单词模式的左侧
+	\> 或 \b 			#词尾锚定，用于单词模式的右侧
+	\<PATTERN\> 		#匹配整个单词,#注意: 单词是由字母,数字,下划线组成
+	
+	// root出现在行首的行
+	grep '^root' /etc/passwd
+	
+	// 显示非#号开头的行,这个也能过滤空行,因为[]表示至少有一个字符
+	grep '^[^#]' /etc/fstab
+	
+	// 匹配行尾
+	grep 'bash$' /etc/fstab
+	
+	// 匹配整行
+	grep '^google^' test.txt
+	
+	// 匹配空行
+	grep '^$' /etc/fstab
+	
+	
+	// 如何找出 空行里面有空格的行, -n 显示行号
+	grep '^[[:space:]]*$' test.txt -n
+	
+	
+	// 单词是由字母,数字,下划线组成,除了这些都算单词分隔符
+	// 词首为linux的单词
+	echo 'linux unix' | grep '\<linux'
+	// 词尾为 unix的单词
+	echo 'linux unix' | grep 'linux\>'
+	// 匹配整个单词
+	echo 'docker k8s devops' | grep '\<k8s\>'
+	
+	
+	// 取IP地址, grep -i 中的 -i 表示忽略大小写
+	ifconfig eth0 | grep -i mask | tr -s ' ' | cut -d" " -f3
+	ifconfig eth0 | grep -i mask | grep '[0-9]\{1,3}\.[0-9]\{1,3}\.[0-9]\{1,3}\.[0-9]\{1,3}\'
+	ifconfig eth0 | grep -i mask | grep -o '[0-9]\{1,3}\.[0-9]\{1,3}\.[0-9]\{1,3}\.[0-9]\{1,3}\' | head -1
+	ifconfig eth0 | grep -i mask | grep -o '\([0-9]\{1,3}\.\)\{3\}[0-9]\{1,3\}' | head -1
+	
+	// 会列出多个地址
+	hostname -I 
+	
+	
+2.2 分组 (),  () 将多个字符捆绑在一起，当作一个整体处理，如：\(root\)+
+
+	//这个表示 匹配c出现三次
+	echo abcabcabc | grep 'abc\{3\}'
+
+	// 匹配abc出现3次
+	echo abcabcabc | grep '\(abc\)\{3\}'
+	
+	后向引用：
+		分组括号中的模式匹配到的内容会被正则表达式引擎记录于内部的变量中，这些变量的命名方式为: \1, \2, \3, ...
+		\1 表示从左侧起第一个左括号以及与之匹配右括号之间的模式所匹配到的字符
+		示例：
+			\(string1\(string2\)\)
+			\1 ：string1\(string2\)
+			\2 ：string2
+		注意：后向引用 引用前面的分组括号中的模式所匹配字符，而非模式本身
+		
+
+2.3 或者 \| 
+	
+	// 匹配1或2
+	echo 1 | grep "1\|2"
+	
+	// 匹配的是 1 或 2abc
+	echo 1 | grep "1\|2abc"
+	
+	// 匹配 1abc 或 2abc
+	echo 2abc | grep '\(1\|2\)abc'
+	
+
+2.4 扩展正则表达式元字符。grep 默认用的基本正则表达式, 加上 -E 表示用基本正则表达式
+	可以认为扩展正则表达式少了 \ 
+	用基本还是扩展要看命令本身支持哪一种 !!!
+	egrep 就是用的扩展表达式
+
+字符匹配
+	. 任意单个字符
+	[wang] 指定范围的字符
+	[^wang] 不在指定范围的字符
+	[:alnum:] 字母和数字
+	[:alpha:] 代表任何英文大小写字符，亦即 A-Z, a-z
+	[:lower:] 小写字母,示例:[[:lower:]],相当于[a-z]
+	3.2.2 次数匹配
+	3.2.3 位置锚定
+	3.2.4 分组其它
+	范例:
+	扩展正则表达式练习
+	1、显示三个用户root、mage、wang的UID和默认shell
+	2、找出/etc/rc.d/init.d/functions文件中行首为某单词(包括下划线)后面跟一个小括号的行
+	3、使用egrep取出/etc/rc.d/init.d/functions中其基名
+	4、使用egrep取出上面路径的目录名
+	5、统计last命令中以root登录的每个主机IP地址登录次数
+	6、利用扩展正则表达式分别表示0-9、10-99、100-199、200-249、250-255
+	7、显示ifconfig命令结果中所有IPv4地址
+	8、将此字符串：welcome to magedu linux 中的每个字符去重并排序，重复次数多的排到前面
+	4 文本处理三剑客
+	[:upper:] 大写字母
+	[:blank:] 空白字符（空格和制表符）
+	[:space:] 水平和垂直的空白字符（比[:blank:]包含的范围广）
+	[:cntrl:] 不可打印的控制字符（退格、删除、警铃...）
+	[:digit:] 十进制数字
+	[:xdigit:]十六进制数字
+	[:graph:] 可打印的非空白字符
+	[:print:] 可打印字符
+	[:punct:] 标点符号
+
+
+次数匹配
+	* 		匹配前面字符任意次
+	? 		0或1次
+	+ 		1次或多次
+	{n} 	匹配n次
+	{m,n} 	至少m，至多n次
+
+
+位置锚定
+	^ 			行首
+	$ 			行尾
+	\<, \b 		语首
+	\>, \b 		语尾
+
+分组其它
+	() 			分组
+	后向引用：	\1, \2, ...
+	| 			或者
+	a|b 		#a或b
+	C|cat 		#C或cat
+	(C|c)at 	#Cat或cat
+
+
+实践:
+	// 取IP地址
+	ifconfig eth0 | grep -i mask | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1
+	
+	// 过滤 QQ 号
+	\<[0-9]{6,12}\>
+
+	// 过滤邮箱
+	[[:alnum:]_]+@[[:alnum:]_]+\.[[:alnum:]_]+
+
+	// 中国大陆手机号
+	\<1[3456789][0-9]{9}\>
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 文本处理三剑客之grep, grep默认用的基本正则表达式, egrep 就是用的扩展表达式
+  grep 擅长处理行
+	
+3.1	
+	grep [OPTIONS] PATTERN [FILE...]
+	常见选项：
+		-color=auto 对匹配到的文本着色显示
+		-m # 匹配#次后停止
+		-v 显示不被pattern匹配到的行,即取反
+		-i 忽略字符大小写
+		-n 显示匹配的行号
+		-c 统计匹配的行数
+		-o 仅显示匹配到的字符串
+		-q 静默模式，不输出任何信息
+		-A # after, 后#行
+		-B # before, 前#行
+		-C # context, 前后各#行
+		-e 实现多个选项间的逻辑or关系,如：grep –e ‘cat ' -e ‘dog' file
+		-w 匹配整个单词
+		-E 使用ERE，相当于egrep
+		-F 不支持正则表达式，相当于fgrep
+		-f file 根据模式文件处理
+		-r 递归目录，但不处理软链接
+		-R 递归目录，但处理软链接
+	
+	grep 支持标准输入和输出
+	
+	用文件代替标准输入
+	grep root < /etc/passwd
+	
+	使用管道
+	cat /etc/passwd | grep root
+	
+	直接跟文件
+	grep root  /etc/passwd
+	
+	查看root有没有登录
+	who | grep root
+	
+
+	alias grep
+	// 原始的grep不会显示颜色
+	\grep
+	
+
+-v 排除
+	// 显示不是 # 号开头的行以及空行
+	grep -v '^[[:space:]]*#' /etc/httpd/conf/httpd.conf | grep -v '^$'
+	grep -vE '^[[:space:]]*#|^$' /etc/httpd/conf/httpd.conf 					// 验证
+	
+-i 忽略大小写
+	grep -i ROOT  /etc/passwd
+	
+-n 加行号
+	grep -in ROOT  /etc/passwd
+
+-c 统计行
+	grep -ic ROOT  /etc/passwd
+	
+-o 只显示正则表达式匹配搭配的字符串
+	grep -io root  /etc/passwd
+
+-q 禁用模式
+	// 找到或找不到都不显示, 配合脚本种的 $? 使用
+	grep -q /etc/passwd
+	
+-A 显示找到的行, 以及显示行下面的多少行
+	grep -nA3 root /etc/passwd
+
+-B  显示找到的行, 以及显示行前面的多少行, 和 -A 用法一样
+
+-C  显示找到的行, 以及显示行前面的多少行和后面的多少行, 和 -A 用法一样
+
+-e	现多个选项间的逻辑or关系
+	// 找出包含root或bash的行
+	grep -e root -e bash /etc/passwd
+	// 找出包含root或bash的行,用正则表达式
+	grep -E root|bash /etc/passwd
+
+-w 匹配整个单词
+	grep -w root /etc/passwd
+	// 正则表达式
+	grep '\<root\>' /etc/passwd
+	// 能过滤出包含root的单词
+	grep  root /etc/passwd
+
+-E 使用ERE，相当于egrep
+
+-F 不支持正则表达式, 相当于fgrep
+
+-f file   把正则表达式写在文件里
+	
+	re.txt的内容如下:
+	r..t
+	bash
+	
+	grep -f re.txt /etc/passwd
+	
+	查找两个文件一样的行,两种写法:
+		cat f1.txt f2.txt | sort | uniq -d
+		// 相当于把f1.txt当作条件,去匹配第二个文件
+		grep -f f1.txt f2.txt
+		
+-r 递归目录，但不处理软链接。场景：搜索文件夹种的文件
+	// 搜索 etc 目录下那个文件的行内容包含root
+	grep -r root /etc
+
+-R 递归目录，但处理软链接
+
+
+3.2 实践
+	// 统计各种连接状态出现多少次,判断当前服务器情况。 "ss -nta" 显示各种连接的状态
+	ss -nta | grep -v '^State' | grep -Eo '^[[:alpha:]-]+\>' | sort | uniq -c 
+	ss -nta | grep -v '^State' | cut -d" " -f1 | sort | uniq -c 
+
+	// 并发连接的IP有几个，也就是说现在正在访问的ip有多少个，连接了多少次
+	ss -nt | grep -v '^State' |  grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]+ *$' 
+	ss -nt | grep -v '^State' |  grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]+ *$'  | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort | uniq -c
+
+	// 统计年龄综合
+		user.txt 的内容如下:
+		zhangsan=20
+		lisi=30
+		
+		cut -d"=" -f2 user.txt | paste -d+ -s | bc
+		grep -Eo '[0-9]+'  | paste -d+ -s | bc
+		grep -Eo '[0-9]+'  | tr '\n' + | grep -o '^.*[^+]' | bc
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+

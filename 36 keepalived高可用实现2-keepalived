@@ -1,0 +1,262 @@
+5 高可用性解决方案
+
+5.1 Nginx/HAProxy/LVS 搭配 keepalived 可以实现Nginx/HAProxy/LVS的高可用！
+	
+	MySQL高可用的三种方案：
+		MHA（MasterHigh Availability）是一套优秀的MySQL高可用环境下故障切换和主从复制的软件。解决MySQL单点失败的问题。
+		Percona XtraDB Cluster（简称PXC集群）提供了MySQL高可用的一种实现方法，是一个开源的MySQL高可用解决方案。
+		Galera Cluster就是集成了 Galera 插件的MySQL集群，是一种新型的、数据不共享的、高度冗余的高可用方案
+	
+	Zookeeper、Redis自身就带有主从的功能实现高可用
+	
+5.2 高可用解决方案
+	active/passive 主/备
+	active/active 双主
+	active --> HEARTBEAT --> passive	# 使用心跳线判断对方主机是否健康
+	active <--> HEARTBEAT <--> active
+	
+5.3 HA Cluster实现方案
+	AIS(Applicaiton Interface Specification)：应用程序接口规范, 早期方案
+		RHCS(Red Hat Cluster Suite)：红帽集群套件
+		heartbeat：基于心跳监测实现服务高可用
+		pacemaker+corosync：资源管理与故障转移
+	
+	VRRP(Virtual Router Redundancy Protocol):虚拟路由冗余协议,解决静态网关单点风险
+		物理层: 路由器、三层交换机
+		软件层: keepalived(VRRP是keepalived的核心协议，时间上借鉴的是物理路由器上的技术)
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> >>>>>>>>>>>
+
+6 keepalived架构和VRRP的VIP主从架构
+
+6.1 VRRP(Virtual Router Redundancy Protocol):虚拟路由冗余协议
+	
+	VRRP 是来自于硬件路由器的技术，后来被迁移到linux，成为 keepalived 的核心组件
+	
+	相关术语：
+		虚拟路由器：Virtual Router
+		虚拟路由器标识：VRID(0-255)，唯一标识虚拟路由器
+		VIP：Virtual IP
+		VMAC：Virutal MAC (00-00-5e-00-01-VRID)
+		物理路由器：
+			master：主设备
+			backup：备用设备
+			priority：优先级，优先级高的就谁先拥有VIP
+	
+	VRRP 相关技术：
+		通告：心跳，优先级等；周期性
+		工作方式：抢占式(默认)，非抢占式。
+			Master坏掉后，VIP漂到Backup，Master修好后，抢占式就是VIP再重新漂到Master。生产中要尽量保持网络稳定，通常设定为非抢占式。
+		安全认证：
+			无认证
+			简单字符认证：预共享密钥
+			MD5
+		工作模式：
+			主/备：单虚拟路由器，用的比较多
+			主/主：主/备（虚拟路由器1），备/主（虚拟路由器2）。
+				假如M1和M2是两台主服务器，各虚拟出两个路由器，M1 由 M1A 和 M1B 组成，M2 由 M2A 和 M2B组成。
+				四个虚拟路由器逻辑上交叉组合为两个高可用的虚拟路由器，假如这两个虚拟路由器分别为 R1 和 R2。
+					对于R1路由器，M1A 是主服务器，M1B 是备用服务器，R1有自己的VIP，假如称之为 VIP1.
+					对于R2路由器，M2A 是备用服务器，M2B 是主服务器，R2有自己的VIP，假如称之为 VIP2.
+				当M1挂掉后，VIP1就会飘到M2A上去，VIP2还是在 M2B上，两个VIP可以同时对外提供服务。
+				这种方案适合于有两个项目各自拥有自己的VIP的场景。
+				优点：可以充分利用路由器资源，不造成资源空闲！
+				缺点：当两个VIP同时在一台机器上，如果流量特别大，对机器性能要求高。采用这种方案需做压力测试，至少每台机器要抗住平时正常流量1倍以上
+
+6.2 keepalived 介绍				
+	
+	keepalived架构分为用户空间和内核空间
+		用户空间核心组件：
+			vrrp stack：VIP消息通告
+			checkers：监测real server
+			system call：实现 vrrp 协议状态转换时调用脚本的功能
+			SMTP：邮件组件，比如服务器挂掉了发送告警邮件
+			IPVS wrapper：生成IPVS规则，换句话说，可以通过keepalived把LVS规则写到LVS的内核空间中，来控制LVS的调度策略，实现LVS负载均衡
+				生产中很少用ipvsadm命令，通常LVS配合keepalived使用，通过keepalived的"IPVS wrapper"组件直接生成LVS调度规则，但可以使用ipvsadm查看规则
+			Netlink Reflector：网络接口
+			WatchDog：监控进程
+		内核空间：
+			IPVS，这个也是LVS的核心组件
+			NETTLINK，网卡相关
+			
+	注：
+		Nginx虽然有健康检查，但仍然有单点失败的问题，所以Nginx可以配合keepalived解决Nginx的单点失败功能
+	
+6.3 Keepalived 环境准备
+	各节点时间必须同步：ntp, chrony
+	关闭防火墙及SELinux
+	各节点之间可通过主机名互相通信：非必须
+	建议使用/etc/hosts文件实现：非必须
+	各节点之间的root用户可以基于密钥认证的ssh服务完成互相通信：非必须
+	
+6.4 Keepalived 安装
+	包安装：
+		# centos
+		yum -y install keepalived
+		# ubuntu
+		apt -y install keepalived
+	编译安装：
+		详见 PDF
+		
+6.5 KeepAlived 配置说明
+	
+	全局配置：详见PDF
+		global_defs {					# "{"或"}"不能写在同一行		
+			router_id ka1.example.com	# 相当于路由器编号，取一个唯一的名字，建议使用当前主机名
+			vrrp_skip_check_adv_addr 	# 跳过所有通告报文都检查，这个通告报文是KeepAlived服务器给其它KeepAlived服务器发送的本机优先级、验证信息等
+			# vrrp_strict 				# 严格遵守VRRP协议，建议关闭。启用这个功能后在无VIP地址、配置了单播邻居、在VRRP版本2中有IPv6地址的情况下无法启动服务
+			vrrp_garp_interval 0		# 免费ARP协议发送间隔延迟，0表示不延迟
+			# 多播地址，为了保证两个物理路由器相互之间组成一个虚拟的路由器，互相之间发消息来通告自己的优先级等等，通讯用的多播地址
+			vrrp_mcast_group4 224.0.0.18  # 生产中建议不要使用默认地址，因为大家都习惯性使用默认地址，可能会存在干扰.多播地址范围"224.0.0.0 ~ 239.255.255.25" 
+		}													
+	
+	配置虚拟路由器：详见PDF
+		vrrp_instance <STRING> { 	#<String>为vrrp的实例名,一般为业务名称
+			# 真正决定是MASTER还是BACKUP身份的是优先级决定的，这个配置没什么作用，可以认为是各说明
+			state MASTER|BACKUP		
+			# 当前物理节点在此虚拟路由器的优先级，范围：1-254，值越大优先级越高
+			priority 100 			# 每个keepalived主机节点的此值应该有跨度，方便后面有其它keepalived主机加入，这样才能灵活调整优先级
+			advert_int 1			# vrrp通告(优先级等信息)的时间间隔，默认1s
+			virtual_ipaddress {		# 虚拟IP,生产环境可能指定上百个IP地址
+				......
+			}
+		}	
+		
+	注：
+		当VIP在飘到另外一台keepalived服务主机上，那么MAC地址也会变，变成VIP所在的网卡的MAC地址！	
+		如果配置出错可能会导致VIP同时出现在 每台keepalived服务器上，这种现象称之为脑裂！ 
+		
+6.6 生产环境中有很多业务，可能会配置上百个虚拟路由器，可以给每个虚拟路由器写一个单独的配置文件，然后include到主配置文件中
+
+	cat /etc/keepalived/keepalived.conf
+	global_defs {	
+		......
+	}
+	# 将VRRP相关配置放在子配置文件中, 如果"conf.d"目录不存在就创建这个目录
+	include /etc/keepalived/conf.d/*.conf 	
+	
+6.7 实现 master + slave 的 Keepalived 案例：	
+	详见PDF ===>> "3.1 实现master/slave的 Keepalived 单主架构"
+	
+	注意：使用"systemctl start keepalived"启动失败不会有提示，需要使用"systemctl status keepalived"查看状态，状态为"active"说明启动成功
+	
+6.8 非抢占式实现
+	vrrp_instance VI_1 {
+		state BACKUP 	#都为BACKUP
+		nopreempt 		#添加此行，都为nopreempt
+	}
+
+6.9 抢占延迟模式 preempt_delay
+	vrrp_instance VI_1 {
+		preempt_delay 60 #抢占延迟模式，默认延迟300s。可以只给优先级高的keepalived服务器开启，也可以给每台keepalived服务器开启
+		......
+	}
+	
+	详见PDF ===>> "3.2.2 抢占延迟模式 preempt_delay"
+
+6.10 VIP单播配置(注意：启用 vrrp_strict 时，不能启用单播)
+	默认keepalived主机之间利用多播相互通告消息，会造成网络拥塞，可以替换成单播，减少网络流量
+	
+	在所有节点vrrp_instance语句块中设置对方主机的IP，建议设置为专用于对应心跳线网络的地址，而非使用业务网络
+		
+		unicast_src_ip <IPADDR> 	#指定发送单播的源IP,也就是本机IP
+		unicast_peer {
+			<IPADDR> 				#指定接收单播的对方目标主机IP
+			......
+		}
+		
+6.11 Keepalived 通知脚本配置。官方提供的邮件服务没有实现，但是可以使用通知脚本。
+	
+	# 所有 keepalived节点配置：
+	global_defs {
+		......
+		notify_master <STRING>|<QUOTED-STRING>		# 当前节点成为主节点时触发的脚本
+		notify_backup <STRING>|<QUOTED-STRING>		# 当前节点转为备节点时触发的脚本
+		notify_fault <STRING>|<QUOTED-STRING>		# 当前节点转为“失败”状态时触发的脚本
+		# notify <STRING>|<QUOTED-STRING>			# 通用格式的通知触发机制，一个脚本可完成以上三种状态的转换时的通知
+		notify_stop <STRING>|<QUOTED-STRING>		# 当停止VRRP时触发的脚本
+		script_user <USER>							# 用什么身份运行脚本，默认以用户keepalived_script身份运行脚本，如果此用户不存在，以root执行脚本
+		......
+	}
+	
+	# 通知脚本以及邮件都需要在所有 keepalived节点上配置
+		
+	详见PDF ===>> "3.4 Keepalived 通知脚本配置"
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 keepalived实现VRRP的VIP主主架构
+	
+	# ha1主机配置
+	vrrp_instance VI_1 {
+		virtual_ipaddress {
+			#指定vrrp_instance各自的VIP
+			10.0.0.10/24 dev eth0 label eth0:1 
+		}
+	}
+	vrrp_instance VI_2 {
+		virtual_ipaddress {
+			#指定vrrp_instance各自的VIP
+			10.0.0.20/24 dev eth0 label eth0:2   # 这里label应该时"eth0:2", PDF文档上是"eth0:1"
+		}
+	}
+	
+	# ka2主机配置
+	vrrp_instance VI_1 {
+		virtual_ipaddress {
+			10.0.0.10/24 dev eth0 label eth0:1
+		}	
+	}
+	vrrp_instance VI_2 {
+		virtual_ipaddress {
+			10.0.0.20/24 dev eth0 label eth0:2	# 这里label应该时"eth0:2", PDF文档上是"eth0:1"
+		}
+	}
+	
+	详见PDF ===>> "3.5 实现 master/master 的 Keepalived 双主架构"
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+扩展1：
+	多播使用一种虚拟组地址的概念进行工作，数据包的目的地址不是单个主机，而是一组主机，形成多播组地址。
+	这种通信方式允许一个或多个发送者将单一数据包发送到多个接收者，从而提高了网络资源的利用率。
+	
+	IP地址分为五类：早期使用这种方式
+		A类地址 1.0.0.0   ~ 126.255.255.255，A类地址用于大型网络，可以拥有最多1677214台主机。12
+		B类地址 128.0.0.0 ~ 191.255.255.255，B类地址用于中等规模的网络，可以拥有最多65534台主机。
+		C类地址 192.0.0.0 ~ 223.255.255.255，C类地址用于小型网络，如家庭或小型企业网络，可以拥有最多254台主机。
+		D类地址 224.0.0.0 ~ 239.255.255.255，D类地址用于多播应用，用于一组计算机之间的数据传输。
+		E类地址 240.0.0.0 ~ 255.255.255.254，E类地址是保留地址，主要用于科学实验和未来的技术。
+	无类域间路由(CIDR)：目前的网络已不再按A，B，C类划分网段，使用CIDR可以任意指定网段的范围
+
+	
+扩展2：
+	单播(unicast)：对特定的主机进行数据传送。
+	广播(broadcast)：广播是主机针对某一个网络上的所有主机发送数据包。
+	多播(multicast)：多播又叫组播，可以说广播是多播的特例，多播就是给一组特定的主机（多播组）发送数据，
+
+
+扩展3：
+	问：局域网内有三台linux机器ip地址分别为 10.0.0.7、10.0.0.8、10.0.0.9，10.0.0.8单播10.0.0.9，为什么10.0.0.7的机器上可以抓到单播数据包?
+	答：通常情况下，在局域网中单播数据包是直接从发送者传输到接收者，且仅由接收者处理，其他设备不应该能够捕获到这些数据包。有几种例外情况：
+		(1) 网络监听: 如果10.0.0.7的机器上的网络接口被设置为混杂模式(promiscuous mode)，那么它可以捕获到网络上传输的所有数据包，包括不是发给它的数据包。
+		    这是网络分析工具（如Wireshark）常用的方式，用于网络调试和监控。
+		(2) 网络配置问题: 如果网络交换机或集线器的配置有误，或者网络中存在某些特定的网络设置（如端口镜像），可能会导致数据包被不正确地广播到整个局域网，
+		    从而使得10.0.0.7能够捕获到这些数据包。
+		(3) ARP欺骗或网络攻击: 如果局域网中存在ARP欺骗或类似的网络攻击，攻击者可能会欺骗网络设备，使得数据包被重定向到不应该接收它们的设备上。
+		(4) 交换机MAC地址表溢出: 如果局域网中的交换机MAC地址表满了，交换机可能会退回到类似集线器的工作模式，即广播所有接收到的数据包，
+		    这也可能导致10.0.0.7捕获到不是发给它的数据包。
+		(5) 错误的网络隔离: 如果网络的隔离设置不正确，可能会导致VLAN（虚拟局域网）之间的隔离失效，从而使得不同VLAN之间的设备能够相互“听到”对方的数据包。
+		(6) 物理连接问题: 如网线错误地连接到了集线器而不是交换机上，或者交换机的某个端口损坏而工作在集线器模式，也可能导致数据包被广播。
+	
+	
+	问：centos7 的网络接口默认开启混杂模式吗?
+	答：CentOS 7 的网络接口默认并不是开启混杂模式的。如果你需要开启混杂模式，通常需要使用特定的网络监控工具(如Wireshark)或手动通过命令行设置。
+		长时间在生产环境中开启混杂模式可能会影响网络性能和安全性，因此应谨慎使用。
+		
+	问：linux中使用运行tcpdump命令时，会开启网络接口的混杂模式吗?
+	答：当在Linux中使用tcpdump命令时，它会默认开启所监听网络接口的混杂模式(Promiscuous Mode)。混杂模式允许网络接口接收所有流经的数据包，而不仅仅是发送给该接口的数据包。
+		这使得tcpdump能够捕获到网络上的所有流量，以便进行分析和调试。
+	

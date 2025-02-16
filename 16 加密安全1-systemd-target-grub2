@@ -1,0 +1,501 @@
+
+1 systemd的服务service文件实现
+	
+1.1 在centos6中，如果一个服务用到了socket，那么这个服务和socket是一体的，服务开启，socket打开；服务关闭，socket也关闭 ！ 	
+	在centos7中，服务和socket分离，可以各自启动！
+	
+示例：centos8 安装 rpcbind
+
+	yum -y install rpcbind
+	
+	// 安装成功后，可以看到 socket 自动打开并设为开机启动，service没有开启也没有设为开机启动。问题：服务都没有打开？谁在监听端口？
+	systemctl status rpcbind.socket rpcbind.service
+	
+	// 可以发现是systemd在监听这个端口，这个机制和centos6的xinetd(超级守护进程)很像。这样一来，服务不用立即启动，如果有人访问，systemd自动激活服务，这样就节约了资源
+	ss -ntlp
+	
+	// 在另一个主机的终端访问 rpcbind
+	telnet 192.168.32.100 111
+	
+	// 再次观察，可以看到service启动了
+	systemctl status rpcbind.service
+
+
+1.2 service unit文件格式
+
+	各种systemd的单元的资源文件同一放在"/lib/systemd/system/"：
+
+		[root@localhost ~]#ll -d /lib
+		lrwxrwxrwx. 1 root root 7 Aug 20  2021 /lib -> usr/lib
+
+
+		[root@localhost ~]#ll /lib/systemd/system/*.service | head
+		-rw-r--r--. 1 root root  275 Aug  9  2019 /lib/systemd/system/arp-ethers.service
+		-rw-r--r--  1 root root  222 Oct 31  2018 /lib/systemd/system/atd.service
+		-rw-r--r--. 1 root root 1384 Aug  8  2019 /lib/systemd/system/auditd.service
+		......省略
+		
+		[root@localhost ~]#ll /lib/systemd/system/*.socket | head
+		-rw-r--r--  1 root root  373 Nov  9  2020 /lib/systemd/system/cockpit.socket
+		-rw-r--r--. 1 root root  102 Sep 30  2020 /lib/systemd/system/dbus.socket
+		-r--r--r--. 1 root root  248 Oct  1  2020 /lib/systemd/system/dm-event.socket
+		......省略
+
+
+service unit文件格式说明：
+	放置service unit文件的目录
+		/etc/systemd/system：系统管理员和用户使用
+		/usr/lib/systemd/system：发行版打包者使	
+	
+	帮助参考：
+		
+		参考链接：http://www.jinbuguo.com/systemd/systemd.service.html
+		
+		systemd.directives (7)，systemd.unit(5),systemd.service(5), systemd.socket(5),systemd.target(5),systemd.exec(5)
+		
+		[root@localhost system]#man 5 systemd.unit
+		
+	unit 格式说明：
+		以 “#” 开头的行后面的内容会被认为是注释
+		相关布尔值，1、yes、on、true 都是开启，0、no、off、false 都是关闭
+		时间单位默认是秒，所以要用毫秒（ms）分钟（m）等须显式说明	
+		
+	service unit file文件通常由三部分组成：
+		[Unit]：定义与Unit类型无关的通用选项；用于提供unit的描述信息、unit行为及依赖关系等
+		[Service]：与特定类型相关的专用选项；此处为Service类型
+		[Install]：定义由“systemctl enable”以及"systemctl disable“命令在实现服务启用或禁用时用到的一些选项
+		注意：Unit和Install是通过部分，不管是service还是socket都有这两部分
+	
+	Unit段的常用选项：
+		Description：描述信息
+		After：定义unit的启动次序，表示当前unit应该晚于哪些unit启动，其功能与Before相反
+		Requires：依赖到的其它units，强依赖，被依赖的units无法激活时，当前unit也无法激活
+		Wants：依赖到的其它units，弱依赖
+		Conflicts：定义units间的冲突关系	
+		RequiresMountFor：挂载
+		
+	Service段的常用选项：
+		Type：定义影响ExecStart及相关参数的功能的unit进程启动类型
+			simple：默认值，这个daemon(daemon表示守护进程)主要由ExecStart接的指令串来启动，启动后常驻于内存中
+			forking：由ExecStart启动的程序透过spawns延伸出其他子程序来作为此daemon的主要服务。原生父程序在启动结束后就会终止
+			oneshot：与simple类似，不过这个程序在工作完毕后就结束了，不会常驻在内存中
+			dbus：与simple类似，但这个daemon必须要在取得一个D-Bus的名称后，才会继续运作.因此通常也要同时设定BusNname= 才行
+			notify：在启动完成后会发送一个通知消息。还需要配合 NotifyAccess 来让 Systemd 接收消息。notify 通常需要结合systemd 做开发，也就是说，需要调用systemd的接口
+			idle：与simple类似，要执行这个daemon必须要所有的工作都顺利执行完毕后才会执行。这类的daemon通常是开机到最后才执行即可的服务
+		EnvironmentFile：环境配置文件
+		ExecStart：指明启动unit要运行命令或脚本的绝对路径
+		ExecStartPre： ExecStart前运行。也就是说 服务启动前要做的事，比如语法检查等。不是每个服务都有这个选项，要服务本身支持
+		ExecStartPost： ExecStart后运行。也就是说 启动后收尾做的是，不是每个服务都有这个选项，要服务本身支持
+		ExecStop：指明停止unit要运行的命令或脚本。命令"systemctl status ServiceName.service"就是调用 ExecStop 指定的命令或脚本。
+				  如果没有配置ExecStop，运行"systemctl status ServiceName.service"命令后，系统会发送kill指令。比如在shell脚本中做如下配置：
+					ExecStop=/bin/kill -s QUIT \$MAINPID	 // QUIT 表示 SIGQUIT 信号，$MAINPID 是服务的systemd变量，它指向主应用程序的PID
+		Restart：当设定Restart=1 时，则当次daemon服务意外终止后，会再次自动启动此服务
+		RestartSec: 设置在重启服务( Restart= )前暂停多长时间。 默认值是100毫秒(100ms)。 如果未指定时间单位，那么将视为以秒为单位。 例如设为"20"等价于设为"20s"。也就是服务启动的延迟时间
+		PrivateTmp：设定为yes时，会在生成/tmp/systemd-private-UUID-NAME.service-XXXXX/tmp/目录
+	
+	
+	Install段的常用选项：
+		Alias：别名，可使用systemctl command Alias.service
+		RequiredBy：被哪些units所依赖，强依赖
+		WantedBy：被哪些units所依赖，弱依赖
+		Also：安装本服务的时候还要安装别的相关服务
+
+
+	注意：对于新创建的unit文件，或者修改了的unit文件，要通知systemd重载此配置文件,而后可以选择重启
+		systemctl daemon-reload
+	
+
+分析"rpcbind.service"
+ 
+	[root@localhost ~]#cat /usr/lib/systemd/system/rpcbind.service
+	[Unit]
+	Description=RPC bind service								# unit的统一说明，"systemctl status rpcbind.service"这个命令打印出来的描述信息就来自这里
+	DefaultDependencies=no										
+
+	# Make sure we use the IP addresses listed for
+	# rpcbind.socket, no matter how this unit is started.
+	Requires=rpcbind.socket							# 强依赖，要启动"rpcbind.service"，必须先启动"rpcbind.socket"；启动后，如果"rpcbind.socket"关闭了，"rpcbind.service"也会自动关闭
+	Wants=rpcbind.target							# 弱依赖，可有可没有
+	After=systemd-tmpfiles-setup.service			# 定义unit的启动次序，表示"rpcbind.service"应该晚于"systemd-tmpfiles-setup.service"启动
+
+	[Service]										# [Service]说明是对服务的配置
+	Type=forking
+	EnvironmentFile=/etc/sysconfig/rpcbind			# 环境文件：里面是存的变量
+	ExecStart=/sbin/rpcbind -w $RPCBIND_ARGS		# 定义启动时运行的程序，$RPCBIND_ARGS 这个参数的值来源于上面定义的环境文件
+
+	[Install]										# 设置运行在哪个模式下启动
+	WantedBy=multi-user.target						# 表示在 multi-user 这个环境中启动 rpcbind 服务
+	[root@localhost ~]#
+	
+	
+	
+	总结：
+		在 systemd 机制下，service是service，socket是socket。
+		"/lib/systemd/system/"目录下的service文件，对应的就是centos6中的服务脚本。所以在centos7中不用写脚本，改为写service文件。
+		编译安装的程序，通常没有service文件，需要自己编写，但是不用完全手写，拷贝一个现成的service文件，修改相关项。比如 tomcat 编译安装或自定义安装就没有service 文件
+		
+	
+
+实践：自定义service文件
+	
+	[root@centos8 ~]#vim /lib/systemd/system/hello.service						// service文件要放在"/lib/systemd/system/"目录下，并且后缀要命名为".service", Ubuntu也是一样
+	[Unit]
+	Description=Hello World
+	[Service]
+	TimeoutStartSec=0
+	ExecStart=/bin/sh -c "while true; do echo Hello World; sleep 1; done"		// 输出在终端看不到，写进了系统日志，centos的系统日志路径是"/var/log/messages"
+	ExecStop=/bin/kill sh														// 在 centos8 中，这里可以写为"kill sh",  但是在Ubuntu中，要加上绝对路径"/bin/kill"								
+	[Install]
+	WantedBy=multi-user.target
+	
+	[root@centos8 ~]#systemctl daemon-reload
+	[root@centos8 ~]#systemctl enable --now hello
+	[root@centos8 ~]#systemctl status hello
+	
+	[root@centos8 ~]#tail /var/log/messages -f
+	Sep 2 09:54:32 centos8 sh[26543]: Hello World
+	Sep 2 09:54:33 centos8 sh[26543]: Hello World
+	......省略
+	
+	
+	上面的示例是在centos中，如果是在Ubuntu中，要注意以下问题：
+		1.  "ExecStop=/bin/kill sh" 中的kill要写绝对路径，也就是"/bin/kill", 如果写为"kill sh"服务会开启失败。
+				[ubuntu@ubuntu1804 ~]#which kill
+				/usr/bin/kill
+				[ubuntu@ubuntu1804 ~]#type kill
+				kill is a shell builtin
+			kill 既是外部命令，也是一个内部命令，Ubuntu可能在service文件中不支持使用shell内部命令
+		
+		2.  ubuntu日志文件的日志路径是"var/log/syslog"，Ubuntu不会把每个打印输出都写到日志中，只会写一次。Ubuntu的日志记录规则需要查询文档了解！
+	
+	
+	
+实践：Ubuntu 通过"/etc/rc.local"文件实现开机自动运行程序
+	
+	如果仅仅启动一个服务就专门写个service文件，会觉得麻烦，这时可以用"rc.local"文件来实现开机启动。
+	
+	[root@ubuntu1804 ~]#vim /etc/rc.local
+	[root@ubuntu1804 ~]#cat /etc/rc.local
+	#!/bin/bash
+	echo -e '\E[31;1mstarting test service\E[0m'
+	sleep 10
+	
+	[root@ubuntu1804 ~]#chmod +x /etc/rc.local
+	
+	[root@ubuntu1804 ~]#reboot  
+	
+	
+	在重启过程中出现"[ x.xxxxxx ] rc.local [xxx] starting test service"字样，说明启动成功。说明在登录前就运行了，属于开机自动运行的程序，和用户登录不登录没关系！ 
+	
+	
+总结：	
+	centos 和 Ubuntu 都支持 service文件 和 rc.local 文件这两种开机自动运行服务的方式！
+	centos 的 /etc/rc.local 文件在系统中本身存在，并且已经有运行权限！
+	Ubuntu 的 /etc/rc.local 文件需要自己创建，并且添加运行权限！
+	
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 target管理和grub2故障排错
+	centos6有0-6七种运行模式，模式之间的差别就是服务在不同的模式下设为启动或关闭。所以运行模式的本质是：不同服务的组合
+	在centos7及以后，取消了0-6这七种模式，用另外一个概念来实现，称之为target，这些target实际上就是不同服务的组合
+
+
+2.1 target管理
+	
+	在centos6中，在"/etc/inittab"文件中指定系统的默认运行级别；在centos7中，"/etc/inittab"文件已经失效
+
+		[root@localhost ~]#cat /etc/inittab
+		# inittab is no longer used when using systemd.
+		#
+		# ADDING CONFIGURATION HERE WILL HAVE NO EFFECT ON YOUR SYSTEM.
+		#
+		# Ctrl-Alt-Delete is handled by /usr/lib/systemd/system/ctrl-alt-del.target
+		#
+		# systemd uses 'targets' instead of runlevels. By default, there are two main targets:
+		#
+		# multi-user.target: analogous to runlevel 3
+		# graphical.target: analogous to runlevel 5
+		#
+		# To view current default target, run:
+		# systemctl get-default
+		#
+		# To set a default target, run:
+		# systemctl set-default TARGET.target
+		#
+		[root@localhost ~]#
+	
+	
+	target units：相当于CentOS 6以及之前版本的runlevel ,unit配置文件：
+		[root@localhost ~]#ls /usr/lib/systemd/system/*.target | wc -l
+		59
+		[root@localhost ~]#systemctl list-unit-files --type target --all | wc -l
+		62
+	
+		// 按照服务组合将target分类了，这样就更灵活了，突破了"0~6"七种模式的限制
+		[root@localhost ~]#systemctl list-unit-files --type target --all 
+		UNIT FILE                 STATE
+		basic.target              static
+		bluetooth.target          static
+		cryptsetup-pre.target     static
+		......省略
+		
+		// centos7及之后的版本兼容老版本的0~6七运行模式，但可以看到都是软连接，实际指向的还是target，仍然可以使用 init 命令来切换运行模式，比如"init 5"
+		[root@localhost ~]#ll /usr/lib/systemd/system/runlevel*.target
+		lrwxrwxrwx. 1 root root 15 Aug 20  2021 /usr/lib/systemd/system/runlevel0.target -> poweroff.target
+		lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/lib/systemd/system/runlevel1.target -> rescue.target
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 /usr/lib/systemd/system/runlevel2.target -> multi-user.target
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 /usr/lib/systemd/system/runlevel3.target -> multi-user.target
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 /usr/lib/systemd/system/runlevel4.target -> multi-user.target
+		lrwxrwxrwx. 1 root root 16 Aug 20  2021 /usr/lib/systemd/system/runlevel5.target -> graphical.target
+		lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/lib/systemd/system/runlevel6.target -> reboot.target
+
+	
+	target相关命令：
+	
+		// target和target之间其实有依赖性，查看"graphical.target"的依赖性：
+		[root@localhost ~]#systemctl list-dependencies graphical.target
+		graphical.target
+		● ├─display-manager.service
+		● ├─network.service
+		● ├─systemd-update-utmp-runlevel.service
+		● └─multi-user.target
+		●   ├─atd.service
+		......省略
+		
+		// "sysinit.target"相当于centos6中的开机启动初始化脚本"/etc/rc.d/rc.sysinit"，这个脚本初始化主机名、swap分区、逻辑卷等
+		// 在centos7及以后，不再使用脚本做这些初始化工作，使用 sysinit.target, sysinit.target 下面有很多资源，这些资源就实现了初始化工作
+		[root@localhost ~]#systemctl list-dependencies sysinit.target		
+		sysinit.target
+		● ├─dev-hugepages.mount
+		● ├─dev-mqueue.mount
+		● ├─kmod-static-nodes.service
+		● ├─lvm2-lvmetad.socket
+		● ├─lvm2-lvmpolld.socket
+		......省略
+		
+		// 级别切换：相当于 init N
+		[root@localhost ~]#systemctl isolate graphical.target			// 切换到图形界面，需要图像界面组件支持
+
+		[root@localhost ~]#runlevel										// 如果没有图形界面组件，表面上切换成功，实际上没有切换成功
+		3
+		
+		// 进入默认target
+		[root@localhost ~]#systemctl default
+		[root@localhost ~]#runlevel
+		5 3
+		
+		// 查看开机进入哪种模式
+		[root@localhost ~]#systemctl get-default
+		multi-user.target
+		
+		// "systemctl set-default TARGET.target" 设置开机默认进入指定模式，这个指令在"/etc/inittab"文件中有说明
+		[root@localhost ~]#systemctl set-default graphical.target
+		Removed symlink /etc/systemd/system/default.target.														
+		Created symlink from /etc/systemd/system/default.target to /usr/lib/systemd/system/graphical.target. 	// 实际上就是用一个软链家，然后指向指定的 target		
+		[root@localhost ~]#
+		
+	总结：
+		target实际上是资源的集合，这些资源可能是service、也可能是socket或其它资源
+
+
+实践：设置centos8开机启动模式为reboot.target
+	
+		systemctl set-default reboot.target
+		
+		// 重启，然后系统就会进入不断重启模式
+		reboot
+		
+	解决方法：
+		在启动过程的"选择内核菜单界面"输入 e，然后选择第一项，如果有"rescue"的字样是救援模式，不要选救援模式。选择后输入 e 		
+		找到linux 开始这一行(这一行其实对应的就是centos6的grub配置文件中的kernel项)，如果是centos7，是以linux16开始，在后面添加 systemd.unit=multi-user.target  
+		不要按回车键，根据提示按 Ctrl+x 启动，然后成功进入系统。这一次是临时启动，所以启动后要重新设置开机模式的target
+	
+
+扩展：分析"/boot/grub2/grub.cfg"脚本	
+	
+	// centos7在"/boot/grub2/grub.cfg"脚本中定义了linux内核。centos8在这个脚本中没有直接定义，是在这个脚本中调用了其它脚本文件生成。
+	[root@localhost ~]#cat /boot/grub2/grub.cfg									
+	......省略
+			// net.ifnames=0 就是个内核参数，它告诉内核生成网卡的名称以"eth"开头！
+			linux16 /vmlinuz-0-rescue-1ac11172d2f343c09c155ddd71b49e48 root=/dev/mapper/centos-root ro crashkernel=auto rd.lvm.lv=centos/root rd.lvm.lv=centos/swap rhgb quiet net.ifnames=0
+			initrd16 /initramfs-0-rescue-1ac11172d2f343c09c155ddd71b49e48.img
+	......省略
+	
+	
+2.2 CentOS 7及之后版本引导顺序
+	1. UEFi或BIOS初始化，运行POST开机自检
+	2. 选择启动设备
+	3. 引导装载程序, centos7是grub2,加载装载程序的配置文件：
+		/etc/grub.d/
+		/etc/default/grub
+		/boot/grub2/grub.cfg		// 这个配置文件有很多内容，不用手动修复，可以使用命令 grub2-mkconfig > /boot/grub2/grub.cfg  或  grub2-mkconfig -o
+	4. 加载initramfs驱动模块
+	5. 加载内核选项
+	6. 内核初始化，centos7使用systemd代替init
+	7. 执行initrd.target所有单元，包括挂载/etc/fstab
+	8. 从initramfs根文件系统切换到磁盘根目录
+	9. systemd执行默认target配置，配置文件/etc/systemd/system/default.target
+	10. systemd执行sysinit.target初始化系统及basic.target准备操作系统
+	11. systemd启动multi-user.target下的本机与服务器服务
+	12. systemd执行multi-user.target下的/etc/rc.d/rc.local
+	13. Systemd执行multi-user.target下的getty.target及登录服务
+	14. systemd执行graphical需要的服务
+
+
+	// 通过systemd-analyze 工具可以了解启动的详细过程。并且可以看到每个service花了多少时间
+	[root@localhost ~]#systemd-analyze blame
+			  6.136s NetworkManager-wait-online.service
+			  2.051s kdump.service
+			  1.164s lvm2-monitor.service
+			  1.155s tuned.service	
+			  ......省略
+			  
+	// 启动次序可以用以下命令，这个命令会生成一个网页，需要在浏览器中打开
+	[root@localhost ~]#systemd-analyze plot > boot.html
+	[root@localhost ~]#ll ./boot.html
+	-rw-r--r-- 1 root root 62292 Nov 22 20:07 ./boot.html	
+
+
+2.3 破解 破解 CentOS 7、8的 root 密码	
+	方法1：
+		启动时任意键暂停启动
+		按e键进入编辑模式
+		将光标移动linux 开始的行，添加内核参数 rd.break 	 	// rd.break 的意思是打断正常启动，进入到一种特殊的救援模式下
+		按ctrl-x启动											 
+		mount –o remount,rw /sysroot							// 可以通过 mount 命令找到真正的根文件系统，因为默认对根文件系统没有写功能，所以要重新挂载
+		chroot /sysroot
+		passwd root												// 这里也可以通过修改"/etc/shadow"文件清除root用户的密码
+		
+		#如果SELinux是启用的,才需要执行下面操作,如查没有启动,不需要执行
+		touch /.autorelabel										// 这个表示重新贴标签，selinux在生产中基本不会用，但是红帽的考试要求是启用Linux
+		
+		exit
+		reboot
+	
+	
+	方法2：详情见PDF
+	
+	
+2.4 实现 GRUB2 安全
+
+	#添加grub密码
+	[root@centos8 ~]#grub2-setpassword							// 给grub2加密码，这个命令本质上就是生成一个密码文件
+	Enter password:
+	Confirm password:
+	
+	[root@centos8 ~]#ls -l /boot/grub2/
+	total 32
+	drwxr-xr-x 2 root root 4096 Jan 19 15:17 fonts
+	-rw-r--r-- 1 root root 5101 Jan 19 15:18 grub.cfg
+	-rw-r--r-- 1 root root 1024 Jan 19 15:18 grubenv
+	drwxr-xr-x 2 root root 12288 Jan 19 15:17 i386-pc
+	-rw------- 1 root root 298 Jan 19 18:20 user.cfg			// 这个文件就是生成的密码文件
+	
+	[root@centos8 ~]#ls -l /boot/grub2/user.cfg
+	-rw------- 1 root root 298 Jan 19 18:20 /boot/grub2/user.cfg
+	
+	[root@centos8 ~]#cat /boot/grub2/user.cfg
+	GRUB2_PASSWORD=grub.pbkdf2.sha512.10000.60AAA29A65F4DC77E8861EF25BDE2034C9B30CE1
+	E07EE688D7F30460E7E87E7356B0893A6DFFB250B27D2EB9D3ED3E9207199C494D7882E2E8C772C8
+	2E2DDB7A.5E42FD69FA04293DECD68F077E83875A8E4572A7FBB89BA9F161B15EAFE54FBA963FE5D
+	52E16764944823396231803E5118DA1D9CAF3EB73C175A7D7A3682A90
+	
+	#清空grub密码
+	[root@centos8 ~]#cat /dev/null > /boot/grub2/user.cfg
+	
+	#或者
+	[root@centos8 ~]#rm -f /boot/grub2/user.cfg
+	
+	
+	虽然加了密码：但是可以通过光盘的救援模式清除密码！
+	
+
+2.5 修复 GRUB2，CentOS 7，8及ubuntu1804都使用GRUB2
+	
+	// 查看 grub2 RPM包信息
+	[root@localhost ~]#rpm -qi grub2
+	Name        : grub2
+	Epoch       : 1
+	Version     : 2.02							 		// 这里使用的 GRUB 版本是 2.02
+	Release     : 0.86.el7.centos
+	......省略
+
+	//  grub2-common 包生成了很多文件
+	[root@localhost ~]#rpm -ql grub2-common
+	/boot/efi/EFI/centos
+	/boot/grub2
+	/etc/grub.d
+	/usr/lib/grub
+	......省略
+
+	主要配置文件：/boot/grub2/grub.cfg
+		修复配置文件：grub2-mkconfig > /boot/grub2/grub.cfg
+
+	修复grub，grub2的主要文件在"/boot/grub2/"目录下，如果这些文件被破坏，可以使用"grub2-install"命令生成
+		grub2-install /dev/sda 		#BIOS环境
+		grub2-install 				#UEFI环境
+
+
+	示例：调整默认启动内核
+		[root@centos8 ~]#cat /boot/grub2/grubenv
+		# GRUB Environment Block
+		saved_entry=5b85fc7444b240a992c42ce2a9f65db5-5.6.12-wanglinux-6.6.6
+		kernelopts=root=UUID=f7f53add-b184-4ddc-8d2c-5263b84d1e15 ro crashkernel=auto
+		resume=UUID=eebe3bc7-6d52-4ad9-86aa-916f1a123fd4 rhgb quiet net.ifnames=0
+		boot_success=0
+		
+		[root@centos8 ~]#ls /boot/loader/entries/
+		5b85fc7444b240a992c42ce2a9f65db5-0-rescue.conf
+		5b85fc7444b240a992c42ce2a9f65db5-4.18.0-147.el8.x86_64.conf
+		5b85fc7444b240a992c42ce2a9f65db5-5.6.12-wanglinux-6.6.6.conf
+
+		#以下命令是修改 /boot/grub2/grubenv 实现
+		[root@centos8 ~]#grub2-set-default 1					// 0表示第一个内核，1表示第二个内核，编号顺序是 启动过程中"内核选择菜单界面"上的内核列表顺序
+
+
+
+2.6 案例实战
+	实战案例1：CentOS 7,8 破坏MBR后进行恢复
+	详情见PDF
+	
+	
+	实战案例2：CentOS 7,8 删除 /boot/grub2/ 所有内容进行恢复
+	详情见PDF
+	
+	
+	实战案例3：CentOS 7,8 删除 /boot/ 下所有文件后进行恢复
+		1 光盘救援模式下安装grub2
+		特别说明：Centos8 必须先修复grub，再安装kernel,否则安装kernel-core时会提示grub出错。centos7 不用遵守此顺序
+			#centos8
+			chroot /mnt/sysroot
+		
+			#centos7
+			chroot /mnt/sysimage
+			
+			grub2-install /dev/sda
+		
+		2 安装Kernel
+			#CentOS 7
+			mount /dev/sr0 /mnt													// 挂载光盘
+			rpm –ivh /mnt/Packages/kernel-3.10.0-1062.el7.x86_64.rpm --force	// 加"--force"的原因是，内核不是正常卸载，只是删除了一些文件，所以要强行安装。安装后，删除的文件也会重新生成
+		
+			#CentOS 8
+			mount /dev/sr0 /mnt
+			rpm -ivh /mnt/BaseOS/Packages/kernel-core-4.18.0-147.el8.x86_64.rpm --force
+		
+		3 修复grub配置文件
+			#生成grub2.cfg文件
+			grub2-mkconfig –o /boot/grub2/grub.cfg
+		
+		4 退出重启
+			sync
+			sync				// 多运行几次sync，确保缓冲区的数据写到磁盘
+			exit
+			exit
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+

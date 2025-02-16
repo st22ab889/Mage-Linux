@@ -1,0 +1,505 @@
+1 pam实现资源限制和google的MFA验证
+
+1.1 常用的PAM模块 - pam_limits.so 模块(至关重要)，在配置服务器的时候经常用到这个模块
+    这个模块的默认设置往往较保守，不能充分利用系统资源，所以通常需要修改这个配置！
+	功能：在用户级别实现对其可使用的资源的限制，保证系统不至于过载。例如：可打开的文件数量，可运行的进程数量，可用内存空间
+	
+	
+实验：
+	// httpd-tools是压力测试工具，用来测试服务器性能，可以模拟很多客户端
+	[root@localhost ~]#yum -y install httpd-tools	
+	[root@localhost ~]#systemctl start nginx	
+	
+	// 同时打开1000个连接，linux中一切皆文件，同时打开1000个文件，相当于同时打开1000个socket文件
+	[root@localhost ~]#ab -c 1000 -n 2000 http://192.168.32.100/	
+	This is ApacheBench, Version 2.3 <$Revision: 1901567 $>
+	Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+	Licensed to The Apache Software Foundation, http://www.apache.org/
+	......省略
+	 100%    204 (longest request)						#正常
+	
+	// 同时打开1025个连接	
+	[root@localhost ~]#ab -c 1025 -n 2000 http://192.168.32.100/	
+	This is ApacheBench, Version 2.3 <$Revision: 1901567 $>
+	Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+	Licensed to The Apache Software Foundation, http://www.apache.org/
+
+	Benchmarking 192.168.32.100 (be patient)
+	socket: Too many open files (24)					# 请求文件过多
+	
+	// 查看 ulimit 帮助
+	[root@localhost ~]#help ulimit
+	
+	// 查看当前的资源限制
+	[root@localhost ~]#ulimit -a
+	core file size          (blocks, -c) 0				#内存相关的定义	
+	data seg size           (kbytes, -d) unlimited		#内存相关的定义 
+	scheduling priority             (-e) 0
+	file size               (blocks, -f) unlimited
+	pending signals                 (-i) 14989
+	max locked memory       (kbytes, -l) 64
+	max memory size         (kbytes, -m) unlimited
+	open files                      (-n) 1024		# 这里定义了最多能打开1024个文件，生产中有时候不够用
+	pipe size            (512 bytes, -p) 8
+	POSIX message queues     (bytes, -q) 819200
+	real-time priority              (-r) 0
+	stack size              (kbytes, -s) 8192
+	cpu time               (seconds, -t) unlimited
+	max user processes              (-u) 14989
+	virtual memory          (kbytes, -v) unlimited
+	file locks                      (-x) unlimited
+	
+	// -n 打开文件描述符的最大数量
+	[root@localhost ~]#ulimit -n
+	1024
+	
+	// 重新设置文件描述符的最大数量，临时生效
+	[root@localhost ~]#ulimit -n 10240 
+	
+	// 重新设置后再次测试，请求正常
+	[root@localhost ~]#ab -c 1025 -n 2000 http://192.168.32.100/	
+	Percentage of the requests served within a certain time (ms)
+	......省略
+	 100%    204 (longest request)
+	
+	
+	问题：如何永久修改"文件描述符的最大数量"?
+	回答：永久修改需要改配置文件，对应的就是pam的 pam_limits.so 模块的配置文件 
+	
+	
+pam_limits.so 模块	
+	
+	[root@localhost ~]#rpm -ql pam | grep limit
+	/etc/security/limits.conf
+	/etc/security/limits.d
+	/etc/security/limits.d/20-nproc.conf
+	/usr/lib64/security/pam_limits.so
+	/usr/share/doc/pam-1.1.8/html/sag-pam_limits.html
+	/usr/share/doc/pam-1.1.8/txts/README.pam_limits
+	/usr/share/man/man5/limits.conf.5.gz
+	/usr/share/man/man8/pam_limits.8.gz
+	
+	
+	// pam_limits.so 模块比较复杂，所以提供了一个专用的配置文件。比如 pam_time.so 模块也有专门的配置文件"/etc/security/time.conf" 
+	[root@localhost ~]#ll /etc/security/limits.conf
+	-rw-r--r--. 1 root root 2422 Apr  1  2020 /etc/security/limits.conf
+
+	// 查看哪些应用程序调用limits模块，可以看到limit这个模块被系统中很多资源调用
+	[root@localhost ~]#grep pam_limits.so /etc/pam.d/*
+	/etc/pam.d/fingerprint-auth:session     required      pam_limits.so		# session 就是用户登录后会话期间/登录期间
+	/etc/pam.d/fingerprint-auth-ac:session     required      pam_limits.so
+	/etc/pam.d/password-auth:session     required      pam_limits.so
+	/etc/pam.d/password-auth-ac:session     required      pam_limits.so
+	/etc/pam.d/runuser:session              required        pam_limits.so
+	/etc/pam.d/smartcard-auth:session     required      pam_limits.so
+	/etc/pam.d/smartcard-auth-ac:session     required      pam_limits.so
+	/etc/pam.d/system-auth:session     required      pam_limits.so
+	/etc/pam.d/system-auth-ac:session     required      pam_limits.so
+	[root@localhost ~]#	
+	
+	
+pam_limits.so 模块的配置文件解析	
+	
+	[root@localhost ~]#cat  /etc/security/limits.conf
+	# /etc/security/limits.conf
+	#
+	#This file sets the resource limits for the users logged in via PAM.
+	#It does not affect resource limits of the system services.				# 这些限制对系统服务无效
+	#
+	#Also note that configuration files in /etc/security/limits.d directory,
+	#which are read in alphabetical order, override the settings in this
+	#file in case the domain is the same or more specific.
+	#That means for example that setting a limit for wildcard domain here
+	#can be overriden with a wildcard setting in a config file in the
+	#subdirectory, but a user specific setting here can be overriden only
+	#with a user specific setting in the subdirectory.
+	#
+	#Each line describes a limit for a user in the form:
+	#
+	#<domain>        <type>  <item>  <value>
+	#
+	#Where:
+	#<domain> can be:
+	#        - a user name
+	#        - a group name, with @group syntax
+	#        - the wildcard *, for default entry					# * 表示所有人
+	#        - the wildcard %, can be also used with %group syntax,
+	#                 for maxlogin limit							# maxlogin 最多能登录多少个用户
+	#
+	#<type> can have the two values:					
+	#        - "soft" for enforcing the soft limits					# 软限制：超用资源会报警(短时间超用资源也可以)
+	#        - "hard" for enforcing hard limits						# 硬限制: 强制性的	
+	#																# 写为"-"表示 软限制 和 硬限制 设为一样的值
+	#<item> can be one of the following:				# item 表示各种资源
+	#        - core - limits the core file size (KB)				# 核心文件，指的是内存
+	#        - data - max data size (KB)							# 数据文件
+	#        - fsize - maximum filesize (KB)						# 最大文件大小
+	#        - memlock - max locked-in-memory address space (KB)	# 内存锁
+	#        - nofile - max number of open file descriptors			# 最多能打开多少个文件
+	#        - rss - max resident set size (KB)
+	#        - stack - max stack size (KB)
+	#        - cpu - max CPU time (MIN)
+	#        - nproc - max number of processes						# 最多有多少个进程
+	#        - as - address space limit (KB)
+	#        - maxlogins - max number of logins for this user		# 最多有多少用户能登录系统
+	#        - maxsyslogins - max number of logins on the system
+	#        - priority - the priority to run user process with
+	#        - locks - max number of file locks the user can hold
+	#        - sigpending - max number of pending signals
+	#        - msgqueue - max memory used by POSIX message queues (bytes)
+	#        - nice - max nice priority allowed to raise to values: [-20, 19]
+	#        - rtprio - max realtime priority
+	#
+	#<domain>      <type>  <item>         <value>
+	#
+
+	#*               soft    core            0			# 范例，*表示所有人，soft表示软限制，core 表示资源，0表示资源使用的值
+	#*               hard    rss             10000
+	#@student        hard    nproc           20			# 表示 student 这个组打开的进程不能超过20个
+	#@faculty        soft    nproc           20
+	#@faculty        hard    nproc           50
+	#ftp             hard    nproc           0
+	#@student        -       maxlogins       4
+
+	# End of file
+	[root@localhost ~]#
+
+
+实践1：限制账号最用使用的进程
+	
+	// 限制aaron账号开启的进程最多5个(4个正常的进程+1个失败的进程)
+	[root@localhost ~]#cat  /etc/security/limits.conf
+	aaron         -       nproc       5					# "-"表示软限制和硬限制都一样，这样就不用写两行，中间空格没有个数限制，只要隔开就行
+	
+	// 使用 aaron 账号登录
+	PS C:\Users\Aaron J WU> ssh -p 22 aaron@192.168.32.100
+	aaron@192.168.32.100's password:
+	Last login: Wed Nov 30 16:19:37 2022
+	[aaron@localhost ~]$bash								# bash 是后台运行的进程
+	[aaron@localhost ~]$bash
+	bash: fork: retry: No child processes					# 开启第五个进程报错			
+	bash: fork: retry: No child processes
+	
+	// 查看 aaron 开启的进程
+	[root@localhost ~]#pgrep -lu aaron					
+	2255 sshd
+	2256 bash
+	2283 bash
+	2302 bash
+	2303 bash
+	
+	[root@localhost ~]#tail -f /var/log/secure
+	Nov 30 16:19:37 localhost su: pam_unix(su-l:session): session opened for user aaron by root(uid=0)
+	Nov 30 16:19:51 localhost su: pam_unix(su-l:session): session closed for user aaron
+	Nov 30 16:19:55 localhost sshd[1573]: Received disconnect from 192.168.32.1 port 59024:11: disconnected by user
+	Nov 30 16:19:55 localhost sshd[1573]: Disconnected from 192.168.32.1 port 59024
+	Nov 30 16:19:55 localhost sshd[1573]: pam_unix(sshd:session): session closed for user root
+	Nov 30 16:20:04 localhost sshd[2253]: Accepted password for aaron from 192.168.32.1 port 61682 ssh2
+	Nov 30 16:20:04 localhost sshd[2253]: pam_unix(sshd:session): session opened for user aaron by (uid=0)	# pam的session会在日志有所体现
+	Nov 30 16:25:30 localhost sshd[2255]: Received disconnect from 192.168.32.1 port 61682:11: disconnected by user
+	Nov 30 16:25:30 localhost sshd[2255]: Disconnected from 192.168.32.1 port 61682
+	Nov 30 16:25:30 localhost sshd[2253]: pam_unix(sshd:session): session closed for user aaron	 			# pam的session会在日志有所体现
+	
+	
+	注意：
+		如果重新修改了配置,比如把能打开的最大进程数由5改为10，这个时候用户需要重新注销所有登录后再登录才会重现生效。
+		比如aaron登录了10个终端，要退出这个10个所有终端后，再登录才会生效！
+	
+	总结：
+		pam 的 session 会记录一些日志，对于一些资源限制，通过日志的提示也能看出来
+		如果因为pam设置导致资源或某个服务出现问题，可以先观察一下日志，看是否是因为一些资源被pam限制了
+		
+	
+实践2：限制用户最大的同时登录次数
+	[root@localhost ~]#cat  /etc/security/limits.conf
+	aaron 		- 		maxlogins 		2
+
+	// 打开三种终端使用aaron用户登录，第3个终端登录时出现错误
+	PS C:\Users\Aaron J WU> ssh -p 22 aaron@192.168.32.100
+	aaron@192.168.32.100's password:
+	Too many logins for 'aaron'.
+	Last login: Wed Nov 30 16:37:30 2022 from 192.168.32.1
+	Connection to 192.168.32.100 closed.
+	
+	[root@localhost ~]#who
+	root     pts/0        2022-11-30 14:29 (192.168.32.1)
+	aaron    pts/1        2022-11-30 16:37 (192.168.32.1)
+	aaron    pts/2        2022-11-30 16:37 (192.168.32.1)
+
+	[root@localhost ~]#tail -f /var/log/secure
+	Nov 30 16:37:21 localhost sshd[2363]: Accepted password for aaron from 192.168.32.1 port 61831 ssh2
+	Nov 30 16:37:21 localhost sshd[2363]: pam_unix(sshd:session): session opened for user aaron by (uid=0)
+	Nov 30 16:37:30 localhost sshd[2391]: Accepted password for aaron from 192.168.32.1 port 61833 ssh2
+	Nov 30 16:37:30 localhost sshd[2391]: pam_unix(sshd:session): session opened for user aaron by (uid=0)
+	Nov 30 16:37:35 localhost sshd[2419]: Accepted password for aaron from 192.168.32.1 port 61834 ssh2
+	Nov 30 16:37:35 localhost sshd[2419]: pam_limits(sshd:session): Too many logins (max 2) for aaron
+	Nov 30 16:37:35 localhost sshd[2419]: pam_unix(sshd:session): session opened for user aaron by (uid=0)
+	Nov 30 16:37:35 localhost sshd[2419]: error: PAM: pam_open_session(): Permission denied
+	Nov 30 16:37:35 localhost sshd[2421]: Received disconnect from 192.168.32.1 port 61834:11: disconnected by user		# 日志有提示
+	Nov 30 16:37:35 localhost sshd[2421]: Disconnected from 192.168.32.1 port 61834
+	
+	
+实践2：pam_limits.so 模块推荐配置
+	*                soft    core            unlimited
+	*                hard    core            unlimited
+	*                soft    nproc           1000000
+	*                hard    nproc           1000000
+	*                soft    nofile          1000000
+	*                hard    nofile          1000000
+	*                soft    memlock         32000
+	*                hard    memlock         32000
+	*                soft    msgqueue        8192000
+	*                hard    msgqueue        8192000
+
+	注意：参数值和企业的服务器、包括负载都有一定的关系，上面只是建议值。服务器性能好，可以设的更大一些，性能不好，值可以设的小些	
+
+
+总结：
+	limit模块在生产中作为一个标配，在系统装好后，就要设置limit模块，默认的设置值是比较保守，不能充分发挥服务器的性能！
+	limit模块、内核参数、禁用selinux 都是要在系统装好后就要完成这些工作，完成后再安装各种应用服务！
+
+
+1.2 常用的PAM模块 - pam_succeed_if 模块(了解)
+	功能：根据参数中的所有条件都满足才返回成功
+	案例：ubuntu默认不允许root登录桌面图形(比如用ubuntu的图形界面做开发，不能用root登录图形界面，只能使用普通用户登录，然后使用sudo切换为root)
+			
+	#用root登录桌面失败，查看日志，可看到Pam原因
+	
+	Vim /etc/pam.d/gdm-passwd
+	#auth requried pam_succeed_if.so user !=root quiet_success			// 将这行注释 
+
+ 
+	说明：用习惯centos后，用不习惯sudo，sudo虽然安全，但是麻烦！所以习惯centos后，再用Ubuntu，会觉得繁琐！
+ 
+	
+1.3 常用的PAM模块 - pam_google_authenticator 模块（工作中比较实用）
+	pam_google_authenticator 模块提供了 MFA (Multi-Factor Authentication)功能。
+	MFA 是一种多因子验证，提供了多种验证方法、多次验证。
+	MFA 是一种简单有效的最佳安全实践方法，它能够在用户名和密码之外再额外增加一层安全保护。
+	pam_google_authenticator 模块功能：实现SSH登录的两次身份验证，先验证APP的数字码，再验证root用户的密码，都通过才可以登录。
+	
+	// 系统默认没有 pam_google_authenticator 模块
+	[root@localhost ~]#rpm -ql pam | grep google
+	
+	[root@localhost ~]#yum info google-authenticator
+	Loaded plugins: fastestmirror
+	Repository epel is listed more than once in the configuration
+	Loading mirror speeds from cached hostfile
+	 * base:
+	 * elrepo: hkg.mirror.rackspace.com
+	 * elrepo-kernel: hkg.mirror.rackspace.com
+	 * epel: mirrors.huaweicloud.com
+	 * extras: mirrors.huaweicloud.com
+	Available Packages
+	Name        : google-authenticator
+	Arch        : x86_64
+	Version     : 1.04
+	Release     : 1.el7
+	Size        : 48 k
+	Repo        : epel/7/x86_64
+	Summary     : One-time pass-code support using open standards
+	URL         : https://github.com/google/google-authenticator-libpam/
+	License     : ASL 2.0
+	Description : The Google Authenticator package contains a plug-able authentication
+				: module (PAM) which allows login using one-time pass-codes conforming to
+				: the open standards developed by the Initiative for Open Authentication
+				: (OATH) (which is unrelated to OAuth).
+				:
+				: Pass-code generators are available (separately) for several mobile
+				: platforms.
+				:
+				: These implementations support the HMAC-Based One-time Password (HOTP)
+				: algorithm specified in RFC 4226 and the Time-based One-time Password
+				: (TOTP) algorithm currently in draft.
+	
+	
+实现步骤：
+	(1) 在手机上安装身份验证器或authenticator APP，或者使用微信小程序 MinaOTP，要保证手机的时间和系统时间一样
+	(2) 安装 pam_google_authenticator 模块，这个模块在epel源中下载
+	(3) 配置"/etc/pam.d/sshd"文件中加入如下配置：
+			auth       required     pam_google_authenticator.so
+	(4) 修改ssh的配置文件，将 ChallengeResponseAuthentication 的值改为yes，并重新启动 ssh 服务，如下：
+			ChallengeResponseAuthentication yes
+	
+	
+实践1：
+	// 第1步：通过脚本来实现上面2、3、4步骤
+	[root@localhost ~]#cat google-authenticator.sh
+	#安装epel
+	#yum install -y epel-release.noarch
+	#yum makecache
+	#安装google authenticator
+	yum install -y google-authenticator.x86_64
+
+
+	echo -e "\033[31mDo you want me to update your "/root/.google_authenticator" file? (y/n) y"
+	echo -e "\033[31m你希望我更新你的“/root/.google_authenticator”文件吗(y/n)？\033[0m"
+	echo -e "\033[31mDo you want to disallow multiple uses of the same authentication"
+	echo -e "\033[31mtoken? This restricts you to one login about every 30s, but it increases"
+	echo -e "\033[31myour chances to notice or even prevent man-in-the-middle attacks (y/n) y"
+	echo -e "\033[31m你希望禁止多次使用同一个验证令牌吗?这限制你每次登录的时间大约是30秒， 但是这加大了发现或甚至防止中间人攻击的可能性(y/n)?\033[0m"
+	echo -e "\033[31mBy default, a new token is generated every 30 seconds by the mobile app."
+	echo -e "\033[31mIn order to compensate for possible time-skew between the client and the server,"
+	echo -e "\033[31mwe allow an extra token before and after the current time. This allows for a"
+	echo -e "\033[31mtime skew of up to 30 seconds between authentication server and client. If you"
+	echo -e "\033[31mexperience problems with poor time synchronization, you can increase the window"
+	echo -e "\033[31mfrom its default size of 3 permitted codes (one previous code, the current"
+	echo -e "\033[31mcode, the next code) to 17 permitted codes (the 8 previous codes, the current"
+	echo -e "\033[31mcode, and the 8 next codes). This will permit for a time skew of up to 4 minutes"
+	echo -e "\033[31mbetween client and server."
+	echo -e "\033[31mDo you want to do so? (y/n) y"
+	echo -e "\033[31m默认情况下，令牌保持30秒有效;为了补偿客户机与服务器之间可能存在的时滞，\033[0m"
+	echo -e "\033[31m我们允许在当前时间前后有一个额外令牌。如果你在时间同步方面遇到了问题， 可以增加窗口从默认的3个可通过验证码增加到17个可通过验证码，\033[0m"
+	echo -e "\033[31m这将允许客户机与服务器之间的时差增加到4分钟。你希望这么做吗(y/n)?\033[0m"
+	echo -e "\033[31mIf the computer that you are logging into isn't hardened against brute-force"
+	echo -e "\033[31mlogin attempts, you can enable rate-limiting for the authentication module."
+	echo -e "\033[31mBy default, this limits attackers to no more than 3 login attempts every 30s."
+	echo -e "\033[31mDo you want to enable rate-limiting? (y/n) y"
+	echo -e "\033[31m如果你登录的那台计算机没有经过固化，以防范运用蛮力的登录企图，可以对验证模块\033[0m"
+	echo -e "\033[31m启用尝试次数限制。默认情况下，这限制攻击者每30秒试图登录的次数只有3次。 你希望启用尝试次数限制吗(y/n)?\033[0m"
+	echo -e "\033[32m 在App Store 搜索Google Authenticator 进行App安装 \033[0m"
+
+
+	google-authenticator
+
+
+	#/etc/pam.d/sshd文件，修改或添加下行保存
+	#auth required pam_google_authenticator.so
+	sed -i '1a\auth       required     pam_google_authenticator.so' /etc/pam.d/sshd
+	#编辑/etc/ssh/sshd_config找到下行
+	#ChallengeResponseAuthentication no
+	#更改为
+	#ChallengeResponseAuthentication yes
+	sed -i 's/.*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/' /etc/ssh/sshd_config
+
+	#重启SSH服务
+	service sshd restart	
+	
+	
+	// 第2步：运行脚本
+	[root@localhost ~]#bash google-authenticator.sh
+	......省略
+	Do you want authentication tokens to be time-based (y/n) y
+	Warning: pasting the following URL into your browser exposes the OTP secret to Google:
+	  https://www.google.com/chart?chs=200x200&chld=M|0&cht=qr&chl=otpauth://totp/root@localhost.localdomain%3Fsecret%3DMCJTBA4MP4DEY3S6Q33F3IQOUQ%26issuer%3Dlocalhost.localdomain
+	......这里显示二维码图片，用下载的APP或微信小程序 MinaOTP扫描此二维码，会生成校验码，校验码隔一段时间会改变。访问上面衔接可以在线生成二维码......
+	Your new secret key is: MCJTBA4MP4DEY3S6Q33F3IQOUQ
+	Your verification code is 450871
+	Your emergency scratch codes are:	 
+	  94854951			# 这些校验码是用来紧急使用的，比如手机丢失，app被卸载等情况，就可以使用
+	  92917018			# 这些紧急使用的二维码用一次就失效
+	  39307830
+	  21332895
+	  16542293
+	
+	Do you want me to update your "/root/.google_authenticator" file? (y/n) y
+	......下面的问答，全部输入 y 
+	
+	
+	//脚本运行完成后可以看到生成了文件：
+		
+		// "/var/log/yum.log"记录了包的安装等信息，centos8记录在"/var/log/dnf.log"文件中
+		[root@localhost aaron]#cat /var/log/yum.log			
+		......省略
+		Nov 30 18:15:28 Installed: google-authenticator-1.04-1.el7.x86_64		#可以看到已经安装 google-authenticator 包	
+	
+		[root@localhost aaron]#rpm -ql google-authenticator
+		/usr/bin/google-authenticator						# 二进制程序，这个二进制程序安装后其实就已经在运行
+		/usr/lib64/security/pam_google_authenticator.la
+		/usr/lib64/security/pam_google_authenticator.so		# 模块程序
+		......省略
+	
+		[root@localhost ~]#file /usr/bin/google-authenticator
+		/usr/bin/google-authenticator: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), ......省略
+		
+		[root@localhost ~]#ll /usr/bin/google-authenticator
+		-rwxr-xr-x 1 root root 28824 Aug 17  2017 /usr/bin/google-authenticator
+		
+		
+		// 这个文件记录的就是紧急时候使用的校验码，这个校验码用一个就会从这个文件删除，也可以人为在这里添加校验码，格式要正确，使用8位数字
+		[root@localhost ~]#cat /root/.google_authenticator
+		MCJTBA4MP4DEY3S6Q33F3IQOUQ
+		" RATE_LIMIT 3 30 1669804189 1669804204 1669804212
+		" WINDOW_SIZE 17
+		" DISALLOW_REUSE 55660139
+		" TOTP_AUTH
+		94854951
+		92917018
+		39307830
+		21332895
+		16542293
+		[root@localhost ~]#		
+		
+		
+	// 第3步：测试
+	PS C:\Users\Aaron J WU> ssh -p 22 root@192.168.32.100		
+	Verification code:										# 从手机或app上获取校验码输入
+	Password:												# 输入登录密码
+	Last login: Wed Nov 30 18:17:50 2022					# 登录成功
+	
+	[root@localhost ~]#exit						
+	logout
+	Connection to 192.168.32.100 closed.
+		
+	PS C:\Users\Aaron J WU> ssh -p 22 root@192.168.32.100
+	Verification code:										# 验证码随便输入
+	Password:												# 输入正确密码
+	Verification code:										# 验证码随便输入
+	Password:												# 输入正确密码
+	Verification code:										# 验证码随便输入
+	Password:												# 输入正确密码
+	root@192.168.32.100's password:							# 输入正确密码
+	Permission denied, please try again.		
+	root@192.168.32.100's password:							# 输入正确密码
+	Connection closed by 192.168.32.100 port 22				# 登录失败			
+	PS C:\Users\Aaron J WU>			
+	
+	// "/var/log/secure"文件记录认证相关的日志
+	[root@localhost ~]#tail -f /var/log/secure
+	Nov 30 19:19:23 localhost sshd[2998]: error: PAM: Authentication failure for root from 192.168.32.1
+	Nov 30 19:19:23 localhost sshd[2998]: Postponed keyboard-interactive for root from 192.168.32.1 port 49158 ssh2 [preauth]
+	Nov 30 19:19:26 localhost sshd(pam_google_authenticator)[3004]: Invalid verification code for root
+	Nov 30 19:19:26 localhost sshd[2998]: Postponed keyboard-interactive/pam for root from 192.168.32.1 port 49158 ssh2 [preauth]
+	Nov 30 19:19:34 localhost sshd[3004]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=192.168.32.1  user=root
+	Nov 30 19:19:34 localhost sshd[3004]: pam_succeed_if(sshd:auth): requirement "uid >= 1000" not met by user "root"
+	Nov 30 19:19:35 localhost sshd[2998]: error: PAM: Authentication failure for root from 192.168.32.1
+	Nov 30 19:19:44 localhost sshd(pam_google_authenticator)[2998]: Invalid verification code for root					# 校验失败的日志记录 
+	Nov 30 19:19:44 localhost sshd[2998]: pam_succeed_if(sshd:auth): requirement "uid >= 1000" not met by user "root"
+	Nov 30 19:19:45 localhost sshd[2998]: Failed password for root from 192.168.32.1 port 49158 ssh2
+ 
+ 
+实践2：使 pam_google_authenticator 模块支持基于ssh的key验证
+	
+	在192.168.32.101机器上操作：
+		// 生成公钥私钥
+		[root@localhost ~]#ssh-keygen
+		
+		// 将公钥发送到远程服务器
+		[root@localhost ~]#ssh-copy-id 192.168.32.100
+		
+		// 登录成功，说明 pam_google_authenticator 模块对基于ssh的key验证登录不起作用
+		[root@localhost ~]# ssh 192.168.32.100
+		[root@localhost ~]# exit
+	
+	在192.168.32.100机器上操作：
+		// 在最后一行加下面内容
+		[root@localhost ~]#vim /etc/ssh/sshd_config 
+		AuthenticationMethods publickey,keyboard-interactive
+		
+		[root@centos8 ~]#vim /etc/pam.d/sshd
+		#auth substack password-auth							# 注释此行
+		
+		[root@centos8 ~]#systemctl restart sshd
+	
+	在192.168.32.101机器上操作：
+		[root@localhost ~]# ssh 192.168.32.100
+		Verification code:								# 输入正确的验证码，登录成功，这种情况丢了密码、私钥都能登录
+	
+说明:
+	实践中 pam_google_authenticator 模块只是控制ssh登录，不能控制本地登录！
+	使用 pam_google_authenticator 模块，每个机器的校验码都不一样！
+	在生产中很多企业就在用这种方式校验身份，比较安全！
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+

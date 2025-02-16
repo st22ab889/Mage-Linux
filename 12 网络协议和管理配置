@@ -1,0 +1,1631 @@
+1 udp和internet层协议
+
+1.1 UDP：传输层协议，高性能，延迟低
+	
+	大部分应用使用的是TCP，视频、语音应用一般使用UDP！！
+	
+	UDP和TCP的端口是独立的，所以端酒不冲突：
+		如果一个应用使用了TCP，端口号是8000，另一个应用使用了UDP，端口号是8000，这种情况端口号是不冲突的!
+	
+	UDP报文结构：
+		源端口(2个字节) + 目标端口(2个字节) + 数据长度（2个字节） + 数据
+
+	UDP 特性：
+		工作在传输层
+		提供不可靠的网络访问
+		非面向连接协议
+		有限的错误检查
+		传输性能高
+		无数据恢复特性
+		
+	//更多关于udp的内核参数，可参看
+	man 7 udp
+	
+	
+1.2 Internet层 （TCP/IP协议中叫Internet层，对应OSI模型的网络层 ）
+	Internet层有很多协议，包括 IP、ICMP、ARP、RARP等
+	
+	
+1.3 ICMP（ Internet Control Message Protocol, Internet控制报文协议）：探测网络状态
+	
+	// ping就是用的ICMP协议，默认是1s发一个包
+	[ec2-user@ip-172-31-32-113 ~]$ ping www.google.com
+	PING www.google.com (142.251.220.36) 56(84) bytes of data.
+	64 bytes from hkg07s50-in-f4.1e100.net (142.251.220.36): icmp_seq=1 ttl=112 time=0.953 ms   # time 连接所用的时间 
+	64 bytes from hkg07s50-in-f4.1e100.net (142.251.220.36): icmp_seq=2 ttl=112 time=0.979 ms	# icmp_seq 是包编号，如果超时，包会被丢弃，不会打印在这里
+	64 bytes from hkg07s50-in-f4.1e100.net (142.251.220.36): icmp_seq=3 ttl=112 time=1.01 ms	# 默认包大小64字节
+	64 bytes from hkg07s50-in-f4.1e100.net (142.251.220.36): icmp_seq=4 ttl=112 time=0.981 ms
+	64 bytes from hkg07s50-in-f4.1e100.net (142.251.220.36): icmp_seq=5 ttl=112 time=0.976 ms
+	^C
+	--- www.google.com ping statistics ---
+	5 packets transmitted, 5 received, 0% packet loss, time 4004ms
+	rtt min/avg/max/mdev = 0.953/0.981/1.018/0.034 ms											# 平均值
+	[ec2-user@ip-172-31-32-113 ~]$
+	
+	
+	//  ICMP包最大为65507字节, -s 指定包大小
+	[ec2-user@ip-172-31-32-113 ~]$ ping -s 65508 www.google.com
+	Error: packet size 65508 is too large. Maximum is 65507
+	
+	
+	// -f 是 flood 的意思，用来做网络攻击，尽CPU所能给对方发包，消耗对方的网络资源。这种攻击有一种专业的称呼，称为 dos 攻击，
+	//  dos 攻击，也叫做拒绝服务，把对方机器的资源消耗殆尽，使其没有能力对外服务
+	ping -s 65507 www.google.com -f
+	
+	
+	
+1.4 APR（Address Resolution Protocol,地址解析协议）：将IP地址解析为MAC地址
+	ARP协议的作用是根据IP地址获取物理地址。
+	ARP协议也有缺陷，没有验证、确认机制！！	ARP欺骗是一种常见的攻击方式
+	原理：
+		主机发送信息时将包含目标IP地址的ARP请求广播到局域网络上的所有主机，并接收返回消息，以此确定目标的物理地址；
+		收到返回消息后将该IP地址和物理地址存入本机ARP缓存中并保留一定时间，下次请求时直接查询ARP缓存以节约资源。
+		地址解析协议是建立在网络中各个主机互相信任的基础上的，局域网络上的主机可以自主发送ARP应答消息，其他主机收到应答报文时不会检测该报文的真实性就会将其记入本机ARP缓存
+	
+	同网段的ARP：
+	
+		// 192.168.32.101 主机
+		[root@localhost ~]#arp -n
+		Address                  HWtype  HWaddress           Flags Mask            Iface
+		192.168.32.1             ether   00:50:56:c0:00:08   C                     eth0
+		192.168.32.2             ether   00:50:56:fd:61:95   C                     eth0
+		
+		// 抓 ARP 包
+		[root@localhost ~]#tcpdump -i eth0 arp -nn
+		
+		// 192.168.32.100 主机
+		[root@localhost ~]#arp -n
+		Address                  HWtype  HWaddress           Flags Mask            Iface
+		192.168.32.2             ether   00:50:56:fd:61:95   C                     eth0
+		192.168.32.1             ether   00:50:56:c0:00:08   C                     eth0
+		
+		
+		// 192.168.32.100 主机 ping 一次 192.168.32.101 主机
+		[root@localhost ~]#ping 192.168.32.101 -c1
+		PING 192.168.32.101 (192.168.32.101) 56(84) bytes of data.
+		64 bytes from 192.168.32.101: icmp_seq=1 ttl=64 time=0.378 ms
+
+		--- 192.168.32.101 ping statistics ---
+		1 packets transmitted, 1 received, 0% packet loss, time 0ms
+		rtt min/avg/max/mdev = 0.378/0.378/0.378/0.000 ms
+		
+		// 观察 192.168.32.101 主机
+		[root@localhost ~]#tcpdump -i eth0 arp -nn
+		tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+		listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+		20:58:36.066426 ARP, Request who-has 192.168.32.101 tell 192.168.32.100, length 46				# APR 广播
+		20:58:36.066447 ARP, Reply 192.168.32.101 is-at 00:50:56:21:c4:a8, length 28					# 回应广播
+		^C																								# ctrl + c 强制结束
+		2 packets captured
+		2 packets received by filter
+		0 packets dropped by kernel
+		
+		
+		// 192.168.32.101 主机
+		[root@localhost ~]#arp -n
+		Address                  HWtype  HWaddress           Flags Mask            Iface
+		192.168.32.100           ether   00:0c:29:f9:a9:0f   C                     eth0
+		192.168.32.1             ether   00:50:56:c0:00:08   C                     eth0
+		192.168.32.2             ether   00:50:56:fd:61:95   C                     eth0
+		[root@localhost ~]#
+		
+		
+		// 192.168.32.100 主机
+		[root@localhost ~]#arp -n
+		Address                  HWtype  HWaddress           Flags Mask            Iface
+		192.168.32.101           ether   00:50:56:21:c4:a8   C                     eth0
+		192.168.32.2             ether   00:50:56:fd:61:95   C                     eth0
+		192.168.32.1             ether   00:50:56:c0:00:08   C                     eth0
+		[root@localhost ~]#
+	
+	
+	跨网段的ARP：ARP跨网络通讯，由于跨网络中间就会加路由器，路由器能隔断广播，ARP利用广播通讯，这是怎么办？
+		现在假如主机A 和 主机B 处于不同的网段，中间由路由器连接，如下：
+			主机A <<-------------->> 路由器 <<-------------->> 主机B
+		
+		跨网段的ARP工作如下：
+			(1) A 向 B 发起通信，先判断 主机A 和 主机B 是否在同一网络
+			(2) 如果不在同一网络，就会利用ARP先获取路由器的MAC地址，这个路由器实际上就是A的网关，然后把这个包交给路由器
+			(3) 路由器收到后，发送ARP请求获取B的MAC，然后再把数据包给B
+			总结：每一段进行ARP广播，有几个网段就做几个ARP广播，从而实现跨网段通信
+		
+		
+1.5 （了解）RARP（Reverse Address Resolution Protocol）协议：反向地址解析协议 		
+		作用：RARP 即将MAC转换成IP
+		场景：特殊场景下使用，比如网吧，网吧电脑没有硬盘，地址没有办法写到硬盘上固定下来，但希望每次开机获取的地址是固定的。
+			  每次计算机启动的时候向网络发送自身MAC地址并请求IP，有个服务器，里面保存着IP和MAC的对应关系，当收到请求根据MAC就可以找到对应的IP，然后就可以将IP返回给主机！！
+	
+	
+1.6（了解）APR 还有一个非常重要的功能，用来避免IP地址冲突，发送的报文名叫 Gratuitous ARP(也称为免费ARP，无故ARP)
+	Gratuitous ARP 不同于一般的ARP请求，它并非期待得到ip对应的mac地址，而是当主机启动的时候，将发送一个Gratuitous arp请求，即请求自己的ip地址的mac地址	
+	
+	免费ARP可以有两个方面的作用：
+		验证IP是否冲突：一个主机可以通过它来确定另一个主机是否设置了相同的 IP 地址
+		更换物理网卡：如果发送ARP的主机正好改变了物理地址（如更换物理网卡），可以使用此方法通知网络中其它主机及时更新ARP缓存
+	
+	Gratuitous ARP 是自问自答，如果在发送报文后，有其它机器应答，说明地址冲突；没有机器应答，说明地址不冲突
+	
+	
+1.7 internet 协议（IP协议，对应OSI模型的网络层）
+	IP协议的数据报称为PDU
+	IP协议有IPv4和IPv6，IPv4和IPv6的报文格式不一样！这里只讨论IPv4的报文结构！！
+	
+	IPv4的 PDU 报头：
+		固定20个字节 + 可变部分（可选字段 + 填充） + 数据部分 
+		
+		注意： 报文首部 = 固定20个字节 + 可变部分（可选字段 + 填充） 
+	
+	
+	PDU 报头格式：这里只讲一部分下，详情见PDF
+		版本(占四位)：指明IP协议版本，目前IP协议有IPv4和IPv6两个版本。IPv4最多有2的32次方个地址，IPv6最多有2的128次方个地址。IPv4 在局域网中仍然是主流，互联网上已经大规模采用 IPv6。 
+		首部长度（占4位）：可表示的最大数值是15个单位，一个单位为4字节，因此IP 的首部长度的最大值是60字节
+		总长度（占16位）：指首部和数据之和的长度,单位为字节,因此数据报的最大长度为 65535 字节
+		标识（占16位）：占16位,它是一个计数器,通常，每发送一个报文，该值会加1， 也用于数据包分片，在同一个包的若干分片中，该值是相同的
+		标志（占3位）：目前只有后两位有意义
+			DF（Don’t Fragment）：中间的一位，只有当 DF=0 时才允许分片
+			MF（More Fragment）：最后一位，MF=1表示后面还有分片,MF=0 表示最后一个分片
+		片偏移（占13位）：指较长的分组在分片后，该分片在原分组中的相对位置.片偏移以8个字节为偏移单位
+		生存时间（占8位）：记为TTL (Time To Live) 数据报在网络中可通过的路由器数的最大值, TTL 字段是由发送端初始设置一个 8 bit字段.linux的值为 64.发送 ICMP 回显应答时经常把 TTL 设为最大值 255
+		协议（占8位）：指出此数据报携带的数据使用何种协议以便目的主机的IP层将数据部分上交给哪个处理过程 1表示为 ICMP 协议, 2表示为 IGMP 协议, 6表示为 TCP 协议, 17表示为 UDP 协议	
+		首部检验和（占16位）:只检验数据报的首部不检验数据部分.这里不采用 CRC 检验码而采用简单的计算方法
+		源地址和目的地址（都各占4字节）: 分别记录源IP地址和目的IP地址
+	
+
+
+TTL (Time To Live) ：
+	windows的TTL默认为128，linux的TTL默认为64，每经过一个路由TTL就会减1
+	如果一个windows发出的请求经过128个路由器都不能到达目标主机，那么这个请求将抛弃！ windows的ttl可以通过注册表修改！
+	如果一个linux发出的请求经过64个路由器都不能到达目标主机，那么这个请求将抛弃！linux 可以通过"/proc/sys/net/ipv4/ip_default_ttl"修改ttl值
+	实际情况中，访问全球任何一个地址，最多只会经过十几或二十几个路由，如果经过很多路由都不能到达目标主机，说明网络出现了回环(转着圈跑)，这就算故障了!!!
+
+
+
+TTL 实践1：
+	
+	// linux 主机 ping Windows 主机
+	[root@localhost ~]#ping 192.168.3.11
+	PING 192.168.3.11 (192.168.3.11) 56(84) bytes of data.					# 注意：这里显示的是从windows回来的信息，所以ttl是以windows的为准
+	64 bytes from 192.168.3.11: icmp_seq=1 ttl=128 time=0.453 ms			# windows的TTL默认为128，这里显示"ttl=128",说明没有经过路由
+	64 bytes from 192.168.3.11: icmp_seq=2 ttl=128 time=0.832 ms
+	64 bytes from 192.168.3.11: icmp_seq=3 ttl=128 time=1.62 ms
+	
+	
+
+	// windows 主机 ping linux 主机
+	PS C:\Users\Aaron J WU> ping 192.168.32.100
+
+	正在 Ping 192.168.32.100 具有 32 字节的数据:							# 注意：这里显示的是从linux回来的信息，所以ttl是以linux的为准
+	来自 192.168.32.100 的回复: 字节=32 时间<1ms TTL=64						# linux的TTL默认为64，这里显示"ttl=64",说明没有经过路由
+	来自 192.168.32.100 的回复: 字节=32 时间=2ms TTL=64
+	来自 192.168.32.100 的回复: 字节=32 时间=1ms TTL=64
+	来自 192.168.32.100 的回复: 字节=32 时间<1ms TTL=64
+
+	192.168.32.100 的 Ping 统计信息:
+		数据包: 已发送 = 4，已接收 = 4，丢失 = 0 (0% 丢失)，
+	往返行程的估计时间(以毫秒为单位):
+		最短 = 0ms，最长 = 2ms，平均 = 0ms
+
+	
+	
+	// windows 主机 ping 公网的主机
+	PS C:\Users\Aaron J WU> ping 14.215.177.38
+
+	正在 Ping 14.215.177.38 具有 32 字节的数据:	
+	来自 14.215.177.38 的回复: 字节=32 时间=16ms TTL=56			# 这里tty=56，如果公网主机的ttl设置为64，说明经过了(64-56)8个路由; 如果公网主机的ttl设置为128，说明经过了(128-56)72个路由
+	来自 14.215.177.38 的回复: 字节=32 时间=14ms TTL=56			# 因为不可能经过72个路由，所以远程主机的ttl不是128，但也不知道具体多少，ttl的取值范围为 0 - 255
+	来自 14.215.177.38 的回复: 字节=32 时间=22ms TTL=56
+	来自 14.215.177.38 的回复: 字节=32 时间=11ms TTL=56
+
+	14.215.177.38 的 Ping 统计信息:
+		数据包: 已发送 = 4，已接收 = 4，丢失 = 0 (0% 丢失)，
+	往返行程的估计时间(以毫秒为单位):
+		最短 = 11ms，最长 = 22ms，平均 = 15ms
+	
+	
+	
+TTL 实践2：
+
+	// windows 主机 ping 公网的主机
+	PS C:\Users\Aaron J WU> ping 123.56.174.200
+
+	正在 Ping 123.56.174.200 具有 32 字节的数据:
+	来自 123.56.174.200 的回复: 字节=32 时间=48ms TTL=52
+	来自 123.56.174.200 的回复: 字节=32 时间=51ms TTL=52
+	来自 123.56.174.200 的回复: 字节=32 时间=48ms TTL=52
+	来自 123.56.174.200 的回复: 字节=32 时间=52ms TTL=52
+
+	123.56.174.200 的 Ping 统计信息:
+		数据包: 已发送 = 4，已接收 = 4，丢失 = 0 (0% 丢失)，
+	往返行程的估计时间(以毫秒为单位):
+		最短 = 48ms，最长 = 52ms，平均 = 49ms
+	PS C:\Users\Aaron J WU>
+
+
+	// windows 中 VMware 中的linux主机 拼公网的主机
+	[root@localhost ~]#ping 123.56.174.200
+	PING 123.56.174.200 (123.56.174.200) 56(84) bytes of data.
+	64 bytes from 123.56.174.200: icmp_seq=1 ttl=128 time=52.8 ms
+	64 bytes from 123.56.174.200: icmp_seq=2 ttl=128 time=50.5 ms
+	64 bytes from 123.56.174.200: icmp_seq=3 ttl=128 time=52.5 ms
+	64 bytes from 123.56.174.200: icmp_seq=4 ttl=128 time=61.5 ms
+	^C
+	--- 123.56.174.200 ping statistics ---
+	4 packets transmitted, 4 received, 0% packet loss, time 3022ms
+	rtt min/avg/max/mdev = 50.598/54.392/61.539/4.220 ms
+	[root@localhost ~]#
+		
+	
+	问题：为什么拼的同一个主机，显示的TTL值不一样？
+	回答：
+		VMware 使用的网络模式是NAT，网关地址是 192.168.32.1 
+			"虚拟机中的 linux 主机"  <<==============>>  NAT网络模式  <<==============>>  windows主机  <<==============>>  公网
+	
+		通过 Wireshark 抓包可以分析出：
+			（1）windows 主机 ping 公网的主机，ping 出的IP包的ttl是128，进来的IP包的ttl是52
+			（2）虚拟机中的 linux 主机 ping 公网的主机，当数据包发出后，到网关，网关再到主机（Windows），主机再往外发，所以 Wireshark 抓的包还是要用主机的IP过滤。从抓包中可以看到：
+					ping出去的IP包的ttl是63，因为经过了1个网关(路由)，所以是63(64-1);
+					进来的IP包的ttl仍然是52，但是主机传给虚拟机后ttl变为了128；为什么发生这种情况，猜想如下：
+						IP包虽然是由虚拟机中的linux主机发出，但是经过NAT网络模式，这个IP包发到了windows主机，然后windows主机发出这个IP包，当响应包回到主机，说明连接过程结束。
+						然后window主机将响应包发给虚拟机中的linux主机，这个128实际上是window的ttl值。
+					
+					新问题：为什么虚拟机中的 linux 主机发出去的IP包的TTL没有重置为 128？
+					
+				
+使用 arping 命令发现IP冲突的主机：centos自带arping工具
+	
+	用法：
+		centos7：需要加选项，arping工具在iputils包中，升级iputils包后，就不需要再加选项
+			arping -I eth0 192.168.32.101
+		
+		centos8：不需要加选项
+			arping 192.168.32.101
+		
+		centos7 升级 iputils包的方法：
+			// iputils GitHub：https://github.com/iputils/iputils
+			[root@localhost ~]#wget https://github.com/iputils/iputils/archive/refs/tags/20211215.tar.gz
+			[root@localhost ~]#tar -zxvf 20211215.tar.gz
+			
+			[root@localhost ~]#cd iputils-20211215 && ./ci/fedora.sh					# 安装编译依赖
+			[root@localhost iputils-20211215]#./configure && meson build
+			[root@localhost iputils-20211215]#cd builddir && meson install
+			
+			//测试
+			[root@localhost builddir]#arping 192.168.32.101
+			ARPING 192.168.32.101 from 192.168.32.100 eth0
+			Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  0.729ms
+			Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  1.434ms
+			Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  1.407ms
+			^CSent 3 probes (1 broadcast(s))
+			Received 3 response(s)
+			[root@localhost builddir]#
+		
+			
+			
+			
+	// 正常情况，没有冲突
+	[root@localhost ~]#arping -I eth0 192.168.32.101
+	ARPING 192.168.32.101 from 192.168.32.100 eth0
+	Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  0.781ms
+	Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  1.513ms
+	Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  1.435ms
+	Unicast reply from 192.168.32.101 [00:50:56:21:C4:A8]  0.879ms
+	^CSent 4 probes (1 broadcast(s))
+	Received 4 response(s)
+	[root@localhost ~]#
+				
+				
+	
+	模拟冲突，现在假如有 192.168.1.8、192.168.1.9、192.168.1.10 三台主机
+
+		// 在 192.168.1.8 上运行如下命令：
+		[root@localhost ~]#ip a a 192.168.1.10/24 dev eth0     # 表示给 eth0 网卡再绑定一个IP，IP 地址为 192.168.1.10， 现在三台主机中有有两台主机的IP都为 192.168.1.10 ，处于IP冲突状态
+		[root@localhost ~]#ip a		# 查看网卡绑定的IP						
+	
+		// 在 192.168.1.9 上运行如下命令：
+		[root@localhost ~]#arping  192.168.1.10
+		ARPING 192.168.1.10 from 192.168.1.8 eth0
+		Unicast reply from 192.168.1.10 [00:0C:29:F9:A9:0F]  0.781ms    # mac 地址为 00:0C:29:F9:A9:0F
+		Unicast reply from 192.168.1.10 [00:50:56:21:C4:A8]  1.513ms	# mac 地址为 00:50:56:21:C4:A8，mac地址说明，说明两台IP冲突
+		Unicast reply from 192.168.1.10 [00:50:56:21:C4:A8]  1.435ms
+		......
+	
+		
+		冲突解决办法：
+			发现IP冲突后，就可以根据mac的前3个地址查出是哪个品牌的服务器IP冲突；
+			在实际生产环境中，服务器的mac地址和服务器信息（分配的IP、品牌、型号、服务器的位置、在机架的哪一层哪一个编号）会记录成表格，出了问题，就可以快速定位是哪一台服务器！！
+			
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 ip地址组成和分类
+
+2.1 IPv6
+	IPv6目前在互联网开始大规模使用，局域网仍然使用IPv4，IPv6有128位，能表示很多地址，但是管理起来也很麻烦
+	
+	[ec2-user@ip-172-31-32-113 ~]$ ifconfig
+	docker0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+			inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+			inet6 fe80::42:9cff:fe09:ba78  prefixlen 64  scopeid 0x20<link>		# inet6 一般是以16进制显示
+			ether 02:42:9c:09:ba:78  txqueuelen 0  (Ethernet)
+			RX packets 938534  bytes 1709481775 (1.5 GiB)
+			RX errors 0  dropped 0  overruns 0  frame 0
+			TX packets 968991  bytes 1777459241 (1.6 GiB)
+			TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+	IPv6地址三类表示方法：https://blog.csdn.net/weixin_40933653/article/details/126922546
+
+
+2.2 IP地址
+	
+	IP地址由两部分组成
+		网络 ID：标识网络，每个网段分配一个网络ID，处于高位
+		主机 ID：标识单个主机，由组织分配给各设备，处于低位
+	
+	---------------------------------------------------------------------
+	/ 所谓的网络就可以认为是路由器隔开的：                              /
+	/                                                                   /
+	/		网络/段1 			网络/段2				网络/段3	    /
+	/	===============路由器1===============路由器2===============     /
+	/	  || 	 ||				  ||     ||              ||     ||		/			
+	/	  ||     ||				  ||     ||              ||     ||      /
+	/	  ||     ||				  ||     ||              ||     ||      /
+	/	  ||     ||				  ||     ||              ||     ||      /
+	/	  ||     ||				  ||     ||              ||     ||      /
+	/	 主机A	主机B			 主机C	主机D			主机E  主机F	/									
+	/                                                                   /
+	/	网络ID就是用来描述在哪个网络，比如是在网络1、还是网络2或3       /
+	/	同一个网络中的主机网络ID是一样的！！                            /
+	---------------------------------------------------------------------
+	
+2.3 怎么确定IP地址中的网络ID和主机ID？
+	
+	早期是通过A、B、C、D类地址：这种方式目前已经不用了，因为缺陷是网络和主机数量变化幅度太大！！
+		
+		A类：网络ID位是最高8位,要求前一位是0； 主机ID是24位低位；
+			 网络数理论有2的7次方个，因为全0和全1不包含在内，所以网络数为2的7次方减2，最终为126个， 范围为 1-126， 数字 0 和 127 不作为A类地址，数字127保留给内部回送函数，而数字0则表示该地址是本地宿主机，不能传送
+			 主机数理论有2的24次方个，因为全0和全1不包含在内，所以网络数为2的24次方减2，最终为 16777214 个
+			 A类地址理论范围：0.0.0.0~127.255.255.255 ，网络位和主机位的全0和全1都不包含在内 ，实际范围为：1.0.0.1 ~ 126.255.255.254
+			
+		B类：网络ID位是最高16位,要求前二位是10 ；主机ID是16位低位
+			 网络数理论有2的14次方个，最终为16384个，范围为128～191。注意：B类地址因为网络位前面2位固定是10，所以不存在全0和全1的情况
+			 主机数理论有2的16次方个，因为全0和全1不包含在内，所以网络数为2的16次方减2，最终为 65534 个
+			 A类地址理论范围：128.0.0.0~191.255.255.255 ，主机位的全0和全1都不包含在内 ，实际范围为：128.0.0.1 ~ 191.255.255.254
+			
+		C类：网络ID位是最高24位, 要求前三位是110 ；主机ID是8位低位
+			 网络数理论有2的21次方个，最终为2097152个，范围为192～223。注意：C类地址因为网络位前面3位固定是110，所以不存在全0和全1的情况
+			 主机数理论有2的8次方个，因为全0和全1不包含在内，所以网络数为2的8次方减2，最终为 254 个	
+			 A类地址理论范围：192.0.0.0~223.255.255.255 ，主机位的全0和全1都不包含在内 ，实际范围为：192.0.0.1~223.255.255.254
+
+		D类：组(多)播， 要求前四位是1110，没有区分网络ID和主机ID，因为不是给计算机分配，目标是多个地址
+			  1110 0000 - 1110 1111.X.Y.Z  ==>> 224-239.X.Y.Z
+			
+		E类：保留未使用 240-255.X.Y.Z
+		
+		注意：
+			主机号全0表示本网络的网络地址；主机号全1表示本网络的广播地址。
+			在A、B、C类网络划分中，在确定了开头几位后，后面全0都不可指派。但在路由表项中的目的网络段中，默认路由为0.0.0.0，即全0表示全部网络。
+			参考资料：
+				IP地址主机号全0和全1：https://blog.csdn.net/feit2417/article/details/83152794
+		
+	
+	在互联网上把地址又可以分为"公有IP地址"和"私有IP地址"：
+		私有IP地址：不直接用于互联网，通常在局域网中使用
+			A类：10.0.0.0 	 到 10.255.255.255
+			B类：172.16.0.0  到 172.31.255.255
+			C类：192.168.0.0 到 192.168.255.255
+		
+		公共IP地址：互联网上设备拥有的唯一地址
+			A类：
+				1.0.0.0 	到  9.255.255.255
+				11.0.0.0	到	126.255.255.255
+			B类：
+				128.0.0.0 	到  172.15.255.255
+				172.32.0.0	到	191.255.255.255					
+			C类：				
+				192.0.0.0 	到  192.167.255.255
+				192.169.0.0	到	223.255.255.255				
+			
+	特殊地址，不要使用
+		0.0.0.0：0.0.0.0不是一个真正意义上的IP地址。它表示所有不清楚的主机和目的网络
+		255.255.255.255：限制广播地址。对本机来说，这个地址指本网段内(同一广播域)的所有主机
+		127.0.0.1～127.255.255.254：本机回环地址，主要用于测试。在传输介质上永远不应该出现目的地址为“127.0.0.1”的 数据包
+		224.0.0.0到239.255.255.255：组播地址，224.0.0.1特指所有主机，224.0.0.2特指所有路由器。224.0.0.5指OSPF 路由器，地址多用于一些特定的程序以及多媒体程序
+		169.254.x.x：如果Windows主机使用了DHCP自动分配IP地址，而又无法从DHCP服务器获取地址，系统会为主机分配这样地址	
+	
+	（注意） IP地址用A、B、C这种划分方式已经不再使用，现在用"无类域间路由（CIDR）"
+
+
+
+2.4 （重点）无类域间路由(CIDR)，目前的网络已不再按A，B，C类划分网段，可以任意指定网段的范围
+	无类表示网络ID位不固定，按需指定。"无类域间路由（CIDR）" 使用"子网掩码"区分网络ID和主机ID
+	
+	CIDR 无类域间路由表示法：IP/网络ID位数，如：172.16.0.100/16
+	
+	子网掩码(netmask)：32位或128位（IPv6）的数字，和IP成对使用，用来确认IP地址中的网络ID和主机ID，对应网络ID的位为1，对应主机ID的位为0,范例:255.255.255.0 ，表现为连续的高位为1，连续的低位为0
+	
+	
+	
+	// ifconfig 命令是直接使用ip地址的形式表示子网掩码，这个命令比较老！
+	[ec2-user@ip-172-31-32-113 ~]$ ifconfig
+	eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 9001
+			inet 172.31.32.113  netmask 255.255.240.0  broadcast 172.31.47.255
+			inet6 fe80::c09:80ff:fe55:687e  prefixlen 64  scopeid 0x20<link>	
+	......省略
+	
+	
+	// ip 命令用 CIDR 方式表示子网掩码，这个命令比较新！
+	[ec2-user@ip-172-31-32-113 ~]$ ip a
+	1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+		link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+		inet 127.0.0.1/8 scope host lo
+		   valid_lft forever preferred_lft forever
+		inet6 ::1/128 scope host
+		   valid_lft forever preferred_lft forever
+	2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP group default qlen 1000
+		link/ether 0e:09:80:55:68:7e brd ff:ff:ff:ff:ff:ff
+		inet 172.31.32.113/20 brd 172.31.47.255 scope global dynamic eth0
+		   valid_lft 3053sec preferred_lft 3053sec
+		inet6 fe80::c09:80ff:fe55:687e/64 scope link
+		   valid_lft forever preferred_lft forever
+	......省略
+	
+	
+	
+实践1：根据 172.31.32.113/20 计算出netmask、主机数、IP范围？
+	/20表示子网掩码前20位是1，后面12为0，子网掩码为 255.255.240.0
+	前20位1表示网络号，后面12位表示主机号，所以主机数为4096(2的12次方)，减去全0和全1的主机号，所以主机数为4094个
+	172.31.32.113 转为二进制： 1010 1100.0001 1111.0010 0000.0111 0001
+		前20位网络号为：1010 1100.0001 1111.0010
+			最小IP为：1010 1100.0001 1111.0010 0000.00000000 ==》 172.31.32.0
+			最大IP为：1010 1100.0001 1111.0010 1111.11111111 ==》 172.31.47.255
+		不包含主机号为全0或全1的IP，所以：
+			最小IP为：172.31.32.1
+			最大IP为：172.31.47.254
+	
+	
+实践2：根据 203.101.123.163/28 计算出netmask、主机数、IP范围？	
+	/28表示子网掩码前28位是1，后面4为0，子网掩码为 255.255.255.240
+	前28位1表示网络号，后面4位表示主机号，所以主机数为16(2的4次方)，减去全0和全1的主机号，所以主机数为4094个
+	203.101.123.163 转为二进制：1100 1011.0110 0101.0111 1011.1010 0011
+		前28位网络号为：1100 1011.0110 0101.0111 1011.1010 
+			最小IP为：1100 1011.0110 0101.0111 1011.1010 0000 	==》 203.101.123.160
+			最大IP为：1100 1011.0110 0101.0111 1011.1010 1111	==》 203.101.123.175
+		不包含主机号为全0或全1的IP，所以：
+			最小IP为：203.101.123.161
+			最大IP为：203.101.123.174
+	
+	
+	两个IP的的网络号一样，说明在同一个网段(网络)中，在同一个网段发一个APR广播获取对方的mac后就能通信！
+	两个IP的的网络号不一样，说明不在同一个网段(网络)中，不在同一个网段需要通过网关（路由）才能通信！
+
+
+实践3：
+	A：10.0.1.1/16
+	B：10.0.2.2/24
+	A 和 B在不在同一网络中？
+	
+	分析？
+		如果是 A 访问 B ：
+			首先拿自己的IP和自己的子网掩码与： 10.0.1.1 ^ 16 = 10.0.0.0 
+			再拿对方的IP和子自己的子网掩码与： 10.0.2.2 ^ 16 = 10.0.0.0
+			如果结果一样，说明对方IP和自己的IP在同一网段！！
+			
+		如果是 B 访问 A ：
+			首先拿自己的IP和自己的子网掩码与：10.0.2.2 ^ 24 = 10.0.2.0
+			再拿对方的IP和子自己的子网掩码与：10.0.1.1 ^ 24 = 10.0.1.0
+			如果结果不一样，说明对方IP和自己的IP在不在同一网段！！
+		
+	总结：
+		A 访问 B 发一个APR广播获取对方的mac后就能通信！
+		B 访问 A 需要通过路由器器！
+		为什么要拿对方的IP和自己的子网掩码与，因为不知道对方的子网掩码！！！
+		
+	与规则：任何数和1与都是自身，任何数和0与都是0；
+
+
+
+实践4：判断下面IP是否处于一个网段内？
+	210.123.222.100/22
+	210.123.198.100/22
+	
+	如果一眼看不出来，就转换成二进制，分出网络位，就能计算出网段，然后就能对比出结果！！
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 网络地址规划和子网划分
+
+3.1 划分子网：把一个大网划分为小网
+
+
+3.2 优化IP地址分配
+	合并超网：将多个小网络合并成一个大网，主机ID位向网络ID位借位
+	
+	子网过多也不好，增加路由器成本，路由转发也会降低性能，这时就可以把小网合并为一个大网！！
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 网卡配置文件和命令
+
+4.1 网络配置
+	网络通讯的相关配置：IP 地址，子网掩码，网关，dns
+	两种配置方法：临时配置和持久配置
+	
+接口命名方式：CentOS 6
+	以太网名称：eth[0,1,2,...]
+	ppp(拨号网络)：ppp[0,1,2,...]
+	
+	// 网络接口识别并命名相关的udev配置文件，在这个文件中可以更改网卡的名称
+	// 网卡改名后，可以使用卸载、再安装网卡驱动的方式使网卡生效，而不用重新启动
+	/etc/udev/rules.d/70-persistent-net.rules
+	
+	// 查看网卡
+	dmesg |grep –i eth
+	ethtool -i eth0
+
+	// 卸载网卡驱动，以下两个命令都可以
+	modprobe -r e1000
+	rmmod e1000
+	
+	//装载网卡驱动：
+	modprobe e1000
+	
+	
+临时修改网卡名称
+	//ip link 这个命令在centos6、7、8上都能用
+	[root@centos6 ~]#ip link set eth0 down			# 禁用网卡
+	[root@centos6 ~]#ip link set eth0 name abc		# 重命名网卡
+	[root@centos6 ~]#ip link set abc up				# 启动网卡
+
+
+
+临时配置IP地址
+	
+	（了解）ifconfig，来自于net-tools包，已经不推荐使用，建议使用 "ip addr" 和 "ip link" 代替。net-tools包中的大部分工具都不推荐使用了！！
+	
+		// 查看网络信息
+		ifconfig
+		
+		// 给eth1这个网卡指定一个IP地址
+		ifconfig eth1 10.10.10.100/24
+
+
+		// 清除eth1这个网卡的地址
+		ifconfig eth1 0
+		
+		// 禁用网卡
+		ifconfig eth1 down
+
+		// 查看所有网卡，包括禁用的，不加-a参数，只能显示启动的网卡
+		ifconfig -a
+
+		// 启动网卡
+		ifconfig eth1 up
+
+		// 给网卡取一个别名，然后再给这个别名网卡加一个IP，这就相当于一个网卡绑多个IP
+		ifconfig eth1:1 10.10.10.111/24
+	
+		// 看当前网卡的通讯情况
+		ifconfig -s
+		
+		// 只看 eth0 这个网卡的通讯情况
+		ifconfig -s eth0
+
+
+	（了解）netstat：查看当前网络连接情况，来自于net-tools包，已经不推荐使用，建议使用 ss 代替
+		netstat -nt
+
+		// 只显示处理连接状态的连接
+		ss -nt
+		
+		// -a 显示各种状态，不加
+		ss -nta
+	
+		
+	ip命令，推荐使用。替代了 ifconfig 和 route 命令。ip 命令逐渐替代传统的老命令。 格式： ip 子命令
+		
+		// 显示链路层的连接状态
+		ip link
+		
+		// 禁用eth1网卡这个网卡，临时生效
+		ip link set eth1 down
+		
+		// 显示网络层状态，比如查看ip
+		ip addr   # 可以缩写为 ip a
+		
+		// 给eth1这个网卡增加一个地址，label表示标签，相当于别名
+		ip addr add 20.20.20.20/24 dev eth1 label eth1:1	# 可以缩写为 ip a a 20.20.20.20/24 dev eth1 label eth1:1
+		
+		//删除一个地址
+		ip addr del 20.20.20.20/24 dev eth1 label eth1:1
+		
+		// 查看路由信息
+		ip route
+		
+
+永久修改网络配置：
+	IP、MASK、GW、DNS相关的配置文件：/etc/sysconfig/network-scripts/ifcfg-IFACE
+		"ifcfg-IFACE"中的IFACE可以和网卡的名称一样，也可以不一样，但这里一般要写成网卡的名称，为了规范！！
+		一个网卡可以有多个配置文件，在多地点场景下使用，因为每个地点网络不同，为了避免频繁改动，每个地点对应一个网络配置文件！！
+	
+	网络配置文件常用配置项：
+		DEVICE=eth0					# 设备名，必须匹配网卡名
+		NAME=eth0					# 此配置文件应用到的设备，相当于一个描述，可以随便写，但一般写网卡名
+		BOOTPROTO=static			# 激活此设备时使用的地址配置协议，常用的dhcp, static, none, bootp。static和none都表示使用静态地址。如果使用dhcp（其实自动获取地址）,IPADDR、PREFIX、GATEWAY、DNS 都不用再配置
+		IPADDR=192.168.32.101		# 指明IP地址
+		PREFIX=24					# 网络ID的位数。这里也可以配置"NETMASK=255.255.255.0",等价于"PREFIX=24"
+		GATEWAY=192.168.32.1		# 默认网关
+		DNS1=8.8.8.8				# 第一个DNS服务器地址
+		DNS2=114.114.114.114		# 第二个DNS服务器地址，备用DNS
+		ONBOOT=yes					# 在系统引导时是否激活此设备，yes说明网卡启用，no说明禁用网卡
+	
+	注意：
+		服务器的地址都是静态的，但是现在都是虚拟化的环境，所以将来网卡地址也许不一定是一个物理的服务器，也可能是个虚拟机、容器，这个时候地址就是自动获取了，所以使用动态地址还是静态地址看具体情况！！
+		动态分配：需要用到 DHCP 服务，vmvare中就带 DHCP 服务。	
+	
+	网络配置文件配置后的生效方式：
+		
+		// 查看 centos 版本 
+		[root@localhost ~]#cat /etc/centos-release
+		CentOS Linux release 7.9.2009 (Core)
+		
+		// 生效centos6、7
+		service network restart
+		
+		// 生效centos7.x。从 CentOS 7.x 开始，CentOS 开始使用 systemd 服务来代替 daemon，原来管理系统启动和管理系统服务的相关命令全部由 systemctl命 令来代替。
+		systemctl restart network
+		
+		//生效centos8
+		nmcli connection			# 查看网卡信息，NAME对应的值就是"/etc/sysconfig/network-scripts/ifcfg-IFACE"这个文件中设置的NAME值
+		nmcli connection reload		# 先 reload
+		nmcli connection up eth1
+		ip a 
+		
+		参考资料：
+			service和systemctl的区别：https://www.jianshu.com/p/08103acd3484
+		
+	查看DNS是否生效，如果DNS生效，会在"/etc/resolv.conf"文件中有记录:			
+		
+		[root@localhost ~]#cat /etc/resolv.conf
+		# Generated by NetworkManager
+		nameserver 8.8.8.8
+		nameserver 114.114.114.114
+		nameserver 8.8.4.4		
+		
+		[root@localhost ~]#vi /etc/resolv.conf
+		# Generated by NetworkManager
+		nameserver 8.8.8.8
+		nameserver 114.114.114.114
+		nameserver 8.8.4.4
+		search baidu.com						# 添加 search 域，ping的时候会自动补全。
+		
+		// 这里为什么能ping通，因为会自动补全后面的"baidu.com"，"baidu.com" 就来自于"/etc/resolv.conf"文件中配置的搜索域！！
+		[root@localhost ~]#ping www
+		PING www.a.shifen.com (14.215.177.38) 56(84) bytes of data.
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=1 ttl=128 time=13.2 ms
+		^C
+		--- www.a.shifen.com ping statistics ---
+		1 packets transmitted, 1 received, 0% packet loss, time 1002ms
+		rtt min/avg/max/mdev = 9.019/11.104/13.189/2.085 ms
+		
+		[root@localhost ~]#ping www.baidu.com
+		PING www.a.shifen.com (14.215.177.38) 56(84) bytes of data.
+		64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=1 ttl=128 time=13.4 ms
+		^C
+		--- www.a.shifen.com ping statistics ---
+		1 packets transmitted, 1 received, 0% packet loss, time 1003ms
+		rtt min/avg/max/mdev = 11.228/12.331/13.434/1.103 ms
+		
+		参考资料：
+			/etc/resolv.conf 文件详解：	https://www.cnblogs.com/zhangmingcheng/p/6273513.html
+			ping www.baidu.com时出现www.a.shifen.com：	https://www.jianshu.com/p/8c318314f2f0
+			
+
+修改网卡名称: 在 centos7 上是根据内核识别硬件状态,自动添加网卡名称,如果有多台机器导致网卡名不一样,不能统一管理,所以需要改网卡名称!
+	一般网卡命名为 eth0, 如果有多个网卡,依次命名为 eth1、eth2 等，centos4、centos5 都是这个名称!
+	
+	// 在 GRUB_CMDLINE_LINUX 这行追加" net.ifnames=0" 
+	[root@localhost ~]#cat /etc/default/grub
+	GRUB_TIMEOUT=5
+	GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
+	GRUB_DEFAULT=saved
+	GRUB_DISABLE_SUBMENU=true
+	GRUB_TERMINAL_OUTPUT="console"
+	GRUB_CMDLINE_LINUX="crashkernel=auto rd.lvm.lv=centos/root rd.lvm.lv=centos/swap rhgb quiet"
+	GRUB_DISABLE_RECOVERY="true"
+	
+	
+	// 下面三种写法都可以修改
+	// sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s@"$@ net.ifnames=0"@' /etc/default/grub
+	// sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s#"$# net.ifnames=0"#' /etc/default/grub
+	[root@localhost ~]#sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s#(.*)"$#\1 net.ifnames=0"#' /etc/default/grub
+	
+	
+	// linux 修改开机启动参数后，使用grub2-mkconfig 命令使得参数设置有效，也就是为grub2生成其配置文件
+	// ubuntu 使用 "grub-mkconfig -o /boot/grub/grub.cfg >& /dev/null" 此命令
+	[root@localhost ~]#grub2-mkconfig -o /boot/grub2/grub.cfg						# "/etc/grub2.cfg"是"/boot/grub2/grub.cfg"的软衔接，所以也可以写成"grub2-mkconfig -o /etc/grub2.cfg"
+	
+	
+	// 创建 ifcfg-eth0, 如果原先网卡配置文件可以使用, 直接拷贝重命名就可以，然后 name 和 DEVICE 的值改为 eth0
+	[root@localhost ~]#cp /etc/sysconfig/network-scripts/ifcfg-ens33  /etc/sysconfig/network-scripts/ifcfg-eth0
+	
+	
+	// 重启系统生效
+	[root@localhost ~]#reboot
+	Connection to 192.168.32.101 closed by remote host.
+	Connection to 192.168.32.101 closed.
+	
+	
+	参考资料； 
+		Linux – Biosdevname & net.ifnames			https://blog.csdn.net/a746742897/article/details/119386926
+		CentOS 7下修改默认网卡名为eth0的两种方法	https://www.cnblogs.com/liangjingfu/p/9843477.html
+
+	问题：为什么centos7及以后的版本不沿用传统的网卡命名方式？
+	回答：因为传统网卡命名虽然简单，但在生产中删掉或添加一个新网卡，会带来网卡名的变化。网卡名变化，配置文件也就失效！！
+		  centos7及以后的版本的网卡名是通过硬件和网卡的类型来确认的，也就是说删掉或添加网卡不会动态改网卡名，能保证网卡名的稳定性！！
+		  但是生产中还是会用传统网卡命名方式，因为要确保所有的机器上的系统环境一样，这里管理简单，写脚本不用判断， 配置标准化才能实现自动化运维！！
+		  
+	
+
+nmcli 查看/修改网络设置，可以自动生成配置文件。nmcli 这个命令功能强大，但用的不多，因为工作中直接是把网卡写成配置文件"/etc/sysconfig/network-scripts/ifcfg-IFACE"，然后让配置生效就可以了！！
+	
+	//列出子命令
+	nmcli
+	
+	// 查看连接信息
+	nmcli connection     #列出网络配置，绿色的是正在生效的配置
+	
+	// 修改或添加网络配置文件后reload
+	nmcli connection reload
+	
+	// 给eth1这个网卡添加一个网络配置，iP地址自动获取
+	nmcli connection add con-name eth1-home ifname eth1 ipv4.method auto type ethernet	# 会自动生成"/etc/sysconfig/network-scripts/ifcfg-eth1-home"这个文件
+
+	// 使网络配置生效
+	nmcli connection up eth1-home	# 启用这个eth1-home这个配置，eth1-home是eth1这个网卡的配置，如果还有eth1还有其它配置，当启用eth1-home这个配置时，其它配置自动失效，相当于是切换网络配置！！
+
+	// 查看eth1-home这个网络配置的详细设置
+	nmcli connection show eth1-home 	
+	
+	// 删除名为eth1-home的这个网络配置
+	nmcli connection delete eth1-home		#删除这个网络配置，会删配置文件
+	
+	
+
+主机名：
+	// centos6的主机名配置文件
+	/etc/sysconfig/network
+	
+	// centos7及以上的主机名配置文件
+	/etc/hostname
+	
+	// 设置主机名，centos6不支持该命令，适用于centos7及以上
+	hostnamectl set-hostname  主机名
+	
+	
+hosts文件: 本地
+	/etc/hosts
+	
+	
+
+DNS 配置文件：	
+	[root@localhost ~]#cat /etc/resolv.conf
+	# Generated by NetworkManager
+	nameserver 8.8.8.8
+	nameserver 114.114.114.114
+	nameserver 8.8.4.4
+	
+	
+
+route 命令：查看并设置路由
+
+	// 查看路由表，系统默认会自动生成所在的网段路由
+	[root@localhost ~]#route
+	Kernel IP routing table
+	Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+	default         gateway         0.0.0.0         UG    100    0        0 eth0			# 系统自动生成的路由
+	192.168.32.0    0.0.0.0         255.255.255.0   U     100    0        0 eth0			# 系统自动生成的路由
+	
+	
+	// -n 表示数字化显示
+	// 这里显示的网关，实际上就是"/etc/sysconfig/network-scripts/ifcfg-IFACE"中配置的网关，如果有多个网卡启动，就会看到多个网关！！
+	[root@localhost ~]#route -n
+	Kernel IP routing table
+	Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+	0.0.0.0         192.168.32.2    0.0.0.0         UG    100    0        0 eth0			# 系统自动生成的路由
+	192.168.32.0    0.0.0.0         255.255.255.0   U     100    0        0 eth0			# 系统自动生成的路由
+	
+
+ip route ：替换route
+	
+	// 查看和管理路由
+	[root@localhost ~]#ip route
+	default via 192.168.32.2 dev eth0 proto static metric 100
+	192.168.32.0/24 dev eth0 proto kernel scope link src 192.168.32.100 metric 100	ip route 
+
+	// 删除路由，"ip route del "可以直接跟"ip route"命令查出来的行
+	ip route del default via 192.168.32.2 dev eth0 proto static metric 100 
+	
+	// 添加路由，"ip route add "可以直接跟"ip route"命令查出来的行
+	ip route add  选择行，加路由
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 网络路由和配置
+  路由的功能：把不同网段的主机连接起来。
+  工作原理：每个路由把收到的数据报文传递给下一个路由器，下一个路由器收到再接着往下传，传给下个路由器，......，直到把数据包交给最终的主机
+  路由器的核心：路由表，路由表负责选择路径
+				不是只有路由器才有路由表，任何一个和网络通讯的主机，比如windows、linux等，都有路由表。
+				路由表很重要，路由表如果错误，就会导致网络通讯错误！！
+				要和目标主机通讯，路由表的功能就是告诉源主机的数据包怎么到达目标主机，可以认为路由表就相当于地图
+
+
+5.1 路由表的组成，关键前四项：
+	Destination(目标网络)：目标主机所在的网络ID
+		当计算机收到数据报文，希望把这个数据包发送到某个目标主机上，这个目标的主机所在的网络的网络ID必须出现在路由表中！！
+		如果没有出现，就意味着计算机不知道如何把这个数据包给发送到目标主机上！！
+	Genmask(网络掩码)：
+	Gateway(网关)：指向下一个路由器且相邻的接口的IP，专业称呼叫"next hop(下一跳)"
+    Iface(接口)：从当前主机哪个网卡发出去
+	Flags(路由标记)：常用标记如下:
+		U ：Up. 
+		H ：路由至主机而不是网络。  
+		G ：路由至网关。 
+	Metric：路由距离，到达指定网络所需的中转数（linux 内核中没有使用）
+			假如有两条路，都可以到达目标主机，到底选择哪一条？这个时候就可以根据Metric来判断，Metric值越小说明优先级越高！！大部分情况，路由就一条路
+	Ref：路由项引用次数（linux 内核中没有使用）
+	Use：此路由项被路由软件查找的次数
+		
+	-----------------------------------------------------------------------------------------------------------------------------------------
+	/	主机1 <===================> (接口A1)路由器A(接口A2) <===================> (接口B1)路由器B(接口B2) <===================> 主机2       /
+	/				网络1										网络2 ||                          					网络3					/			
+	/																  ||                                                                    /
+	/																  ||                                                                    /
+	/																  ||                                                                    /
+	/																  ||			   		网络4	                                        /
+	/														(接口c1)路由器(接口c2)  <===================>  其它主机                         /
+	/	                                                                                                                                    /
+	/	如果主机1发一个数据包到主机2，对于主机1来说，接口A1就是主机1的网关，接口B1就是路由器A的网关！！										/
+	/ 	主机1的网络和目标主机2的网络没有直连，所以需要通过路由器连接起来 																	/
+	-----------------------------------------------------------------------------------------------------------------------------------------											  
+	
+	
+	// 查看路由表
+	[ec2-user@ip-172-31-32-113 ~]$ route -n
+	Kernel IP routing table
+	Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+	0.0.0.0         172.31.32.1     0.0.0.0         UG    0      0        0 eth0		# 默认路由，表示的是到任意网段的任意地址的路由。默认路由的特点是用 0.0.0.0 表示目的网段，掩码也是 0.0.0.0
+	169.254.169.254 0.0.0.0         255.255.255.255 UH    0      0        0 eth0		# Gateway为 0.0.0.0 或者* 表示不需要路由，目标地址和自己属于同一个二层网络，通过ARP协议获取目标的MAC地址后通信，不需要网关的转发。
+	172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0		# 一些虚拟网卡 Gateway 为 0.0.0.0，比如 docker0，表示 不需要路由。
+	172.31.32.0     0.0.0.0         255.255.240.0   U     0      0        0 eth0
+    
+	注意：
+		"Gateway为 0.0.0.0 或者* 表示不需要路由......",不需要路由并不是没有路由，这里定义了目标地址和自己属于同一个二层网络的时候的数据包走向。所以这里也相当于是个路由！！
+		
+		
+	
+	// windows 查看路由表的命令
+	route print
+	
+	
+5.2 实践：实现静态路由
+		  静态路由适合小网络
+			
+	需求：在VMware中开启4台Linux主机、分别为 A、R1、R2、B；创建三个网络，分别为 net8、net1、net0； R1和R2作为路由，要实现A能连接到B ，如下图：	
+	------------------------------------------------------------------------------------------------------------------------------------
+	/	A(eth0) <===================> (eth0)R1(eth1) <===================> (eth0)R2(eth1) <===================> (eth0)B                /
+	/	|							   		|									 |                             		  |                /
+	/	|----------net8(NAT模式)------------|-----------net1(仅主机模式)---------|------------net0(桥接网络)----------|                /
+	/	                                                                                                                               /
+	/                                                                                                                                  /
+	/	A: eth0 NAT模式                                                                                                                /
+	/		eth0: 10.0.0.123/24                                                                                                        /
+	/		Gateway: 10.0.0.200                                                                                                        /
+	/	                                                                                                                               /
+	/	R1: eth0 NAT模式,eth1 仅主机模式                                                                                               /
+	/		eth0: 10.0.0.200/24                                                                                                        /
+	/		eth1: 192.168.10.200/24                                                                                                    /
+	/		                                                                                                                           /
+	/	R2: eth0 仅主机模式, eth1 桥接模式                                                                                             /
+	/		eth0: 192.168.10.201/24                                                                                                    /
+	/		eth1: 172.18.0.200/24                                                                                                      /
+	/	                                                                                                                               /
+	/	B: eth0 桥接模式                                                                                                               /
+	/		eth0: 172.18.0.123/24                                                                                                      /
+	/		Gateway: 172.18.0.200                                                                                                      /
+	------------------------------------------------------------------------------------------------------------------------------------	
+	
+	第1步：网络配置
+	
+		A主机网络配置：/etc/sysconfig/network-scripts/ifcfg-eth0
+			DEVICE=eth0			
+			NAME=eth0			
+			BOOTPROTO=static	
+			IPADDR=10.0.0.123
+			PREFIX=24			
+			GATEWAY=10.0.0.200
+			DNS1=202.96.128.86			# 如果只是单纯实现路由效果，DNS可以不用配置
+			DNS2=202.96.134.33
+			ONBOOT=yes			
+			
+			// 使网络配置生效
+			service network restart		# 这个命令适合centos6、7
+			ip a
+			route -n					# 查看网关
+			
+			
+		R1主机网络配置：/etc/sysconfig/network-scripts/ifcfg-eth0 ; /etc/sysconfig/network-scripts/ifcfg-eth1
+			// ifcfg-eth0， 因为这里是路由器，所以用不着配网关，这里的数据都是通过路由来转发！
+			DEVICE=eth0			
+			NAME=eth0			
+			BOOTPROTO=static	
+			IPADDR=10.0.0.200
+			PREFIX=24			
+			ONBOOT=yes	
+			
+			
+			// ifcfg-eth1
+			DEVICE=eth1			
+			NAME=eth1			
+			BOOTPROTO=static	
+			IPADDR=192.168.10.200
+			PREFIX=24			
+			ONBOOT=yes	
+		
+			// 使网络配置生效
+			service network restart
+			ip a
+		
+		
+		R2主机网络配置：/etc/sysconfig/network-scripts/ifcfg-eth0 ; /etc/sysconfig/network-scripts/ifcfg-eth1
+			// ifcfg-eth0， 因为这里是路由器，所以用不着配网关，这里的数据都是通过路由来转发！
+			DEVICE=eth0			
+			NAME=eth0			
+			BOOTPROTO=static	
+			IPADDR=192.168.10.201
+			PREFIX=24			
+			ONBOOT=yes	
+			
+			
+			// ifcfg-eth1
+			DEVICE=eth1			
+			NAME=eth1			
+			BOOTPROTO=static	
+			IPADDR=172.18.0.200
+			PREFIX=24			
+			ONBOOT=yes	
+		
+			// 使网络配置生效
+			service network restart
+			ip a
+			
+
+		B主机网络配置：/etc/sysconfig/network-scripts/ifcfg-eth0
+			DEVICE=eth0			
+			NAME=eth0			
+			BOOTPROTO=static	
+			IPADDR=172.18.0.123
+			PREFIX=24			
+			GATEWAY=172.18.0.200
+			DNS1=202.96.128.86			# 如果只是单纯实现路由效果，DNS可以不用配置
+			DNS2=202.96.134.33
+			ONBOOT=yes		
+			
+			// centos8用下面命令使网络配置生效
+			nmcli connection reload
+			nmcli connection up eth0
+			route -n
+	
+	
+	第2步：R1和R2添加路由信息，直连的网段不用添加路由信息
+		
+		// 配置R1的路由表： 对于R1来说，net0不是直连的网段
+		route add -net 172.18.0.0/24 gw 192.168.10.201 dev eth1
+		route -n						#查看是否配置成功
+		# 开启ip_forward(路由转发功能)。因为R1不是真正的路由器，真正的路由器默认就支持 ip_forward
+		# linux主机做路由有个特性，收到数据包会做目标数据包地址的检查，目标地址是自己的，那就收，如果不是就抛弃
+		sysctl -a | grep ip_forward		#有一个带"ip_forward"字样的内核参数可以开启路由转发功能，如果不知道参数的名字就搜索一下 				
+		vim /etc/sysctl.conf			#把参数配置到"/etc/sysctl.conf"，写进文件才能永久保存 			
+			net.ipv4.ip_forward=1		#0表示不转发，1表示转发
+		sysctl -p						#使配置生效
+		sysctl -a | grep ip_forward		#确认配置是否成功						
+								
+								
+		// 配置R2的路由表：对于R2来说，-net8不是直连的网段
+		route add -net 10.0.0.0/24 gw 192.168.10.200 dev eth0		# 10.0.0.0 表示整个网段。"10.0.0.0/24"中的最后一个"0"是主机号,对应二进制为"00000000",因为主机号全0表示本网络的网络地址,所以表示整个网段
+		route -n
+		vim /etc/sysctl.conf
+			net.ipv4.ip_forward=1
+		sysctl -p
+	
+	
+	第3步：
+	
+		// 主机A ping 主机B
+		ping 172.18.0.123
+
+		// R1上抓icmp的包
+		tcpdump -i eth0 -nn icmp		# 查看 R1 收到数据包没有
+		tcpdump -i eth1 -nn icmp		# 查看 R1 转发数据包没有
+
+		// R2上抓icmp的包
+		tcpdump -i eth0 -nn icmp
+		tcpdump -i eth1 -nn icmp
+	
+
+
+5.3 动态路由：动态路由是指路由器能够自动地建立自己的路由表，并且能够根据实际情况的变化适时地进行调整。大型网络一般是通过路由协议实现动态路由！！
+	
+	原理：路由器安装的有路由软件，通过守护进程获取动态路由。比如安装quagga包,通过命令vtysh配置，支持多种路由协议：
+		RIP：Routing Information Protocol，路由信息协议，原理是根据路由节点的数量选择最佳路径，基本上不怎么用，
+		OSPF：Open Shortest Path First，开放式最短路径优先，原理是根据带宽和节点等综合考虑选择最佳路径，企业内部用的比较多
+		BGP：Border Gateway Protocol，边界网关协议，互联网上用
+
+
+
+5.4 路由总结
+	
+	基于网络的路由：静态路由和动态路由称为称为基于网络的路由，因为这个路由的功能是使数据包到达某个网段！！
+	基于主机的路由：是数据包到达某个主机的路由。一般很少加这种路由，因为网络里面有多少台主机就需要加多少个路由！！
+		// 示例：添加到主机的路由
+		route add -host 192.168.1.2 dev eth0
+		route add -host 10.20.30.148 gw 10.20.30.40
+	
+	
+	默认路由：
+		当路由器处于网络边界的时候，比如一个路由器连接了公司内部的交换机，交换机连接了很多终端，这些终端上网都要从路由器的另外一个接口发出去，路由器的左边就是整个网络的边界(就是没有其它网络)。
+		互联网有大量网段，不是每个网段都要加到R1路由，R1路由和互联网连接只有一个出口i2。因为只有一个出口，就可以加默认路由 0.0.0.0/0 ，这个地址表示未知网络，也就是说，只要是未知网络就从i2这个接口发出，然后交给下一个路由器。
+		默认路由表示的是如果不知道的网络，就按照默认路由的路径来转发！！ 如下图：
+			-----------------------------------------------------------------------------------------------------
+			/							   !                                                                   /
+			/		交换机 <<============>> (i1)路由器R1(i2) <<============>> 路由器 <<============>> 其它网络 /
+			/		/|\                    !                                                                   /
+			/	   / | \                   !                                                                   /
+			/	  /	 |	\                  !                                                                   /
+			/	 /   |	 \                 !                                                                   /
+			/  主机  主机 主机           网络边界                                                              /
+			-----------------------------------------------------------------------------------------------------
+	
+	
+	路由不仅跨网段通讯很关键，不跨网段通讯也很关键，即使两个机器在同一网段，如果没有路由，照样不能通！！没有路由即使配置了IP都不通，原因就是数据包就是靠路由来发送，没有路由就不知道怎么到达远程主机！！
+		
+		实验：两台主机 192.168.32.100 和 192.168.32.101
+		
+		// 下面命令在 192.168.32.100 主机上操作：
+		[root@localhost ~]#route -n
+		Kernel IP routing table
+		Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+		0.0.0.0         192.168.32.2    0.0.0.0         UG    100    0        0 eth0		# 默认路由
+		192.168.32.0    0.0.0.0         255.255.255.0   U     100    0        0 eth0		# Gateway为 0.0.0.0 或者* 表示不需要路由，目标地址和自己属于同一个二层网络，通过ARP协议获取目标的MAC地址后通信，不需要网关的转发。
+																							# 注意：不需要路由并不是没有路由，这里定义了目标地址和自己属于同一个二层网络的时候的数据包走向。所以这里也相当于是个路由！！
+	
+		[root@localhost ~]#ip route
+		default via 192.168.32.2 dev eth0 proto static metric 100
+		192.168.32.0/24 dev eth0 proto kernel scope link src 192.168.32.100 metric 100
+	
+		// 删除路由，为什么删除两个？因为路由表中定义的两种路由方式都能使数据包到达同网段的主机
+		[root@localhost ~]#ip route del default via 192.168.32.2 dev eth0 proto static metric 100
+		[root@localhost ~]#ip route del 192.168.32.0/24 dev eth0 proto kernel scope link src 192.168.32.100 metric 100
+		
+		// 测试, 数据包发送失败
+		[root@localhost ~]#ping 192.168.32.101
+		ping: connect: Network is unreachable
+		
+		
+		// 在 192.168.32.101 主机上测试, 数据包同样发送失败
+		[root@localhost ~]#ping 192.168.32.100
+		PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.
+		From 192.168.32.101 icmp_seq=1 Destination Host Unreachable
+		......省略
+	
+
+	"ip route add"和"route add"都是临时改变路由信息，永久保存需要写到配置文件"/etc/sysconfig/network-scripts/route-IFACE"，有两种风格：
+		
+		风格1："TARGET via GW" ,如下：
+			10.0.0.0/8 via 172.16.0.1
+		
+		风格2：每三行定义一条路由，这种风格不建议用
+			ADDRESS#=TARGET
+			NETMASK#=mask
+			GATEWAY#=GW
+	
+		
+		范例: CentOS7 创建/etc/sysconfig/static-routes文件添加持久静态路由。这个方法不建议使用，因为 centos8 取消了 network
+			  	
+			
+			#查看network脚本调用的路由文件
+			#从脚本可以看到，如果"/etc/sysconfig/static-routes"文件存在，"/etc/init.d/network"脚本就会使用到。
+			#所以实际上"/etc/sysconfig/static-routes"这个文件是通过network服务脚本来实现的。centos8取消了network服务，所以centos8不能使用这种方法！！
+			[root@centos7 ~]#grep -A 3 "/etc/sysconfig/static-routes" /etc/init.d/network
+				if [ -f /etc/sysconfig/static-routes ]; then
+					if [ -x /sbin/route ]; then
+						grep "^any" /etc/sysconfig/static-routes | while read ignore args ; do
+							/sbin/route add -$args
+						done
+					else
+	
+			#查看当前路由
+			[root@centos7 ~]#route -n		
+			
+
+			#创建文件
+			[root@centos7 ~]#vim /etc/sysconfig/static-routes
+			[root@centos7 ~]#cat /etc/sysconfig/static-routes
+			any net 192.168.1.0/24 gw 10.0.0.254
+			any net 192.168.2.0/24 gw 10.0.0.254
+			
+			// 重新启动网络服务
+			[root@centos7 ~]#systemctl restart network	
+				
+			#确认路由生效
+			[root@centos7 ~]#route -n	
+			
+	
+5.5 路由追踪的三个工具
+	// mtr 命令可以看到数据包经过了哪些路由器，
+	mtr -y install mtr	
+	mtr 20.205.243.166					# mtr 可以直接跟ip或路由
+	mtr www.github.com
+	
+	// 路由追踪
+	tracepath 20.205.243.166			# tracepath 可以直接跟ip或路由
+	tracepath www.github.com
+
+	// 路由追踪
+	yum -y install traceroute
+	traceroute 20.205.243.166			# traceroute 可以直接跟ip或路由
+	traceroute www.github.com
+
+
+	// window下追踪路由命令 tracert 
+	PS C:\Users\Aaron J WU> tracert 119.41.210.239
+
+	通过最多 30 个跃点跟踪到 119.41.210.239 的路由
+
+	  1     4 ms     4 ms     3 ms  192.168.3.1
+	  2     6 ms     7 ms     4 ms  MLD.MLD [192.168.1.1]
+	  3     8 ms    25 ms     8 ms  100.64.0.1
+	  4    19 ms    37 ms    12 ms  121.8.134.189
+	  5    10 ms    10 ms    12 ms  183.56.34.37
+	  6    22 ms    31 ms    20 ms  218.77.137.178
+	  7    23 ms    19 ms    20 ms  218.77.136.154
+	  8    30 ms    23 ms    20 ms  124.225.173.98
+	  9    31 ms    18 ms    21 ms  119.41.210.239
+
+	跟踪完成。
+	PS C:\Users\Aaron J WU>
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 多网卡绑定 Bonding 和 Network Teaming
+	bonding 实现多网卡绑定是比较老的方案；
+	centos7以及之后的版本通过"Network Teaming(网络组)"实现和Bonding类似的功能； 
+	
+	工作中为了确保服务的可靠，通常都是两份网卡、两份cpu，两份服务器，机房跨异地等措施!!
+	
+6.1 多网卡 Bonding。多网卡绑定：将多块网卡绑定同一IP地址对外提供服务，可以实现高可用或者负载均衡。
+    注意：直接给两块网卡设置同一IP地址是不可以的。通过 Bonding，虚拟一块网卡对外提供连接，物理网卡的被修改为相同的MAC地址
+
+	bond 聚合链路共7种工作模式：0-6 Mode
+		mod=0 ，即：(balance-rr) Round-robin policy（轮询）聚合口数据报文按包轮询从物理接口转发。特点：容错，增加带宽
+		mod=1，即： (active-backup) Active-backup policy（主-备份策略）只有Active状态的物理接口才转发数据报文。特点：容错
+		其它模式查看PDF！！
+		
+		说明：
+			常用的模式为 0,1,3,6
+			active-backup(mode 1)、balance-tlb(mode 5) 和 balance-alb(mode 6) 模式不需要交换机的任何特殊配置!!
+			mode 0、2、3、4绑定模式需要配置交换机以便整合链接。如：Cisco 交换机需要在模式 0、2 和 3 中使用 EtherChannel，但在模式4中需要 LACP和 EtherChannel
+
+	
+6.2 Bonding 配置
+	
+方式1：手动创建配置文件
+
+	// 第1步：创建网络配置文件
+		// 创建bonding设备的配置文件 "/etc/sysconfig/network-scripts/ifcfg-bond0"
+		NAME=bond0
+		TYPE=bond
+		DEVICE=bond0
+		BOOTPROTO=none
+		IPADDR=10.0.0.100
+		PREFIX=8
+		#miimon指定链路监测时间间隔。如果miimon=100，那么系统每100ms 监测一次链路连接状态，如果有一条线路不通就转入另一条线路
+		#"fail_over_mac=1"在虚拟环境（虚拟网卡）下用，但也不一定好用，虚拟环境主备模式不一定能切换！！ 正常环境（物理网卡）不用加这个选项！！
+		BONDING_OPTS="mode=1 miimon=100 fail_over_mac=1"
+		
+		// 网卡配置"/etc/sysconfig/network-scripts/ifcfg-eth0"
+		NAME=eth0
+		DEVICE=eth0
+		BOOTPROTO=none
+		MASTER=bond0
+		SLAVE=yes
+		ONBOOT=yes
+		
+		// 网卡配置"/etc/sysconfig/network-scripts/ifcfg-eth1"
+		NAME=eth1
+		DEVICE=eth1
+		BOOTPROTO=none
+		MASTER=bond0
+		SLAVE=yes
+		ONBOOT=yes
+	
+	// 第2步：查看bond0状态：
+	cat /proc/net/bonding/bond0
+	
+	// 第3步：测试，其它主机 ping 10.0.0.100
+	ping 10.0.0.100
+	
+	// 第4步：删除bond0
+	ifconfig bond0 down
+	rmmod bonding
+	
+
+方式2：nmcli实现 Bonding (利用 nmcli 自动生成配置文件)
+	
+	#添加Bonding接口
+	nmcli con add type bond con-name mybond0 ifname bond0 mode active-backup
+	ipv4.method manual ipv4.addresses 10.0.0.100/24
+	
+	#添加从属接口，注：如无为从属接口提供连接名，则该名称是接口名称加类型构成
+	nmcli con add type bond-slave ifname eth0 master bond0
+	nmcli con add type bond-slave ifname eth1 master bond0
+	
+	#要启动绑定，则必须首先启动从属接口
+	nmcli con up bond-slave-eth0
+	nmcli con up bond-slave-eth1
+	
+	#启动绑定
+	nmcli con up mybond0
+	
+	#测试，其它主机 ping 10.0.0.100
+	ping 10.0.0.100
+	
+	#删除 mybond0 这个Bonding接口，以及从属接口
+	nmcli connection delete mybond0
+	nmcli connection delete bond-slave-eth0
+	nmcli connection delete bond-slave-eth1
+	
+	
+6.3 网络组(Network Teaming)。适用于centos7和之后的版本。功能和Bonding一样，只不过内核实现变了，使用的命令也变了。
+	
+	原理：
+		网络组是将多个网卡聚合在一起方法，从而实现冗错和提高吞吐量；
+		网络组不同于旧版中bonding技术，提供更好的性能和扩展性；
+		网络组由内核驱动和teamd守护进程实现；
+	
+	特点：
+		启动网络组接口不会自动启动网络组中的port接口
+		启动网络组接口中的port接口总会自动启动网络组接口
+		禁用网络组接口会自动禁用网络组中的port接口
+		没有port接口的网络组接口可以启动静态IP连接
+		启用DHCP连接时，没有port接口的网络组会等待port接口的加入
+	
+	多种方式 runner ：runner 相当于 Bonding 的工作模式
+		broadcast
+		roundrobin
+		activebackup
+		loadbalance
+		lacp (implements the 802.3ad Link Aggregation Control Protocol)
+		
+	
+	网络组示例：
+		// 创建网络组，并且使用 loadbalance 这种 runner，创建好了就能ping通
+		nmcli con add type team con-name myteam0 ifname team0 config '{"runner":{"name": "loadbalance"}}' ipv4.addresses 192.168.1.100/24 ipv4.method manual
+		
+		// 把网卡 eth1 和 eth1 添加成为 team0 的成员
+		nmcli con add con-name team0-eth1 type team-slave ifname eth1 master team0
+		nmcli con add con-name team0-eth2 type team-slave ifname eth2 master team0
+		
+		// 启用网络组
+		nmcli con up myteam0
+		nmcli con up team0-eth1
+		nmcli con up team0-eth2
+		
+	
+		// 查看网络组的配置（模式、从属网卡等）
+		teamdctl team0 state
+		ping -I team0 192.168.0.254
+		
+		
+		// 测试。当断掉一个网卡的连接，仍然能ping通；但是在VMware上模拟不出来这种场景，在生产中都是拿物理机来配
+		ping 192.168.1.100
+		
+		
+		// 删除网络组
+		nmcli connection del team0-eth1
+		nmcli connection del team0-eth2
+		nmcli connection del myteam0
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 网桥实现和网络工具
+
+7.1 网桥的工作原理和交换机一样，内部有块缓存，里面放了接口和mac的对应关系。交换机和网桥都不用配IP地址
+	
+	重要：
+		网桥连接两个一样网段的网络
+		路由器连接的是两个不同网段的网络
+		
+	桥接：把一台机器上的若干个网络接口“连接”起来。其结果是，其中一个网口收到的报文会被复制给其他网口并发送出去。以使得网口之间的报文能够互相转发。
+	      网桥就是这样一个设备，它有若干个网口，并且这些网口是桥接起来的。与网桥相连的主机就能通过交换机的报文转发而互相通信。
+		  
+	桥接原理：
+		----------------------------------------------------------------------------------------------------
+		/	----------------------------------   					----------------------------------     /     
+		/	|                                |						|								 |     /
+		/	|               S1               |						|				S2				 |	   /
+		/	|                                |						|								 |     /
+		/	------eth0-----eth1-----eth2------						------eth0-----eth1-----eth2------     /
+		/			|		|		  |									   |		|		  |			   /	
+		/			|		|		  |									   |		|		  |            /
+		/			|		|	      |------------------------------------|		|		  |            /
+		/			A       B                                                       C         D            /
+		----------------------------------------------------------------------------------------------------
+		
+		主机A发送的报文被送到交换机S1的eth0口，由于eth0与eth1、eth2桥接在一起，故而报文被复制到eth1和eth2，并且发送出去，然后被主机B和交换机S2接收到。而S2又会将报文转发给主机C、D
+
+
+7.2 使用主机模拟模拟网桥：	
+	
+	如下图：
+		主机A <<==========>>VMNet1(仅主机模式)<<==========>> (eth0)主机模拟网桥(eth1) <<==========>> VMNet8(NAT模式) <<==========>> 主机B
+	
+	环境：
+		主机A：10.0.0.6
+		主机B：10.0.0.8
+		VMNet1 是仅主机模式，VMNet8是NAT模式，相当于两个网络是物理隔绝，但是两个网络的网段一样！！
+		模拟网桥的主机有两块网卡，eth0 连接 VMNet1，eth1连接VMNet8。
+		
+	效果：主机A 能 ping 通主机B
+
+
+	实践1：创建临时网桥(不能保存，关机或重启会失效)
+		
+		// 以下操作在模拟网桥的主机上
+		yum  --disablerepo=* --enablerepo=base install -y bridge-utils		# bridge-utils 这个工具在centos6、7有，centos8已经没有了
+		
+		rpm -ql  bridge-utils
+		
+		// brctl 网桥工具, addbr 表示创建网桥
+		brctl addbr br0 		# 创建一个名为br0的网桥
+		
+		// 查看网桥 
+		brctl show
+		
+		// 把两个网卡加入到创建的桥接
+		brctl addif br0 eth0			# 如果是通过终端工具连接到主机，运行这个命令后会断开连接，可以直接在虚拟机上操作
+		brctl addif br0 eth1
+	
+		ip a					# 可以看到刚创建的网桥的状态是down，说明这个网桥还没有启用
+		
+		ip link set br0 up		# 启动网桥
+		
+		ip a					# 看是否启动成功
+		
+		// 测试，能ping通说明成功
+		ping 10.0.0.8			
+		
+		// 删除模拟网桥的主机上的 eth0 和 eth1 的 IP地址，但是桥接不受影响，仍然是通的，所以IP地址和桥接没有关系
+		ifconfig eth0  0
+		ifconfig eth1  0
+		
+		// 开启 STP 协议
+		brctl stp br0 on
+		
+		brctl show
+		
+		
+	实践2：把网桥配置写进文件，永久保存，关机或重启不会失效。使用nmcli实现网桥，nmcli 命令会自动生成配置文件
+		
+		#1创建网桥
+		nmcli con add type bridge con-name br0 ifname br0
+		nmcli connection modify br0 ipv4.addresses 10.0.0.100/24 ipv4.method manual		# 加IP地址是为了终端可以连接到主机，不是为了网桥的功能，网桥不需要IP地址！！
+		nmcli con up br0
+		
+		#2加入物理网卡
+		nmcli con add type bridge-slave con-name br0-port0 ifname eth0 master br0
+		nmcli con add type bridge-slave con-name br0-port1 ifname eth1 master br0
+		nmcli con up br0-port0
+		nmcli con up br0-port1
+		
+		#3查看网桥配置文件
+		cat /etc/sysconfig/network-scripts/ifcfg-br0
+		DEVICE=br0
+		STP=yes
+		TYPE=Bridge
+		BOOTPROTO=static
+		IPADDR=10.0.0.100
+		PREFIX=24
+
+		cat /etc/sysconfig/network-scripts/ifcfg-br0-port0
+		TYPE=Ethernet
+		NAME=br0-port0
+		DEVICE=eth0
+		ONBOOT=yes
+		BRIDGE=br0
+		UUID=23f41d3b-b57c-4e26-9b17-d5f02dafd12d
+
+		#4安装管理软件包：
+		yum install bridge-utils
+		brctl show
+
+		#5删除br0
+		nmcli con down br0
+		rm /etc/sysconfig/network-scripts/ifcfg-br0*
+		nmcli con reload		
+		
+
+7.3 交换机回环：
+	具有管理功能的交换机可以解决回环问题！！
+	在生产中有可能出现如下图回环，为了容错，故意连起来形成回环，连起来是为了防止线路故障，比如下图L1、L2、L3任何一条线路断开，都可以选择其它线路！！
+					
+					交换机
+					/	 \
+				   /	  \
+				L1/	       \L2
+			     /	        \
+				/	 L3      \
+			交换机----------交换机
+	
+	在交换机上有种技术叫做STP(Spanning Tree Protocol 生成树协议),能解决回环问题。
+	原理: 在每个交换机上开启STP功能，会自动通过一种算法把回环中的某一个接口禁用(逻辑上的禁用)。也就是说发现回环就自动选择一个接口禁用，禁用后就打破了回环！！
+		  如果在通讯的过程了发现某一条线路出了故障，STP会自动发现，然后把禁用的接口再打开!! 这些过程通过交换机的内部设置自动实现，只需要开启STP协议即可！！
+		  如果交换机上某个网卡被禁用了，那个网卡的灯是黄色的。
+			
+			
+7.4 网络测试诊断工具
+
+	fping 测试网络通畅的命令，ping命令的增强版，可以实现网段的ping，可以同时ping两个地址 
+		
+		yum -y install fping
+		
+		// -g 选项可以指定网段或地址范围
+		fping -g 10.0.0.0/24
+		
+		// 同时ping两个地址 
+		fping -g 10.0.0.5 10.0.0.10
+		
+	tcpdump 抓包工具
+	
+	nmap 扫描工具，探测主机是否存活，探测网络连通性，黑客常用这个工具
+		
+		// 扫描 10.0.0.1 到 10.0.0.10的主机，存活显示UP，不存活不显示
+		nmap -sP 10.0.0.1-10
+		
+	tc 流量控制工具
+		tc qdisc add dev eth0 root netem loss 50%
+		tc qdisc add dev eth0 root netem delay 1000ms
+		tc qdisc show dev eth0
+		tc qdisc del
+		
+		
+		
+网络测试诊断工具列表：
+	测试网络连通性
+		ping
+		fping
+	显示正确的路由表
+		ip route
+		route
+	跟踪路由
+		traceroute
+		tracepath
+		mtr
+	确定名称服务器使用
+		nslookup
+		host
+		dig
+	抓包工具
+		tcpdump
+		wireshark
+	安全扫描工具
+		nmap
+		netcat		# 网络界的瑞士军刀，即nc
+	流量控制工具
+		tc
+		
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+扩展 ：
+
+1 VMware中网络桥接模式、NAT模式、仅主机(Host Only)模式的区别
+	
+	桥接模式：虚拟机直接连接路由器，与物理机是对等地位（桥接就是把两个网络用网桥连接起来 ）
+	NAT模式：虚拟机借助物理机进行路由器联网
+	仅主机模式(Host Only)：不能联网，只能Ping通虚拟机。虚拟机之间能通，虚拟机和物理机能通，不能通外网
+	
+	不管是桥接、NAT、仅主机模式，原理都是一样的。Vmware内部虚拟出"集线器HUB"这样的设备，虚拟主机就连接到这个"集线器HUB"上，然后这个HUB再连到虚拟出来的网卡。如下图：
+		
+		虚拟主机1 
+          	   \
+				>--------------> 虚拟的集线器HUB_VMnet1-------------->  VMware虚拟的VMnet1(仅主机)网卡       
+			   /
+		虚拟主机2
+
+
+		虚拟主机3 
+          	   \
+				>--------------> 虚拟的集线器HUB_VMnet8 -------------->  VMware虚拟的VMnet8(NAT模式) --------------> 路由器,连到外网   
+			   /
+		虚拟主机4
+
+
+		虚拟主机5
+          	   \
+				>--------------> 虚拟的集线器HUB_VMnet0(桥接) --------------> 主机物理网卡Lan  --------------> 路由器,连到外网     
+			   /
+		虚拟主机6		
+		
+		主机物理网卡连接到"虚拟的集线器HUB_VMnet0"，如果虚拟机的网卡工作在桥接模式下，就会接到"虚拟的集线器HUB_VMnet0"这个Hub
+		
+
+2 越精确的路由优先级越高
+
+	目标主机IP：10.0.0.100
+	
+	路由：
+		0.0.0.0/0			#默认路由
+		10.0.0.0/16			#网络路由
+		10.0.0.0/24			#网络路由
+		10.0.0.100/32		#主机路由
+
+	当数据包发往 10.0.0.100，路由的选择优先级为：
+		10.0.0.100/32 > 10.0.0.0/24 > 10.0.0.0/16 > 默认路由
+		
+		
+3. 网关(GW)概念
+	如果目标网络和当前设备同一网段，GW为空；
+	如果目标网络和当前设备不在同一网段，下一个路由器临近当前设备的接口IP；
+	
+	在生产中，网关地址是由网络工程师规划网络的时候提前在路由器中配置的，使用的时候按照网络工程师给的网络拓扑图就可以找到网关地址！！
+	
+	网关地址一般都是拿网段的两头IP(最大的和最小的IP)来作为网关地址。比如"10.0.0.0/24"这个网段，"10.0.0.0"这个地址表示整个网段，10.0.0.255 表示广播，这两个地址除外，"10.0.0.1"和"10.0.0.254"一般习惯性作为网关地址！！
+	
+
+4. 不仅是路由器需要路由表，任何一个linux、windows、或其他联网机器来讲，只要连接外网都需要路由表！！		
+	
+	[root@localhost ~]#cat /etc/sysconfig/network-scripts/ifcfg-eth0
+	TYPE=Ethernet
+	PROXY_METHOD=none
+	BROWSER_ONLY=no
+	BOOTPROTO=static
+	DEFROUTE=yes
+	IPV4_FAILURE_FATAL=no
+	IPV6INIT=yes
+	IPV6_AUTOCONF=yes
+	IPV6_DEFROUTE=yes
+	IPV6_FAILURE_FATAL=no
+	IPV6_ADDR_GEN_MODE=stable-privacy
+	NAME=eth0
+	UUID=9b0be3d1-0b14-4400-b04c-0ace5187af24
+	DEVICE=eth0
+	ONBOOT=yes
+	IPADDR=192.168.32.100
+	GATEWAY=192.168.32.2	# 网卡的网关IP就是为了来添加默认路由，如果默认路由丢了，这个网关也就没意义了。网卡的网关IP是连接这个网卡的路由器的临近当前网卡的接口IP；
+	NETMASK=255.255.255.0
+	DNS1=8.8.8.8
+	DNS2=114.114.114.114
+	DNS3=8.8.4.4
+	
+	[root@localhost ~]#route -n
+	Kernel IP routing table
+	Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+	0.0.0.0         192.168.32.2    0.0.0.0         UG    100    0        0 eth0		# 默认路由，默认路由的网关地址实际上就是主机的网卡的网关
+	192.168.32.0    0.0.0.0         255.255.255.0   U     100    0        0 eth0
+	
+	
+	可以把路由表中 Destination 当作是筛选目标网络，筛选完成后就把数据包发往对应的网关(路由器临近当前设备的接口)，然后通过路由器转发出去！！
+
+
+5.其它资料：
+	网络设备：中继器、集线器、网桥、交换机、路由器、网关的超全总结：https://zhuanlan.zhihu.com/p/453443571?utm_id=0
+	
+	
+	

@@ -1,0 +1,1405 @@
+1 逻辑卷（LVM ：Logical Volume Manager）工作原理和创建
+
+1.1 逻辑卷特性 
+	动态扩/缩容！
+	逻辑卷 允许物理磁盘分区、大小都可以不同！
+	多块硬盘或者分区给逻辑组合在一起名为位卷组（VG ：Volume Group），卷组的空间就是多块硬盘或者分区的总容量，这就是逻辑上的一个大硬盘！
+	卷组要提供服务的话，还需要分成逻辑卷（LV：logic Volume），也就是说逻辑卷的空间是从卷组中取出来的！
+	流程 ：多块硬盘或者分区创建为物理卷（PV）==> 物理卷组合为卷组（VG） ==> 卷组（VG）分配为逻辑卷（LV）==> 给逻辑卷添加文件系统（xfs或ext）==> 挂载到目录 ==> 用户使用
+	
+	为了好理解,可以认为：
+		VG是个逻辑上的大硬盘，LV是这个大硬盘上分区，用户真正用的是LV ！！
+		LV来源于VG，VG的空间来自于真正的磁盘或者分区；
+	
+	创建好LV后，创建文件系统（ext4、xfs等），挂载！ 用起来和普通分区没区别，因为用户看到的是文件夹！
+	
+	
+	比如现在有个GV是10T，分了5T的LV，挂载到 /data 目录下，将来 /data 空间不够用，这个时候就可以利用LV的"动态扩容技术"轻松的把5T扩容到10T，这个过程不是很复杂，甚至一条命令就搞定，这一条命令的运行过程中还不影响用户使用！
+	甚至还可以写一个脚本，监控LV的空间利用量，达到限定值(比如80%)就自动运行脚本扩容！！
+	如果VG用完了，就加一块硬盘，这时VG就扩大了，所以用了 LVM，生产中空间不足的问题就解决了！
+	VG还可以缩减，但是缩减用的不太多，而且还有风险！
+	逻辑卷的性能也是很不错的！！！
+	
+		
+1.2 实现过程
+
+步骤1：环境准备
+	
+	创建两个10G的硬盘，假如两个硬盘分别为 sdb 和 sdc， 用sdb的一个5G分区和sdc组成一个卷组
+		sdb 创建一个 5G 的分区（注意：Linux LVM 分区的 GUID 是 8e00），不要添加文件系统
+		sdc 不要分区
+	
+	[root@localhost ~]#lsblk
+	NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+	sda               8:0    0   40G  0 disk
+	├─sda1            8:1    0    1G  0 part /boot
+	└─sda2            8:2    0   39G  0 part
+	  ├─centos-root 253:0    0 35.1G  0 lvm  /
+	  └─centos-swap 253:1    0  3.9G  0 lvm  [SWAP]
+	sdb               8:16   0   10G  0 disk
+	└─sdb1            8:17   0    5G  0 part
+	sdc               8:32   0   10G  0 disk
+	sr0              11:0    1  4.4G  0 rom
+	
+	
+	// 安装 lvm2 包
+	yum -y install lvm2
+	
+	// 查看lvm2包安装后,其中若干文件的放置路径
+	rpm -ql lvm2 | less
+	
+	
+步骤2：创建PV
+	// 把分区和物理磁盘创建为物理卷，下面的命令也可以用 "pvcreate /dev/sdb1 /dev/sdc"
+	[root@localhost ~]#pvcreate /dev/sd{b1,c}
+	WARNING: ext4 signature detected on /dev/sdb1 at offset 1080. Wipe it? [y/n]: y
+	  Wiping ext4 signature on /dev/sdb1.
+	  Physical volume "/dev/sdb1" successfully created.
+	  Physical volume "/dev/sdc" successfully created.
+	
+	
+	注意：
+		情况1：上面的"WARNING: ext4 signature detected on /dev/sdb1 at offset 1080. Wipe it?"说明还残留着ext4标签。
+		现在sdb1这个分区是之前的分区删了，再重新分的区。因为之前的分区建了ext4文件系统，所以才残留了数据。出现这样的警告，输入y清除即可。如果是干净的硬盘，就没有这样的提示。 	
+		
+		情况2：假如sdc这块硬盘被分区了,也添加了文件系统，还加了写数据，在创建物理卷时就会提示 "device /dev/sdc excluded by a filter"，表示创建失败
+		解决方式：
+			方式1：用 fdisk 或 gdisk 删掉所有分区
+			方式2：把分区表清零，使用命令 "dd if=/dev/zero of=/dev/sdc bs=1M count=1"
+	
+	
+	// pvs 和 pvdisplay ：查看现有的物理卷，pvdisplay 显示的更详细
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g  4.00m				 	# 这个是系统自带的
+	  /dev/sdb1         lvm2 ---    5.00g  5.00g
+	  /dev/sdc          lvm2 ---   10.00g 10.00g
+	  
+	[root@localhost ~]#pvdisplay
+	  --- Physical volume ---
+	  PV Name               /dev/sda2
+	  VG Name               centos
+	  PV Size               <39.00 GiB / not usable 3.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB								# PE(Physical Extent 物理区域)是逻辑卷中空间的最小单位，将来扩容和缩容都是以PE为单位来进行，分配逻辑卷空间的时候也是以PE为单位，默认4M
+	  Total PE              9983
+	  Free PE               1
+	  Allocated PE          9982
+	  PV UUID               RkGwX7-oVcW-vbNu-Jo7f-b1Hs-Epb5-3yZkBO
+
+	  "/dev/sdb1" is a new physical volume of "5.00 GiB"
+	  --- NEW Physical volume ---
+	  PV Name               /dev/sdb1
+	  VG Name
+	  PV Size               5.00 GiB
+	  Allocatable           NO
+	  PE Size               0										# 创建物理卷后，还没有创建卷组，所以这里的PE是0，卷组创建的时候可以指定PE的大小
+	  Total PE              0
+	  Free PE               0
+	  Allocated PE          0
+	  PV UUID               rMBaH8-2xyN-VOtM-UiN8-8tMF-BQoN-AIUO5b
+
+	  "/dev/sdc" is a new physical volume of "10.00 GiB"
+	  --- NEW Physical volume ---
+	  PV Name               /dev/sdc
+	  VG Name
+	  PV Size               10.00 GiB
+	  Allocatable           NO
+	  PE Size               0
+	  Total PE              0
+	  Free PE               0
+	  Allocated PE          0
+	  PV UUID               Mkby1q-WWhX-k5yM-gRaI-0axj-Akmz-fIZkCY
+		
+		
+步骤3：创建VG
+	// 把物理卷加入到卷组，卷组名称自定义 ,形成逻辑上的一个硬盘，-s 表示指定PE的大小，不指定默认是4M。比如"vgcreate -s 16M vg0 /dev/sd{b1,c}"
+	// 创建一个名为vg0的卷组
+	[root@localhost ~]#vgcreate vg0 /dev/sd{b1,c}
+	Volume group "vg0" successfully created
+	
+	
+	[root@localhost ~]#pvdisplay  /dev/sdb1 /dev/sdc
+	  --- Physical volume ---
+	  PV Name               /dev/sdb1
+	  VG Name               vg0
+	  PV Size               5.00 GiB / not usable 4.00 MiB				
+	  Allocatable           yes
+	  PE Size               4.00 MiB									# 可以看到PE的大小已经变为4M
+	  Total PE              1279
+	  Free PE               1279
+	  Allocated PE          0
+	  PV UUID               rMBaH8-2xyN-VOtM-UiN8-8tMF-BQoN-AIUO5b
+
+	  --- Physical volume ---
+	  PV Name               /dev/sdc
+	  VG Name               vg0
+	  PV Size               10.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              2559
+	  Free PE               2559
+	  Allocated PE          0
+	  PV UUID               Mkby1q-WWhX-k5yM-gRaI-0axj-Akmz-fIZkCY
+	
+	
+	// vgs 和 vgdisplay ：显示现有的卷组
+	[root@localhost ~]#vgs
+	  VG     #PV #LV #SN Attr   VSize   VFree
+	  centos   1   2   0 wz--n- <39.00g  4.00m			# 系统默认的
+	  vg0      2   0   0 wz--n-  14.99g 14.99g
+  
+    // 查看vg0这个卷组的信息，vgdisplay不跟参数表示查看所有卷组的信息
+	[root@localhost ~]#vgdisplay vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  1
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                0
+	  Open LV               0
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               14.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              3838
+	  Alloc PE / Size       0 / 0
+	  Free  PE / Size       3838 / 14.99 GiB								# 表示可用的PE个数以及大小
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+	
+
+
+步骤4： 创建逻辑卷,大小不能超过卷组。  // 如果不干净有提示 35：00
+	
+	// -n 指定逻辑卷名称; -l 表示 PE 的个数;  -L 指定大小; 
+	// lvcreate -n mysql -l 200 vg0	   		# 表示从vg0这个卷组中分配出200个PE作为一个逻辑卷，这个逻辑卷命名为 mysql
+	// lvcreate -n mysql -l 50%free vg0		# 表示从vg0这个卷组中分配剩余可用PE的50%作为一个逻辑卷
+	// lvcreate -n mysql -L 1.5G vg0   		# 表示从vg0这个卷组中分配出1.5G作为一个逻辑卷, 但不一定是真正的1.5G，按PE的倍数分配，接近设定的大小	 
+	
+	[root@localhost ~]#lvcreate -n mysql -L 1G vg0
+	  Logical volume "mysql" created.
+	
+	
+	// lvs 和 lvdisplay ：显示现有的逻辑卷
+	[root@localhost ~]#lvs
+	  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  root  centos -wi-ao---- <35.12g		# 系统自带的
+	  swap  centos -wi-ao----  <3.88g		# 系统自带的
+	  mysql vg0    -wi-a-----   1.00g
+	
+	[root@localhost ~]#lvdisplay vg0
+	  --- Logical volume ---
+	  LV Path                /dev/vg0/mysql
+	  LV Name                mysql
+	  VG Name                vg0
+	  LV UUID                kNlcVY-I1Wr-b4im-CWEU-JGaX-NUMl-HHHfmX
+	  LV Write Access        read/write
+	  LV Creation host, time localhost.localdomain, 2022-11-01 23:39:42 +0800
+	  LV Status              available
+	  # open                 0
+	  LV Size                1.00 GiB
+	  Current LE             256				# PE在逻辑卷里被叫做LE(logic Extent)
+	  Segments               1
+	  Allocation             inherit
+	  Read ahead sectors     auto
+	  - currently set to     8192
+	  Block device           253:2
+	
+	
+	// 看卷组空间变化
+	[root@localhost ~]#vgdisplay vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  2
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                1
+	  Open LV               0
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               14.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              3838
+	  Alloc PE / Size       256 / 1.00 GiB								# 表示已分配出去的PE
+	  Free  PE / Size       3582 / 13.99 GiB							# 还剩多少PE可用
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+	
+	
+	// 看物理卷上有多少PE分了出去
+	[root@localhost ~]#pvdisplay /dev/sd{b1,c}
+	  --- Physical volume ---
+	  PV Name               /dev/sdb1
+	  VG Name               vg0
+	  PV Size               5.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              1279
+	  Free PE               1023
+	  Allocated PE          256											# 这里可以看到分配出去的PE，并且可以发现，是从"/dev/sdb1"这个分区分配的PE, 在实际中不用关心逻辑卷来自于哪个物理卷 
+	  PV UUID               rMBaH8-2xyN-VOtM-UiN8-8tMF-BQoN-AIUO5b
+
+	  --- Physical volume ---
+	  PV Name               /dev/sdc
+	  VG Name               vg0
+	  PV Size               10.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              2559
+	  Free PE               2559
+	  Allocated PE          0
+	  PV UUID               Mkby1q-WWhX-k5yM-gRaI-0axj-Akmz-fIZkCY
+  
+  
+
+步骤5：查看逻辑卷名称
+
+	[root@localhost ~]#ll /dev/vg0/mysql /dev/mapper/vg0-mysql /dev/dm-2
+	brw-rw---- 1 root disk 253, 2 Nov  1 23:39 /dev/dm-2
+	lrwxrwxrwx 1 root root      7 Nov  1 23:39 /dev/mapper/vg0-mysql -> ../dm-2
+	lrwxrwxrwx 1 root root      7 Nov  1 23:39 /dev/vg0/mysql -> ../dm-2
+	
+	"/dev/vg0/mysql" 和 "/dev/mapper/vg0-mysql"并不是逻辑卷的真名，是一个软衔接
+	逻辑卷的真名是"dm-"+数字，如 dm-0、dm-1、dm-2 等
+	逻辑卷有三个命名，都可以访问同一个卷组，推荐使用软衔接命名，可读性强！！！
+	
+	[root@localhost ~]#ll /dev/dm-*
+	brw-rw---- 1 root disk 253, 0 Nov  1 22:09 /dev/dm-0		# dm-0 是系统自带的
+	brw-rw---- 1 root disk 253, 1 Nov  1 22:45 /dev/dm-1		# dm-1 是系统自带的
+	brw-rw---- 1 root disk 253, 2 Nov  1 23:39 /dev/dm-2        # dm-2 是刚刚创建的mysql
+
+
+步骤5：再创建一个名为log的逻辑卷
+	
+	// 申请500个PE作为逻辑卷
+	[root@localhost ~]#lvcreate -n log -l 500 vg0
+	Logical volume "log" created.
+	
+	[root@localhost ~]#lvdisplay /dev/vg0/log
+	  --- Logical volume ---
+	  LV Path                /dev/vg0/log
+	  LV Name                log
+	  VG Name                vg0
+	  LV UUID                RIILNm-fui2-j3S2-3V9x-A05r-qvmp-47xuW4
+	  LV Write Access        read/write
+	  LV Creation host, time localhost.localdomain, 2022-11-02 00:00:18 +0800
+	  LV Status              available
+	  # open                 0
+	  LV Size                1.95 GiB
+	  Current LE             500
+	  Segments               1
+	  Allocation             inherit
+	  Read ahead sectors     auto
+	  - currently set to     8192
+	  Block device           253:3
+	
+	
+	[root@localhost ~]#ll /dev/vg0/log /dev/mapper/vg0-log /dev/dm-3
+	brw-rw---- 1 root disk 253, 3 Nov  2 00:00 /dev/dm-3
+	lrwxrwxrwx 1 root root      7 Nov  2 00:00 /dev/mapper/vg0-log -> ../dm-3
+	lrwxrwxrwx 1 root root      7 Nov  2 00:00 /dev/vg0/log -> ../dm-3
+	
+	
+步骤6：给逻辑卷创建文件系统
+	
+
+	[root@localhost ~]#mkfs.ext4 /dev/vg0/mysql
+	mke2fs 1.42.9 (28-Dec-2013)
+	Filesystem label=
+	OS type: Linux
+	Block size=4096 (log=2)
+	Fragment size=4096 (log=2)
+	Stride=0 blocks, Stripe width=0 blocks
+	65536 inodes, 262144 blocks
+	13107 blocks (5.00%) reserved for the super user
+	First data block=0
+	Maximum filesystem blocks=268435456
+	8 block groups
+	32768 blocks per group, 32768 fragments per group
+	8192 inodes per group
+	Superblock backups stored on blocks:
+			32768, 98304, 163840, 229376
+
+	Allocating group tables: done
+	Writing inode tables: done
+	Creating journal (8192 blocks): done
+	Writing superblocks and filesystem accounting information: done
+	
+	
+	[root@localhost ~]#mkfs.xfs /dev/vg0/log
+	meta-data=/dev/vg0/log           isize=512    agcount=4, agsize=128000 blks
+			 =                       sectsz=512   attr=2, projid32bit=1
+			 =                       crc=1        finobt=0, sparse=0
+	data     =                       bsize=4096   blocks=512000, imaxpct=25
+			 =                       sunit=0      swidth=0 blks
+	naming   =version 2              bsize=4096   ascii-ci=0 ftype=1
+	log      =internal log           bsize=4096   blocks=2560, version=2
+			 =                       sectsz=512   sunit=0 blks, lazy-count=1
+	realtime =none                   extsz=4096   blocks=0, rtextents=0
+	
+	
+	
+步骤7：挂载逻辑卷
+
+	[root@localhost ~]#blkid
+	/dev/mapper/centos-root: UUID="6048e3e7-c9d9-4ebc-b0fa-ba0aa27ddfa6" TYPE="xfs"
+	/dev/sda2: UUID="RkGwX7-oVcW-vbNu-Jo7f-b1Hs-Epb5-3yZkBO" TYPE="LVM2_member"
+	/dev/sdc: UUID="Mkby1q-WWhX-k5yM-gRaI-0axj-Akmz-fIZkCY" TYPE="LVM2_member"
+	/dev/sda1: UUID="5749bb60-3729-4dfb-84dd-232108cc4944" TYPE="xfs"
+	/dev/sdb1: UUID="rMBaH8-2xyN-VOtM-UiN8-8tMF-BQoN-AIUO5b" TYPE="LVM2_member" PARTLABEL="Linux LVM" PARTUUID="f7f4d8cc-8fad-4333-b12e-66231551c0ca"
+	/dev/sr0: UUID="2020-11-04-11-36-43-00" LABEL="CentOS 7 x86_64" TYPE="iso9660" PTTYPE="dos"
+	/dev/mapper/centos-swap: UUID="111c047b-93f2-4df8-b54d-93fd9933465a" TYPE="swap"
+	/dev/mapper/vg0-mysql: UUID="4cd6fee9-3de4-4b87-930f-0dc6df8a99c2" TYPE="ext4"
+	/dev/mapper/vg0-log: UUID="1b2dc6eb-b3b8-4fb6-b181-59bb24baf43b" TYPE="xfs"
+	
+	[root@localhost ~]#mkdir /mnt/mysql
+	[root@localhost ~]#mkdir /mnt/log
+	
+	
+	// "/etc/fstab"文件中增加如下行, 注意: 第一列写设备名，不要写 UUID 
+	/dev/mapper/vg0-mysql       /mnt/mysql     ext4             defaults         0 0
+	/dev/mapper/vg0-log       	/mnt/log       xfs             	defaults         0 0
+	
+	[root@localhost ~]#df
+	Filesystem              1K-blocks    Used Available Use% Mounted on
+	devtmpfs                  1918632       0   1918632   0% /dev
+	tmpfs                     1930644       0   1930644   0% /dev/shm
+	tmpfs                     1930644   11856   1918788   1% /run
+	tmpfs                     1930644       0   1930644   0% /sys/fs/cgroup
+	/dev/mapper/centos-root  36805060 2651280  34153780   8% /
+	/dev/sda1                 1038336  188040    850296  19% /boot
+	tmpfs                      386132       0    386132   0% /run/user/0
+	
+	
+	[root@localhost ~]#mount -a
+	
+	// 可以看到已经挂载成功
+	[root@localhost ~]#df -h
+	Filesystem               Size  Used Avail Use% Mounted on
+	devtmpfs                 1.9G     0  1.9G   0% /dev
+	tmpfs                    1.9G     0  1.9G   0% /dev/shm
+	tmpfs                    1.9G   12M  1.9G   1% /run
+	tmpfs                    1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root   36G  2.6G   33G   8% /
+	/dev/sda1               1014M  184M  831M  19% /boot
+	/dev/mapper/vg0-mysql    976M  2.6M  907M   1% /mnt/mysql		# 这个占用了2.6M，这2.6M保存的是文件系统的元数据
+	tmpfs                    378M     0  378M   0% /run/user/0
+	/dev/mapper/vg0-log      2.0G   33M  2.0G   2% /mnt/log
+	
+	
+步骤8：使用逻辑卷	
+	
+	[root@localhost ~]#echo "this is test file" > /mnt/mysql/test.txt
+	[root@localhost ~]#cat /mnt/mysql/test.txt
+	this is test file
+	
+	[root@localhost ~]#ll -h /mnt/mysql/
+	total 20K
+	drwx------ 2 root root 16K Nov  2 00:06 lost+found
+	-rw-r--r-- 1 root root  18 Nov  2 00:17 test.txt
+
+
+步骤9：测试逻辑卷性能，这个例子的数据是 copy 视频的，不是本机的，因为本机系统装好后就默认用的是LVM
+	
+	// 清除内存缓存
+	[root@localhost ~]#echo 3 > /proc/sys/vm/drop_caches
+	// 查看内存状态，清除内存缓存是否成功
+	[root@localhost ~]#free -h
+	
+	// "/data" 目录用的是硬盘分区
+	[root@localhost ~]#dd if=/dev/zero of=/data/test.img bs=1M count=1024
+	dd: error writing ‘/mnt/mysql/test.img’: No space left on device
+	958+0 records in
+	957+0 records out
+	1003896832 bytes (1.0 GB) copied, 1.93655 s, 153 MB/s
+	
+	// 清除内存缓存
+	[root@localhost ~]#echo 3 > /proc/sys/vm/drop_caches
+	// 查看内存状态，清除内存缓存是否成功
+	[root@localhost ~]#free -h
+	
+	// "/mnt/mysql" 挂载的是逻辑卷
+	[root@localhost ~]#dd if=/dev/zero of=/mnt/mysql/test.img bs=1M count=1024
+	dd: error writing ‘/mnt/mysql/test.img’: No space left on device
+	958+0 records in
+	957+0 records out
+	1003896832 bytes (1.0 GB) copied, 1.93655 s, 1.7 GB/s
+	
+	
+     总结： 
+		很多人认为逻辑卷会慢，因为逻辑卷底层有很多逻辑，工作逻辑更复杂，会依赖于多层设备(物理卷，卷组，逻辑卷)，越复杂通常会认为会付出比较大的性能代价。
+		但事实证明，性能一点不差，还挺不错!!!
+		
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 逻辑卷扩容和缩容及快照管理
+
+2.1 逻辑卷扩容(非常重要)，扩容过程用户不受影响
+
+扩容ext系列的文件系统：
+	
+	[root@localhost ~]#lvs vg0
+	  LV    VG  Attr       LSize Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  log   vg0 -wi-ao---- 1.95g
+	  mysql vg0 -wi-ao---- 1.00g
+	
+	
+	[root@localhost ~]#df -hT
+	Filesystem              Type      Size  Used Avail Use% Mounted on
+	devtmpfs                devtmpfs  1.9G     0  1.9G   0% /dev
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /dev/shm
+	tmpfs                   tmpfs     1.9G   12M  1.9G   1% /run
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root xfs        36G  2.6G   33G   8% /
+	/dev/sda1               xfs      1014M  184M  831M  19% /boot
+	/dev/mapper/vg0-mysql   ext4      976M  960M     0 100% /mnt/mysql
+	tmpfs                   tmpfs     378M     0  378M   0% /run/user/0
+	/dev/mapper/vg0-log     xfs       2.0G   33M  2.0G   2% /mnt/log
+
+	
+	// 扩容前确保卷组的空间是足够的
+	[root@localhost ~]#vgdisplay  vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  3
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                2
+	  Open LV               2
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               14.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              3838
+	  Alloc PE / Size       756 / 2.95 GiB
+	  Free  PE / Size       3082 / <12.04 GiB								# 这里是还剩下可以用来扩容的空间
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+	
+	
+	// -l 扩容多少个PE；—L 扩容的容量
+	// lvextend -l 50%free   /dev/vg0/mysql      # "50%free"将空间扩容到卷组剩余的50%free空间，包含原来的空间
+	// lvextend -l +50%free  /dev/vg0/mysql	 # "50%free"再原来的基础上增加卷组剩余的50%free空间，不包含原来的空间
+	
+	
+	
+	// -l 扩容多少个PE， -L 扩容容量, 没有+ 到多少，+表示额外加
+	[root@localhost ~]#lvextend -l +50%free /dev/vg0/mysql
+	  Size of logical volume vg0/mysql changed from 1.00 GiB (256 extents) to <7.02 GiB (1797 extents).
+	  Logical volume vg0/mysql successfully resized.
+	
+	//查看逻辑卷空间
+	[root@localhost ~]#lvdisplay /dev/vg0/mysql
+	  --- Logical volume ---
+	  LV Path                /dev/vg0/mysql
+	  LV Name                mysql
+	  VG Name                vg0
+	  LV UUID                kNlcVY-I1Wr-b4im-CWEU-JGaX-NUMl-HHHfmX
+	  LV Write Access        read/write
+	  LV Creation host, time localhost.localdomain, 2022-11-01 23:39:42 +0800
+	  LV Status              available
+	  # open                 1
+	  LV Size                <7.02 GiB			# 可以看到已扩容
+	  Current LE             1797
+	  Segments               3
+	  Allocation             inherit
+	  Read ahead sectors     auto
+	  - currently set to     8192
+	  Block device           253:2
+	
+	
+	//查看卷组剩余空间
+	[root@localhost ~]#vgdisplay vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  4
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                2
+	  Open LV               2
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               14.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              3838
+	  Alloc PE / Size       2297 / 8.97 GiB
+	  Free  PE / Size       1541 / <6.02 GiB		# 可以看到卷组空间已经少了一半
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+	
+	
+	//df 只看建有文件系统的空间
+	[root@localhost ~]#df -Th
+	Filesystem              Type      Size  Used Avail Use% Mounted on
+	devtmpfs                devtmpfs  1.9G     0  1.9G   0% /dev
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /dev/shm
+	tmpfs                   tmpfs     1.9G   12M  1.9G   1% /run
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root xfs        36G  2.6G   33G   8% /
+	/dev/sda1               xfs      1014M  184M  831M  19% /boot
+	/dev/mapper/vg0-mysql   ext4      976M  960M     0 100% /mnt/mysql   # 但这里为什么逻辑卷空间没有变？因为刚刚加的50%没有文件系统
+	tmpfs                   tmpfs     378M     0  378M   0% /run/user/0
+	/dev/mapper/vg0-log     xfs       2.0G   33M  2.0G   2% /mnt/log
+	
+	
+	// 同步文件系统。 "resize2fs"命令只能同步 ext 系列的文件系统，xfs 文件系统要用 xfs_growfs 命令同步文件系统
+	[root@localhost ~]#resize2fs /dev/vg0/mysql
+	resize2fs 1.42.9 (28-Dec-2013)
+	Filesystem at /dev/vg0/mysql is mounted on /mnt/mysql; on-line resizing required
+	old_desc_blocks = 1, new_desc_blocks = 1
+	The filesystem on /dev/vg0/mysql is now 1840128 blocks long.
+	
+	
+	
+	// 扩容成功
+	[root@localhost ~]#df -hT
+	Filesystem              Type      Size  Used Avail Use% Mounted on
+	devtmpfs                devtmpfs  1.9G     0  1.9G   0% /dev
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /dev/shm
+	tmpfs                   tmpfs     1.9G   12M  1.9G   1% /run
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root xfs        36G  2.6G   33G   8% /
+	/dev/sda1               xfs      1014M  184M  831M  19% /boot
+	/dev/mapper/vg0-mysql   ext4      6.9G  962M  5.7G  15% /mnt/mysql			# 可以看到空间已经增加
+	tmpfs                   tmpfs     378M     0  378M   0% /run/user/0
+	/dev/mapper/vg0-log     xfs       2.0G   33M  2.0G   2% /mnt/log
+
+
+扩容xfs文件系统：
+
+	[root@localhost ~]#lvextend -L +1G /dev/vg0/log
+	  Size of logical volume vg0/log changed from 1.95 GiB (500 extents) to 2.95 GiB (756 extents).
+	  Logical volume vg0/log successfully resized.
+	
+	[root@localhost ~]#df -hT /dev/mapper/vg0-log
+	Filesystem          Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-log xfs   2.0G   33M  2.0G   2% /mnt/log
+	
+	
+	// xfs_growfs同步xfs文件系统, xfs_growfs 后面也可以直接跟挂载的目录。比如也可以使用命令"xfs_growfs /mnt/log"
+	[root@localhost ~]#xfs_growfs /dev/vg0/log
+	meta-data=/dev/mapper/vg0-log    isize=512    agcount=4, agsize=128000 blks
+			 =                       sectsz=512   attr=2, projid32bit=1
+			 =                       crc=1        finobt=0 spinodes=0
+	data     =                       bsize=4096   blocks=512000, imaxpct=25
+			 =                       sunit=0      swidth=0 blks
+	naming   =version 2              bsize=4096   ascii-ci=0 ftype=1
+	log      =internal               bsize=4096   blocks=2560, version=2
+			 =                       sectsz=512   sunit=0 blks, lazy-count=1
+	realtime =none                   extsz=4096   blocks=0, rtextents=0
+	data blocks changed from 512000 to 774144
+	
+	
+	[root@localhost ~]#df -hT /dev/mapper/vg0-log
+	Filesystem          Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-log xfs   3.0G   33M  3.0G   2% /mnt/log			# 扩容成功
+	
+	
+	
+不关注系统直接扩容示例：ext 和 xfs 分别用不同的命令同步文件系统，在写脚本时增加了复杂性。
+	
+	[root@localhost ~]#lvs vg0
+	  LV    VG  Attr       LSize  Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  log   vg0 -wi-ao----  2.95g
+	  mysql vg0 -wi-ao---- <7.02g
+	
+	
+	[root@localhost ~]#vgdisplay  vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  5
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                2
+	  Open LV               2
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               14.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              3838
+	  Alloc PE / Size       2553 / 9.97 GiB
+	  Free  PE / Size       1285 / <5.02 GiB						# 
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+
+	
+	// 把卷组剩余的空间全部分配给mysql这个逻辑卷，-r 选项表示不管什么文件系统，都立马同步文件系统
+	[root@localhost ~]#lvextend -r -l +100%free /dev/vg0/mysql
+	  Size of logical volume vg0/mysql changed from <7.02 GiB (1797 extents) to <12.04 GiB (3082 extents).
+	  Logical volume vg0/mysql successfully resized.
+	resize2fs 1.42.9 (28-Dec-2013)
+	Filesystem at /dev/mapper/vg0-mysql is mounted on /mnt/mysql; on-line resizing required
+	old_desc_blocks = 1, new_desc_blocks = 2
+	The filesystem on /dev/mapper/vg0-mysql is now 3155968 blocks long.
+	
+	
+	[root@localhost ~]#lvs vg0
+	  LV    VG  Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  log   vg0 -wi-ao----   2.95g
+	  mysql vg0 -wi-ao---- <12.04g
+	
+	[root@localhost ~]#vgs vg0
+	  VG  #PV #LV #SN Attr   VSize  VFree
+	  vg0   2   2   0 wz--n- 14.99g    0
+	
+	
+	// 文件系统自动同步
+	[root@localhost ~]#df -Th /dev/vg0/mysql
+	Filesystem            Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql ext4   12G  963M   11G   9% /mnt/mysql
+	
+	
+	总结: 逻辑卷扩容使用场景：写个脚本，每十分钟监控一次逻辑卷，当逻辑卷使用量达到80%，自动扩容逻辑卷
+	
+	
+2.2 卷组扩容(非常重要)。
+    卷组扩容的方式是增减物理卷(PV),增加物理卷的方式是 增加硬盘 或 增加分区 ！！
+	
+	这里使用"增加分区"的方式来进行卷组扩容
+	
+	// 可以看到sdb这个硬盘还剩下5G可用空间，就用这剩下的5G空间对卷组扩容
+	[root@localhost ~]#lsblk /dev/sdb
+	NAME          MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+	sdb             8:16   0  10G  0 disk
+	└─sdb1          8:17   0   5G  0 part
+	  ├─vg0-mysql 253:2    0  12G  0 lvm  /mnt/mysql
+	  └─vg0-log   253:3    0   3G  0 lvm  /mnt/log
+	
+	
+	// 使用 gdisk 增加 sdb2 分区，注意：LVM的GUID是 8e00 
+	[root@localhost ~]#gdisk /dev/sdb
+	GPT fdisk (gdisk) version 0.8.10
+
+	Partition table scan:
+	  MBR: protective
+	  BSD: not present
+	  APM: not present
+	  GPT: present
+
+	Found valid GPT with protective MBR; using GPT.
+
+	Command (? for help): n
+	Partition number (2-128, default 2):
+	First sector (34-20971486, default = 10487808) or {+-}size{KMGTP}:
+	Last sector (10487808-20971486, default = 20971486) or {+-}size{KMGTP}:
+	Current type is 'Linux filesystem'
+	Hex code or GUID (L to show codes, Enter = 8300): 8e00
+	Changed type of partition to 'Linux LVM'
+
+	Command (? for help): w
+
+	Final checks complete. About to write GPT data. THIS WILL OVERWRITE EXISTING
+	PARTITIONS!!
+
+	Do you want to proceed? (Y/N): Y
+	OK; writing new GUID partition table (GPT) to /dev/sdb.
+	Warning: The kernel is still using the old partition table.  
+	The new table will be used at the next reboot.					# 提示重新启动生效, 使用 partprobe 命令同步分区表到内存，立即生效，避免重新启动
+	The operation has completed successfully.
+	
+	
+	// 把分区表同步到内存中，适合于除了CentOS 6 以外的其它版本( 5、7、8)
+	[root@localhost ~]#partprobe
+	Warning: Unable to open /dev/sr0 read-write (Read-only file system).  /dev/sr0 has been opened read-only.
+	
+	[root@localhost ~]#lsblk /dev/sdb
+	NAME          MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+	sdb             8:16   0  10G  0 disk
+	├─sdb1          8:17   0   5G  0 part
+	│ ├─vg0-mysql 253:2    0  12G  0 lvm  /mnt/mysql
+	│ └─vg0-log   253:3    0   3G  0 lvm  /mnt/log
+	└─sdb2          8:18   0   5G  0 part						# 分区创建成功
+	
+	
+	// 创建物理卷
+	[root@localhost ~]#pvcreate /dev/sdb2
+	  Physical volume "/dev/sdb2" successfully created.
+	
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g  4.00m
+	  /dev/sdb1  vg0    lvm2 a--   <5.00g     0
+	  /dev/sdb2         lvm2 ---   <5.00g <5.00g				# PV创建成功
+	  /dev/sdc   vg0    lvm2 a--  <10.00g     0
+	
+	
+	// 把物理卷加到卷组
+	[root@localhost ~]#vgextend vg0 /dev/sdb2
+	Volume group "vg0" successfully extended
+	
+	[root@localhost ~]#vgdisplay vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        3
+	  Metadata Sequence No  7
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                2
+	  Open LV               2
+	  Max PV                0
+	  Cur PV                3
+	  Act PV                3
+	  VG Size               <19.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              5117
+	  Alloc PE / Size       3838 / 14.99 GiB
+	  Free  PE / Size       1279 / <5.00 GiB								# 卷组扩容成功
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+	
+	
+	
+2.3 逻辑卷缩容(非常重要)，缩容用的非常少，但有公司还是在用。 注意：缩减有数据损坏的风险，建议先备份再缩减，ext系列文件系统支持缩容， xfs文件系统不支持缩容！！！
+	因为缩容需要离线（离线就是取消挂载），所以缩容会影响生产，缩容要选择用户访问量最少的时段进行
+	缩容有损坏数据的风险：比如100G的LV，用了60G，缩成50G，那这个数据就丢了, 文件系统也会被破坏，剩下的50G都访问不了！！! 强烈建议：缩容前备份！！！
+	xfs不支持缩容，除非把数据导出来，然后删除逻辑卷，再创建逻辑卷，从头重新来一遍！！
+	
+	缩减要经过5个步骤：
+		1.取消挂载
+		2.检查文件系统完整性, 这一步必须做，如果直接做第3步，也会提示要先检查文件系统完整性
+		3.缩减文件系统，并指定缩减空间的大小
+		4.缩减逻辑卷，并指定缩减多少空间，这个空间值和第3步指定的空间值一样
+		5.挂载回目录
+	
+	
+	
+	// 缩容 mysql 逻辑卷
+	[root@localhost ~]#df -hT /dev/vg0/mysql
+	Filesystem            Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql ext4   12G  963M   11G   9% /mnt/mysql
+	
+	[root@localhost ~]#ll -h /mnt/mysql/
+	total 958M
+	drwx------ 2 root root  16K Nov  2 00:06 lost+found
+	-rw-r--r-- 1 root root 958M Nov  2 00:47 test.img
+	
+	
+	//(1) 取消挂载
+	[root@localhost ~]#umount /mnt/mysql
+
+	
+	//(2) 检查文件系统完整性，也可以使用"e2fsck -f /dev/vg0/mysql", e2fsck 实际上就是调用的 fsck
+	[root@localhost ~]#fsck -f /dev/vg0/mysql
+	fsck from util-linux 2.23.2
+	e2fsck 1.42.9 (28-Dec-2013)
+	Pass 1: Checking inodes, blocks, and sizes
+	Pass 2: Checking directory structure
+	Pass 3: Checking directory connectivity
+	Pass 4: Checking reference counts
+	Pass 5: Checking group summary information
+	/dev/vg0/mysql: 12/794624 files (0.0% non-contiguous), 304439/3155968 blocks
+	
+	
+	//(3) 缩减文件系统, 缩容到 2G
+	[root@localhost ~]#resize2fs /dev/vg0/mysql 2G
+	resize2fs 1.42.9 (28-Dec-2013)
+	Resizing the filesystem on /dev/vg0/mysql to 524288 (4k) blocks.
+	The filesystem on /dev/vg0/mysql is now 524288 blocks long.
+	 
+	-----------------------------------------------------------------------------
+	/	//如果不检查文件系统完整性,直接运行缩减命令,就会打印出提示:				/
+	/	[root@localhost ~]#resize2fs /dev/vg0/mysql 2G							/
+	/	resize2fs 1.45.6 (20-Mar-2020)											/
+	/	please run 'e2fsck -f /dev/vg0/mysql' first								/
+	----------------------------------------------------------------------------- 
+	
+	//(4) 缩减逻辑卷,缩到 2G, 文件系统是缩小到2G，逻辑卷的值也要设置为2G，要保持一致
+	[root@localhost ~]#lvreduce -L 2G /dev/vg0/mysql
+	  WARNING: Reducing active logical volume to 2.00 GiB.
+	  THIS MAY DESTROY YOUR DATA (filesystem etc.)
+	Do you really want to reduce vg0/mysql? [y/n]: y
+	  Size of logical volume vg0/mysql changed from <12.04 GiB (3082 extents) to 2.00 GiB (512 extents).
+	  Logical volume vg0/mysql successfully resized.
+	
+	//(4) 重新挂载到目录 
+	[root@localhost ~]#mount -a
+	
+	
+	
+	[root@localhost ~]#df -Th /mnt/mysql
+	Filesystem            Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql ext4  2.0G  961M  925M  51% /mnt/mysql
+	
+	
+	[root@localhost ~]#ll -h /mnt/mysql/
+	total 958M
+	drwx------ 2 root root  16K Nov  2 00:06 lost+found
+	-rw-r--r-- 1 root root 958M Nov  2 00:47 test.img
+	
+
+	
+上面的例子可以看到, 逻辑卷已经缩小为2G，现在假如如下情况：
+
+	// vg0-mysql 这个逻辑卷可用空间1.1G，如果在缩小1G，有什么问题?
+	[root@localhost ~]#df -Th /mnt/mysql
+	Filesystem            Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql ext4  2.0G  805M  1.1G  43% /mnt/mysql
+	
+	// 在缩小1G,中间操作步骤略，详见PDF ！！
+	
+	
+	// 当挂载的时候大概率会出现如下问题:
+	root@localhost ~]#mount -a
+	mount: /mnt/mysql: wrong fs type, bad option, bad superblock on /dev/mapper/vg0-mysql, missing codepage or helper program, or other error
+
+	总结：
+		上面的错误说明 超级块被破坏，也就说明文件系统被破坏了！！
+		显示 1.1G 的可用空间，但不是真正的1.1G 可用空间，因为文件系统的元数据还要占一部分空间。而且元数据占的空间肯定超过了0.1G（102.4M）。
+
+	
+	// 破坏后即使使用 tune2fs 命令能查看文件系统参数，也不代表能正常使用
+	tune2fs -l /dev/vg0/mysql
+	
+	// 修复文件系统，不一定能修复好，靠运气！！即使修复好，也并不一定所有的数据都在
+	fsck /dev/vg0/mysql
+	
+	
+2.4 更换物理卷（了解）
+	场景；企业硬盘3年左右使用时间，出故障的机率变高，硬盘灯已经变黄，如果等变成红灯就坏了，所以要把这块硬盘换走！
+	
+	现在假如要sdc这块硬盘，如何做？原理: 把 sdc 这个 PG 上已使用的PE块搬移到其它PG，只要其它PG上的可用PE块之和大于sdc上已被使用的PE个数即可！！
+	其实就是转移数据，PE块中保存的就是数据！
+	
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g  4.00m
+	  /dev/sdb1  vg0    lvm2 a--   <5.00g  1.04g
+	  /dev/sdb2  vg0    lvm2 a--   <5.00g <5.00g
+	  /dev/sdc   vg0    lvm2 a--  <10.00g <9.00g
+
+
+	[root@localhost ~]#pvdisplay /dev/sdb1 /dev/sdb2 /dev/sdc
+	  --- Physical volume ---
+	  PV Name               /dev/sdb1
+	  VG Name               vg0
+	  PV Size               5.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              1279
+	  Free PE               267
+	  Allocated PE          1012
+	  PV UUID               rMBaH8-2xyN-VOtM-UiN8-8tMF-BQoN-AIUO5b
+
+	  --- Physical volume ---
+	  PV Name               /dev/sdc
+	  VG Name               vg0
+	  PV Size               10.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              2559
+	  Free PE               2303
+	  Allocated PE          256													# 这就是要搬移的PE块个数，显然 267 + 1279 > 256
+	  PV UUID               Mkby1q-WWhX-k5yM-gRaI-0axj-Akmz-fIZkCY
+
+	  --- Physical volume ---
+	  PV Name               /dev/sdb2
+	  VG Name               vg0
+	  PV Size               <5.00 GiB / not usable 2.98 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              1279
+	  Free PE               1279
+	  Allocated PE          0
+	  PV UUID               HYTasE-zz7p-rYkL-JIWg-lv3m-t2iR-ALJoCf
+
+
+	
+	[root@localhost ~]#pvmove /dev/sdc
+	  /dev/sdc: Moved: 10.16%
+	  /dev/sdc: Moved: 100.00%
+	
+	
+	[root@localhost ~]#pvdisplay /dev/sdb1 /dev/sdb2 /dev/sdc
+	  --- Physical volume ---
+	  PV Name               /dev/sdb1
+	  VG Name               vg0
+	  PV Size               5.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              1279
+	  Free PE               11
+	  Allocated PE          1268
+	  PV UUID               rMBaH8-2xyN-VOtM-UiN8-8tMF-BQoN-AIUO5b
+
+	  --- Physical volume ---
+	  PV Name               /dev/sdc
+	  VG Name               vg0
+	  PV Size               10.00 GiB / not usable 4.00 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              2559
+	  Free PE               2559
+	  Allocated PE          0													# 说明已经搬走
+	  PV UUID               Mkby1q-WWhX-k5yM-gRaI-0axj-Akmz-fIZkCY
+
+	  --- Physical volume ---
+	  PV Name               /dev/sdb2
+	  VG Name               vg0
+	  PV Size               <5.00 GiB / not usable 2.98 MiB
+	  Allocatable           yes
+	  PE Size               4.00 MiB
+	  Total PE              1279
+	  Free PE               1279
+	  Allocated PE          0
+	  PV UUID               HYTasE-zz7p-rYkL-JIWg-lv3m-t2iR-ALJoCf
+	
+	// 从卷组中移除sdc这个PV
+	[root@localhost ~]#vgreduce vg0 /dev/sdc
+	  Removed "/dev/sdc" from volume group "vg0"
+	
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g  4.00m
+	  /dev/sdb1  vg0    lvm2 a--   <5.00g 44.00m
+	  /dev/sdb2  vg0    lvm2 a--   <5.00g <5.00g
+	  /dev/sdc          lvm2 ---   10.00g 10.00g
+	
+	// 移除 sdc 的PV身份
+	[root@localhost ~]#pvremove /dev/sdc
+	  Labels on physical volume "/dev/sdc" successfully wiped.
+	
+	// 移除后，这块硬盘就可以拆走了
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g  4.00m
+	  /dev/sdb1  vg0    lvm2 a--   <5.00g 44.00m
+	  /dev/sdb2  vg0    lvm2 a--   <5.00g <5.00g
+	
+	
+2.5 逻辑卷快照，快照功能是逻辑卷特有的功能，也是逻辑卷的突出优势
+	快照：就是把当前状态快速做一个备份。
+	逻辑卷快照：把整个逻辑卷瞬间做备份，将来可以还原数据卷到做快照时的状态，而且还原非常快。主要在测试环境用的比较多！！
+	
+	逻辑卷快照原理：
+		在生成快照时会分配给它一定的空间，但只有在原来的逻辑卷或者快照有所改变才会使用这些空间
+		当原来的逻辑卷中有所改变时，会将旧的数据复制到快照中
+		快照中只含有原来的逻辑卷中更改的数据或者自生成快照后的快照中更改的数据
+		
+	快照特点：
+		备份速度快，瞬间完
+		应用场景是测试环境，不能完成代替备份
+		快照后，逻辑卷的修改速度会一定有影响
+
+
+
+逻辑卷快照实践1 ==> ext系列文件系统：
+	
+	前提：卷组中还有剩余的的空间，因为创建快照会占用同一个卷组的空间
+	
+	[root@localhost ~]#vgdisplay vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  12
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                2
+	  Open LV               2
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               9.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              2558
+	  Alloc PE / Size       1268 / 4.95 GiB
+	  Free  PE / Size       1290 / <5.04 GiB
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39
+	
+	
+	[root@localhost ~]#lvs /dev/vg0
+	  LV    VG  Attr       LSize Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  log   vg0 -wi-ao---- 2.95g
+	  mysql vg0 -wi-ao---- 2.00g
+	
+	
+	// 添加一些数据
+	[root@localhost ~]#echo "f1" > /mnt/mysql/f1.txt
+	[root@localhost ~]#echo "f2" > /mnt/mysql/f2.txt
+	[root@localhost ~]#echo "f3" > /mnt/mysql/f3.txt
+	[root@localhost ~]#ls /mnt/mysql/
+	f1.txt  f2.txt  f3.txt  lost+found  test.img
+	
+	
+	[root@localhost ~]#df -hT /mnt/mysql/
+	Filesystem            Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql ext4  2.0G  961M  925M  51% /mnt/mysql
+	
+	
+	//逻辑卷的快照可以比逻辑卷小，只要能确保放的下就可以
+	// -s 快照；-n 快照名称；-L 100M 快照所占空间； -p r 快照属性只读，防止快照被修改
+	[root@localhost ~]#lvcreate -s -n mysql-snapshot -L 100M -p r /dev/vg0/mysql
+	Logical volume "mysql-snapshot" created.
+	
+
+	[root@localhost ~]#lvs /dev/vg0
+	  LV             VG  Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  log            vg0 -wi-ao----   2.95g
+	  mysql          vg0 owi-aos---   2.00g
+	  mysql-snapshot vg0 sri-a-s--- 100.00m      mysql  0.01				# 可以到快照已经被创建
+	  
+	  
+	[root@localhost ~]#lvdisplay /dev/vg0
+	  --- Logical volume ---
+	  LV Path                /dev/vg0/mysql
+	  LV Name                mysql
+	  VG Name                vg0
+	  LV UUID                kNlcVY-I1Wr-b4im-CWEU-JGaX-NUMl-HHHfmX
+	  LV Write Access        read/write
+	  LV Creation host, time localhost.localdomain, 2022-11-01 23:39:42 +0800
+	  LV snapshot status     source of
+							 mysql-snapshot [active]								# 这里已经增加了快照状态
+	  LV Status              available
+	  # open                 1
+	  LV Size                2.00 GiB
+	  Current LE             512
+	  Segments               2
+	  Allocation             inherit
+	  Read ahead sectors     auto
+	  - currently set to     8192
+	  Block device           253:2
+
+	  --- Logical volume ---
+	  LV Path                /dev/vg0/log
+	  LV Name                log
+	  VG Name                vg0
+	  LV UUID                RIILNm-fui2-j3S2-3V9x-A05r-qvmp-47xuW4
+	  LV Write Access        read/write
+	  LV Creation host, time localhost.localdomain, 2022-11-02 00:00:18 +0800
+	  LV Status              available
+	  # open                 1
+	  LV Size                2.95 GiB
+	  Current LE             756
+	  Segments               2
+	  Allocation             inherit
+	  Read ahead sectors     auto
+	  - currently set to     8192
+	  Block device           253:3
+
+	  --- Logical volume ---
+	  LV Path                /dev/vg0/mysql-snapshot								# 这就是刚刚创建的快照
+	  LV Name                mysql-snapshot
+	  VG Name                vg0
+	  LV UUID                wxPfKy-GnGy-s1Dk-lvCk-lMBS-1QDe-zAcUSA
+	  LV Write Access        read only
+	  LV Creation host, time localhost.localdomain, 2022-11-02 15:35:30 +0800
+	  LV snapshot status     active destination for mysql
+	  LV Status              available
+	  # open                 0
+	  LV Size                2.00 GiB
+	  Current LE             512
+	  COW-table size         100.00 MiB
+	  COW-table LE           25
+	  Allocated to snapshot  0.01%
+	  Snapshot chunk size    4.00 KiB
+	  Segments               1
+	  Allocation             inherit
+	  Read ahead sectors     auto
+	  - currently set to     8192
+	  Block device           253:6
+	
+	
+	[root@localhost ~]#blkid /dev/mapper/vg0-mysql /dev/mapper/vg0-mysql--snapshot
+	/dev/mapper/vg0-mysql: UUID="4cd6fee9-3de4-4b87-930f-0dc6df8a99c2" TYPE="ext4"
+	/dev/mapper/vg0-mysql--snapshot: UUID="4cd6fee9-3de4-4b87-930f-0dc6df8a99c2" TYPE="ext4"		# 可以看到快照的UUID和"/dev/mapper/vg0-mysql"的UUID一样，文件系统也一样
+	
+	
+	// 挂载快照
+	[root@localhost ~]#mkdir /mnt/snap-mysql; mount /dev/vg0/mysql-snapshot /mnt/snap-mysql
+	mount: /dev/mapper/vg0-mysql--snapshot is write-protected, mounting read-only
+	
+	// 快照里面的内容其实就是"/mnt/mysql/"中的内容，因为只有"/mnt/mysql/"中的文件做出修改时，才会将文件进行备份
+	[root@localhost ~]#ls /mnt/snap-mysql/
+	f1.txt  f2.txt  f3.txt  lost+found  test.img
+	
+	[root@localhost ~]#df -hT /dev/mapper/vg0-mysql /dev/mapper/vg0-mysql--snapshot
+	Filesystem                      Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql           ext4  2.0G  961M  925M  51% /mnt/mysql
+	/dev/mapper/vg0-mysql--snapshot ext4  2.0G  961M  925M  51% /mnt/snap-mysql		# 这里其实也显示的是"/dev/mapper/vg0-mysql"逻辑卷的信息
+	
+	[root@localhost ~]#echo "this is f1.txt" >> /mnt/mysql/f1.txt
+	[root@localhost ~]#rm -rf /mnt/mysql/f2.txt
+	[root@localhost ~]#echo "f4" > /mnt/mysql/f4.txt
+	
+	[root@localhost ~]#ls /mnt/mysql/
+	f1.txt  f3.txt  f4.txt  lost+found  test.img
+	
+	// 快照这时就放的原来的文件
+	[root@localhost ~]#ls /mnt/snap-mysql/
+	f1.txt  f2.txt  f3.txt  lost+found  test.img
+	
+	
+	
+还原快照：
+	
+	// 1.取消挂载
+	[root@localhost ~]#umount /mnt/mysql/
+	[root@localhost ~]#umount /mnt/snap-mysql/
+	
+	// 2.还原快照，在制作快照时如果没有加" -p r 快照属性只读", 还原会有风险，因为不加只读属性，那么就可以更改快照的数据
+	[root@localhost ~]#lvconvert --merge /dev/vg0/mysql-snapshot
+	  Merging of volume vg0/mysql-snapshot started.
+	  vg0/mysql: Merged: 100.00%
+	
+	// 3.可以看到如果快照一旦被还原会被自动删除
+	[root@localhost ~]#lvs
+	  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  root  centos -wi-ao---- <35.12g
+	  swap  centos -wi-ao----  <3.88g
+	  log   vg0    -wi-ao----   2.95g
+	  mysql vg0    -wi-a-----   2.00g
+	
+	// 4.重新挂载，查看文件是否还原
+	[root@localhost ~]#mount -a ; ls /mnt/mysql/; cat /mnt/mysql/f{1..3}.txt
+	f1.txt  f2.txt  f3.txt  lost+found  test.img
+	f1
+	f2
+	f3
+	
+	
+逻辑卷快照实践2 ==> xfs文件系统：
+	
+	[root@localhost ~]#df -Th
+	Filesystem              Type      Size  Used Avail Use% Mounted on
+	devtmpfs                devtmpfs  1.9G     0  1.9G   0% /dev
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /dev/shm
+	tmpfs                   tmpfs     1.9G   12M  1.9G   1% /run
+	tmpfs                   tmpfs     1.9G     0  1.9G   0% /sys/fs/cgroup
+	/dev/mapper/centos-root xfs        36G  2.6G   33G   8% /
+	/dev/mapper/vg0-log     xfs       3.0G   33M  3.0G   2% /mnt/log
+	/dev/sda1               xfs      1014M  184M  831M  19% /boot
+	tmpfs                   tmpfs     378M     0  378M   0% /run/user/0
+	/dev/mapper/vg0-mysql   ext4      2.0G  961M  925M  51% /mnt/mysql
+	
+	[root@localhost ~]#echo "f1" > /mnt/log/f1.txt
+	[root@localhost ~]#echo "f2" > /mnt/log/f2.txt
+	[root@localhost ~]#echo "f3" > /mnt/log/f3.txt
+	
+	[root@localhost ~]#ls /mnt/log/
+	f1.txt  f2.txt  f3.tx
+	
+	
+	
+	// 创建快照, 假如是忘了加"-p r "只读选项
+	[root@localhost ~]#lvcreate -s -n log-snapshot -L 100M /dev/vg0/log
+	Logical volume "log-snapshot" created.
+	
+	[root@localhost ~]#mkdir /mnt/log-snapshot
+	
+	// 创建快照如果忘了加"-p r "只读选项，可以在挂载的时候以只读属性挂载
+	[root@localhost ~]#mount -o ro /dev/vg0/log-snapshot /mnt/log-snapshot/
+	mount: wrong fs type, bad option, bad superblock on /dev/mapper/vg0-log--snapshot,
+		   missing codepage or helper program, or other error
+
+		   In some cases useful info is found in syslog - try
+		   dmesg | tail or so.
+		   
+	// 可以看到上面挂载出错，因为 xfs 不允许两个相同的UUID设备块同时挂载
+	[root@localhost ~]#blkid /dev/mapper/{vg0-log,vg0-log--snapshot}
+	/dev/mapper/vg0-log: UUID="1b2dc6eb-b3b8-4fb6-b181-59bb24baf43b" TYPE="xfs"
+	/dev/mapper/vg0-log--snapshot: UUID="1b2dc6eb-b3b8-4fb6-b181-59bb24baf43b" TYPE="xfs"		# 快照和"/dev/mapper/vg0-log"逻辑卷的UUID一样
+	
+	
+	// 解决方法，挂载时加"nouuid"选项
+	[root@localhost ~]#mount -o ro,nouuid /dev/vg0/log-snapshot /mnt/log-snapshot/
+	
+	[root@localhost ~]#ls /mnt/log
+	f1.txt  f2.txt  f3.txt
+	
+	[root@localhost ~]#ls /mnt/log-snapshot/
+	f1.txt  f2.txt  f3.txt
+	
+	// 改文件
+	[root@localhost ~]#echo "this is f1.txt" > /mnt/log/f1.txt
+	[root@localhost ~]#rm -rf /mnt/log/f2.txt
+	[root@localhost ~]#echo "f4.txt" > /mnt/log/f4.txt
+	
+	[root@localhost ~]#ls /mnt/log
+	f1.txt  f3.txt  f4.txt
+	
+	// 快照这时就放的原来的文件
+	[root@localhost ~]#ls /mnt/log-snapshot/
+	f1.txt  f2.txt  f3.txt
+	
+	
+还原快照：
+	
+	[root@localhost ~]#umount /mnt/log; umount /mnt/log-snapshot
+	
+	[root@localhost ~]#lvconvert --merge /dev/vg0/log-snapshot
+	  Merging of volume vg0/log-snapshot started.
+	  vg0/log: Merged: 100.00%
+	
+	[root@localhost ~]#lvs
+	  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  root  centos -wi-ao---- <35.12g
+	  swap  centos -wi-ao----  <3.88g
+	  log   vg0    -wi-a-----   2.95g
+	  mysql vg0    -wi-ao----   2.00g
+	
+	// 数据已还原
+	[root@localhost ~]#mount -a; ls /mnt/log; cat /mnt/log/f{1..3}.txt
+	f1.txt  f2.txt  f3.txt
+	f1
+	f2
+	f3
+
+
+2.6 删除逻辑卷
+	删除逻辑卷的顺序和创建逻辑卷的顺序相反。
+	先删除逻辑卷 ==> 再删除卷组 ==> 再删除物理卷 ==> 然后可以取走硬盘，如果使用的分区，也可以把分区删了再取走硬盘
+	
+示例：	
+	[root@localhost ~]#lvs
+	  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  root  centos -wi-ao---- <35.12g
+	  swap  centos -wi-ao----  <3.88g
+	  log   vg0    -wi-ao----   2.95g		#删除逻辑卷
+	  mysql vg0    -wi-ao----   2.00g		#删除逻辑卷
+
+	[root@localhost ~]#df -hT /dev/mapper/vg0-mysql  /dev/mapper/vg0-log
+	Filesystem            Type  Size  Used Avail Use% Mounted on
+	/dev/mapper/vg0-mysql ext4  2.0G  961M  925M  51% /mnt/mysql
+	/dev/mapper/vg0-log   xfs   3.0G   33M  3.0G   2% /mnt/log
+	
+	// 取消永久挂载，修改"/etc/fstab"文件，取消或删除下面两行。更改配置文件是为了防止系统启动时根据配置文件去自动挂载，如果找不到设备，系统将不能正常启动
+	#/dev/mapper/vg0-mysql       /mnt/mysql     ext4             defaults         0 0
+	#/dev/mapper/vg0-log            /mnt/log       xfs              defaults         0 0
+	
+	// 取消挂载
+	[root@localhost ~]#umount /mnt/mysql/ /mnt/log
+	
+	// 删除LV(逻辑卷) mysql
+	[root@localhost ~]#lvremove /dev/vg0/mysql
+	Do you really want to remove active logical volume vg0/mysql? [y/n]: y
+	  Logical volume "mysql" successfully removed
+	
+	// 删除LV(逻辑卷) log
+	[root@localhost ~]#lvremove /dev/vg0/log
+	Do you really want to remove active logical volume vg0/log? [y/n]: y
+	  Logical volume "log" successfully removed
+	
+	
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g  4.00m
+	  /dev/sdb1  vg0    lvm2 a--   <5.00g <5.00g
+	  /dev/sdb2  vg0    lvm2 a--   <5.00g <5.00g
+	
+	// 可以看到逻辑卷 mysql 和 log 已经被删除
+	[root@localhost ~]#lvs
+	  LV   VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+	  root centos -wi-ao---- <35.12g
+	  swap centos -wi-ao----  <3.88g
+	  
+	[root@localhost ~]#vgdisplay vg0
+	  --- Volume group ---
+	  VG Name               vg0
+	  System ID
+	  Format                lvm2
+	  Metadata Areas        2
+	  Metadata Sequence No  24
+	  VG Access             read/write
+	  VG Status             resizable
+	  MAX LV                0
+	  Cur LV                0
+	  Open LV               0
+	  Max PV                0
+	  Cur PV                2
+	  Act PV                2
+	  VG Size               9.99 GiB
+	  PE Size               4.00 MiB
+	  Total PE              2558
+	  Alloc PE / Size       0 / 0
+	  Free  PE / Size       2558 / 9.99 GiB
+	  VG UUID               kQXAEy-kdWv-0Z7w-vIE1-av2g-jBQf-mOIV39	 
+	
+	
+	// 删除VG(卷组)
+	[root@localhost ~]#vgremove vg0
+	  Volume group "vg0" successfully removed
+	
+	// 卷组vg0已经被删除
+	[root@localhost ~]#vgs
+	  VG     #PV #LV #SN Attr   VSize   VFree
+	  centos   1   2   0 wz--n- <39.00g 4.00m
+	
+	
+	// 删除PV(物理卷)
+	[root@localhost ~]#pvremove /dev/sdb{1,2}
+	  Labels on physical volume "/dev/sdb1" successfully wiped.
+	  Labels on physical volume "/dev/sdb2" successfully wiped.	
+	
+	
+	// 物理卷已被删除
+	[root@localhost ~]#pvs
+	  PV         VG     Fmt  Attr PSize   PFree
+	  /dev/sda2  centos lvm2 a--  <39.00g 4.00m	
+	
+	
+	// 到这里就可以取走硬盘，如果物理卷使用的是分区，也可以把分区删了再取走硬盘，也可以不删，但要注意其它分区是否还处于使用的状态
+	
+	
+	// 因为这两个物理卷是sdb硬盘的两个分区，所以此时也可以删除分区 
+	[root@localhost ~]#gdisk /dev/sdb
+	GPT fdisk (gdisk) version 0.8.10
+
+	Partition table scan:
+	  MBR: protective
+	  BSD: not present
+	  APM: not present
+	  GPT: present
+
+	Found valid GPT with protective MBR; using GPT.
+
+	Command (? for help): d
+	Partition number (1-2): 1
+
+	Command (? for help): d
+	Using 2
+
+	Command (? for help): w
+
+	Final checks complete. About to write GPT data. THIS WILL OVERWRITE EXISTING
+	PARTITIONS!!
+
+	Do you want to proceed? (Y/N): y
+	OK; writing new GUID partition table (GPT) to /dev/sdb.
+	The operation has completed successfully.
+	
+	
+	[root@localhost ~]#lsblk /dev/sdb
+	NAME MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+	sdb    8:16   0  10G  0 disk
+	
+	[root@localhost ~]#
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+

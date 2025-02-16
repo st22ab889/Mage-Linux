@@ -1,0 +1,567 @@
+1 Linux防火墙介绍
+
+netfilter
+	Linux内核内置了 netfilter 这个防火墙模块，不仅实现了防火墙功能，还有nat、包的管理功能等！
+	netfilter 是非常重要的技术，比如虚拟化、容器、k8s等，都会接触到Linux防火墙！
+	netfilter 是内核的功能，需要借助用户空间的工具去配置管理linux内核中防火墙，常用的用户空间工具如下：
+		iptables：centos6、7、8 和 Ubuntu 都支持。所以iptables目前是最主流的管理netfilter模块的工具。注意：iptables是防火墙，仅仅是个命令、工具！
+		firewalld：centos7、8提供
+		ntf：centos8 提供
+
+
+安全技术: 大的公司通常都会采用和安全相关的产品
+	入侵检测系统(Intrusion Detection Systems)：发现安全风险，作为事后的一些安全策略的依据，一般采用旁路部署方式，起监控记录的作用！
+	入侵防御系统(Intrusion Prevention System)：分析数据包信息，如果发现风险，会采取阻断的行动，一般采用在线部署方式
+	防火墙(FireWall)：把内外部网络进行隔离，外部网络和内部网络进行网络通讯，必须经过防火墙的相关的规则检查，规则允许才能穿过防火墙到达另外一个网络！
+					在安全较高的企业或机构中，防火墙可能有很多个，比如军事等，有些甚至没有接入互联网，从物理上隔离！
+					防火墙阻止的是外部进入内部的连接，内部发往外部的连接不阻止！
+	防水墙(Waterwall):与防火墙相对，是一种防止内部信息泄漏的安全产品。只管内部，不管外部。 用的比较少，只有一些特定的企业用！
+
+
+防火墙的分类：
+	按保护范围划分：
+		主机防火墙：也成为单机防火墙，服务范围为当前一台主机，比如windows中的防火墙，Linux系统中的防火墙
+		网络防火墙：服务范围为防火墙一侧的局域网
+	
+	按实现方式划分:
+		硬件防火墙：在专用硬件级别实现部分功能的防火墙；另一个部分功能基于软件实现，如：华为，山石hillstone,天融信，启明星辰，绿盟，深信服, 
+					PaloAlto , fortinet, Cisco, Checkpoint，NetScreen(Juniper2004年40亿美元收购)等
+		软件防火墙：运行于通用硬件平台之上的防火墙的应用软件，例如：Windows 防火墙 ISA，后改名为 ForefrontTMG，运行在 Windows server 上。
+				    ForefrontTMG需要成本， Windows server也需要成本，而且Windows系统不稳定，现在已经不用了！ 
+				
+
+	按网络协议划分：
+		网络层防火墙：又称为包过滤防火墙，控制OSI模型下四层，控制的比较粗糙，比如防火墙允许http协议的80端口，控制不了使用http协议传输的数据
+			传输层：可以控制TCP，UDP，端口，这里就可以控制应用程序
+			网络层：可以控制IP
+			数据链路层：可以控制mac地址
+			物理层：不会在这层控制，因为都是二进制代码
+		应用层防火墙/代理服务器：proxy 代理网关，控制OSI模型七层，比如协议中传的什么文件、传的哪种资源都是可以分析出来的，所以应用层防火墙功能更丰富！
+			但是要检查协议中传输的资源，需要一层层拆包，所以效率比较低！
+		
+		网络层防火墙和应用层防火墙比较：
+			网络层防火墙：
+				网络层对数据包进行选择，选择的依据是系统内设置的过滤逻辑，被称为访问控制列表（ACL），通过检查数据流中每个数据的源地址，目的地址，
+				所用端口号和协议状态等因素，或他们的组合来确定是否允许该数据包通过
+				优点：对用户来说透明，处理速度快且易于维护
+				缺点：无法检查应用层数据，如病毒等
+			应用层防火墙：
+				应用层防火墙/代理服务型防火墙，也称为代理服务器（Proxy Server)
+				将所有跨越防火墙的网络通信链路分为两段，内外网用户的访问都是通过代理服务器上的“链接”来实现	
+				优点：在应用层对数据进行检查，比较安全
+				缺点：增加防火墙的负载
+				
+			提示：现实生产环境中所使用的防火墙一般都是二者结合体，即先检查网络数据，通过之后再送到应用层去检查	
+
+总结：				
+	公司里面一般都采用硬件防火墙，这是比较主流的做法！
+		硬件防火墙里面的硬件(比如cpu等)都是针对网络流量做过优化的，
+		硬件防火墙的系统也是基于linux系统，也就是在netfilter 模块上做了一些二次开发，比如web界面、协议的开发等！
+		防火墙涉及到性能消耗，所以防火墙一般都会标明能承受多大的流量或用户
+	现在的防火墙产品一般具有综合总能，除了防火墙的功能外，还有一些附加功能，比如入侵检测、入侵防御等
+
+
+1.1 Netfilter
+	Netfilter早期是个独立的模块，是Linux 2.4.x之后集成在内核中，是linux内核的一个子系统。
+	Netfilter采用模块化设计，具有良好的可扩充性，提供扩展各种网络服务的结构化底层框架。模块化设计意味可增加、可删除！
+	Netfilter与IP协议栈是无缝契合，并允许对数据报进行过滤(过滤就是拒绝不合规则的数据)、地址转换、处理等操作
+	
+	
+	# config文件记录的就是当前系统启用和没有启动哪些内核功能
+	[root@localhost ~]#grep -m 10 NETFILTER /boot/config-3.10.0-1160.el7.x86_64
+	CONFIG_NETFILTER=y							# y 说明集成在内核中，也就是集成 vmlinuz 文件中
+	# CONFIG_NETFILTER_DEBUG is not set
+	CONFIG_NETFILTER_ADVANCED=y
+	CONFIG_BRIDGE_NETFILTER=m					# m 说明是以模块方式提供，放在"/usr/lib/modules/{linux版本}/kernel/..."目录中
+	CONFIG_NETFILTER_NETLINK=m
+	CONFIG_NETFILTER_NETLINK_ACCT=m
+	CONFIG_NETFILTER_NETLINK_QUEUE=m
+	CONFIG_NETFILTER_NETLINK_LOG=m
+	CONFIG_NETFILTER_NETLINK_QUEUE_CT=y
+	CONFIG_NETFILTER_SYNPROXY=m
+
+	总结：
+		Netfilter 在Linux上是个标配的功能，无论什么版本都默认启用
+
+
+1.2 防火墙工具介绍
+	
+iptables
+	由软件包iptables提供的命令行工具，工作在用户空间，用来编写规则，写好的规则被送往netfilter，告诉内核如何去处理信息包！
+	iptables 命令用起来稍微繁琐，但是更贴近linux防火墙的工作过程和原理，所以掌握 iptables 命令的用法，就能理解Linux防火墙的工作过程！
+	
+	[root@localhost ~]#rpm -qi iptables
+	Name        : iptables
+	Version     : 1.4.21
+	Release     : 35.el7
+	Architecture: x86_64
+	Install Date: Fri 20 Aug 2021 07:20:42 PM CST
+	......省略
+	
+	[root@localhost ~]#rpm -ql iptables
+	/usr/sbin/ip6tables						# 适用于ipv6
+	/usr/sbin/ip6tables-restore
+	/usr/sbin/ip6tables-save
+	/usr/sbin/iptables						# 适用于ipv4，这个命令重要
+	/usr/sbin/iptables-restore				# 重要命令
+	/usr/sbin/iptables-save					# 重要命令
+	/usr/lib64/xtables/libip6t_icmp6.so
+	/usr/lib64/xtables/libipt_icmp.so		# 这个模块配合防火墙专门控制 icmp 协议
+	......省略
+	
+	
+	// 在centos8上，可以看到软衔接指向的是 xtables-nft-multi，因为centos8上用的工具是nft，但是命令之间的基本用法互相兼容
+	[root@localhost ~]#ll /usr/sbin/iptables
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/sbin/iptables -> xtables-multi		
+
+	[root@localhost ~]#iptables --version
+	iptables v1.4.21
+
+	// centos7、8都没有提供service文件，需要自己安装！
+	[root@localhost ~]#rpm -ql iptables | grep service
+	
+	// iptables的service和传统服务不一样，传统服务启动service，表示服务运行，iptables只是一个用户空间工具，真正起作用的是内核中的 netfilter
+	// 所以iptables的service是否启动，并不决定netfilter有没有这个功能。iptables的service的作用是：是否启动定义好的iptable规则！
+	[root@localhost ~]#dnf -y install iptables-services
+
+	
+firewalld
+	CentOS7开始引入的新的前端管理工具，firewalld也是定义防火墙规则，它定义的规则和iptables定义的规则，都可以影响用户的访问，相当于两个工具的功能一致！
+	功能一致会出现冲突，比如一个允许，一个拒绝。为了避免冲突，所以在centos7及以后并没有默认安装iptables的service，防止和firewalld冲突！
+	关闭firewalld的意思是不用系统自带的防火墙规则，但是可以用自己定义的规则，所以停掉firewalld的service，并不是说没有防火墙！
+	firewalld 实际上也是基于 iptables 的二次开发，相当于把 iptables 做了整合，用法更加简单方便，但不推荐使用，用 firewalld 会导致对linux防火墙的底层逻辑不太关注，
+	因为firewalld太简单了，简单到点点鼠标就能配置，这样会导致不关心底层逻辑，以及很难理解它的工作原理，将来遇到问题不好解决。所以建议用 iptables
+	
+	软件包：
+		firewalld
+		firewalld-config
+	
+	管理工具：
+		firewall-cmd 命令行工具
+		firewall-config 图形工作
+	
+	[root@localhost ~]#rpm -ql firewalld | grep service
+	/usr/lib/systemd/system/firewalld.service
+	
+	// 关闭  firewalld.service，意味着当前规则没有启用，所有的linux内核里面默认的规则也没有启动
+	[root@localhost ~]#systemctl status firewalld.service
+	● firewalld.service - firewalld - dynamic firewall daemon
+	   Loaded: loaded (/usr/lib/systemd/system/firewalld.service; disabled; vendor preset: enabled)
+	   Active: inactive (dead)
+		 Docs: man:firewalld(1)
+	
+
+nftables	
+	此软件是CentOS 8 新特性，也是属于 Netfilter 这个组织
+	
+
+说明：
+	iptables、firewalld、nftables 这三个工具只使用启动一个，因为功能相同，用两个或三个会冲突
+	iptables、firewalld、nftables 都是调用的是Linux内核中的 Netfilter 提供的勾子函数(接口)
+	推荐使用 iptables！
+	
+	
+1.3 netfilter 中五个勾子函数和报文流向
+	勾子函数：系统预留了一些函数，这些函数允许外部用户通过一些方法去间接引用调用。一般的函数是系统内部使用，勾子函数是外部和内部都可以使用！
+	netfilter内置了5个和防火墙密切相关的勾子函数，这5个勾子函数就是用来实现非常强大的安全控制！
+	Netfilter在内核中选取五个位置放了5个勾子函数，分别为 INPUT、OUTPUT、FORWARD、PREROUTING、POSTROUTING
+	
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		
+		/								------------------------	                              /
+		/								|		上层协议	   |                                  /
+		/								------------------------	                              /
+		/									↑				|                                     /
+		/									|				↓                                     /
+		/									|			  OUTPUT                                  /
+		/								  INPUT			  	|                                     /
+		/									↑				|                                     /
+		/									|			 路由判决                                 /
+		/									|				|                                     /
+		/    数据包入口					    |				|				   数据包出口         /
+		/  ------------->PREROUTING---->路由判决-->FORWARD------->POSTROUTING ------------->      /
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		路由判决其实就是由路由表实现！
+		
+	三种报文流向
+		流入本机：PREROUTING --> INPUT-->用户空间进程
+		流出本机：用户空间进程 -->OUTPUT--> POSTROUTING
+		转发：PREROUTING --> FORWARD --> POSTROUTING
+
+	提示：
+		从 Linux kernel 4.2 版以后，Netfilter 在prerouting 前加了一个 ingress 勾子函数。
+		可以使用这个新的入口挂钩来过滤来自第2层的流量，这个新挂钩比预路由要早，基本上是 tc 命令（流量控制工具）的替代品
+	
+	
+iptables的组成
+	ptables由五个表(table)和五个链(chain)以及一些规则组成
+		五个表对应的是 filter、nat、mangle、raw、security，这个五个表是从功能上区分！
+		五个链对应的就是五个勾子函数，五个链对应的名称为 INPUT,OUTPUT,FORWARD,PREROUTING,POSTROUTING，和勾子函数同名！
+	
+	ptables的五个表：只需掌握 filter 和 nat 表，其它表很少用
+		filter：过滤规则表，根据预定义的规则过滤符合条件的数据包,默认表。实现拒绝/允许功能！
+		nat：network address translation 地址转换规则表
+		mangle：修改数据标记位规则表。修改报文用，在数据包经过内核的时候，可能会修改里面的内容，比如给报文设置优先级！
+		raw：关闭启用的连接跟踪机制，加快封包穿越防火墙速度
+		security：用于强制访问控制（MAC）网络规则，由Linux安全模块（如SELinux）实现
+	
+	每个表里面可以启用相关的链，比如：
+		mangle表可以有 INPUT,OUTPUT,FORWARD,PREROUTING,POSTROUTING 这些链
+		
+
+	如果定义了冲突的规则，那么会根据优先级进行处理！优先级由高到低的顺序为：
+		security > raw > mangle > nat > filter
+	
+	表和链对应关系：
+		每个表支持的链并不是完全一样：
+			filter：支持 INPUT,FORWARD,OUTPUT 链
+			nat：	支持 INPUT,OUTPUT,PREROUTING,POSTROUTING 链
+			mangle：支持 INPUT,OUTPUT,FORWARD,PREROUTING,POSTROUTING 链
+			raw：	支持 PREROUTING、OUTPUT 链
+			security：支持 INPUT、FORWARD、OUTPUT 链
+		注意：这种关系并不是固定的，比如centos6和centos7上同一个表支持的链可能就有差异
+		
+		// 列出表，因为 raw 和 security 用的比较少，所以这里没有列出来，但其实是有的
+		[root@localhost ~]#iptables -t			# 输入"-t"后按tab键列出来
+		filter  mangle  nat
+		
+		// 查看 security 表支持的链
+		[root@localhost ~]#iptables -t security -L
+		Chain INPUT (policy ACCEPT)
+		target     prot opt source               destination
+
+		Chain FORWARD (policy ACCEPT)
+		target     prot opt source               destination
+
+		Chain OUTPUT (policy ACCEPT)
+		target     prot opt source               destination
+		
+		// 查看 filter 表支持的链，因为 filter 表用的最多，所以 —L 默认就是列出 filter 表支持的链
+		[root@localhost ~]#iptables  -L				# 相当于 iptables -t filter -L	
+		Chain INPUT (policy ACCEPT)
+		target     prot opt source               destination
+
+		Chain FORWARD (policy ACCEPT)
+		target     prot opt source               destination
+
+		Chain OUTPUT (policy ACCEPT)
+		target     prot opt source               destination
+		
+	iptables 只是用户空间的一个工具，这个工具可以配合五表五链来定义各种规则！
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 iptables的基本用法
+ 
+2.1 环境准备
+	CentOS 7，8：
+		systemctl stop firewalld.service
+		systemctl disable firewalld. service
+		 或者
+		systemctl disable --now firewalld.service
+	
+	CentOS 6：
+		service iptables stop
+		chkconfig iptables off
+	
+	iptables --help
+ 
+	
+2.2 iptables 命令入门
+
+命令示例：
+	iptables -t filter -A INPUT -s 192.168.0.1 -j DROP
+	
+	说明
+		-t 表示指定表，filter 是默认表，所以可以省略"-t filter"
+		-A 表示 append，表示把规则追加到哪个链里(说明规则有顺序)
+		-s 表示 source，源地址。同样有"-d"选项表示目标地址，适用于多网卡、多地址！
+		   如果只有一个网卡一个地址，又是使用的 INPUT 链，说明本机的这个地址就是目标地址，所以没必要使用"-d"
+		-j 表示jump，符合条件就把数据包丢给"动作"去处理，后面跟具体的动作，DROP 表示丢弃这个请求
+		
+		
+
+实践：在 1921.68.32.99 主机上添加规则
+	
+	// 往 filter 表中的 INPUT 链添加一条规则，"filter"是默认表，所以可以省略" -t filter"
+	[root@localhost ~]# iptables -t filter -A INPUT -s 192.168.32.100 -j DROP 	
+	
+	
+	// 查看规则，"-v"详细显示，"-n"数字化，"L"列出所有规则，"L"一定要放在选项的最后！但是分开写没有关系，比如 "-L -n -v" 或  "-L -nv"
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 12 packets, 748 bytes)		# "policy ACCEPT"表示策略是 ACCEPT
+	 pkts bytes target     prot opt in     out     source               destination
+		0     0 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0	# 这是刚刚添加的规则，表示把来自 192.168.32.100 的包丢弃，也不回应任何数据包
+
+	Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)		# "policy ACCEPT"表示策略是 ACCEPT，FORWARD链没有任何规则，表示允许任何连接
+	 pkts bytes target     prot opt in     out     source               destination
+
+	Chain OUTPUT (policy ACCEPT 9 packets, 848 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	
+	
+	// 在"192.168.32.100"上ping "192.168.32.99"
+	[root@localhost ~]#ping 192.168.32.99
+	PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	^C
+	--- 192.168.32.99 ping statistics ---
+	6 packets transmitted, 0 received, 100% packet loss, time 5015ms	# 总共发出了6个包，没有任何回应！
+	
+	
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 67 packets, 4212 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	    6  1284 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0			# 这里对应丢弃了6个数据包
+	......省略
+	
+	
+	// 在"192.168.32.100"上尝试使用ssh登录 "192.168.32.99"
+	[root@localhost ~]#ssh  192.168.32.99
+	^C								# ssh 走的tcp协议，会反复进行连接请求，越往请求之间隔的时间越长，一直到超时失败，这里是按"CTRL + C" 主动结束
+	
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 67 packets, 4212 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	   12  1284 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0			# 被丢弃包的数量都会被记录
+	......省略
+	
+	
+	
+	// 再次往 filter 表中的 INPUT 链添加一条规则，这条规则是针对一个网段。
+	// 注意：DROP 是不理睬，直接扔掉请求包，不回应！ REJECT 是拒绝，扔掉请求包，有回应！
+	// 运行这个命令后，如果SSH客户端远程连接这个主机使用的IP在这个网段内，那么连接马上会断，断了后需要本地登录主机，然后清除规则，才能使用SSH连接远程主机
+	[root@localhost ~]# iptables -t filter -A INPUT -s 192.168.32.0/24 -j REJECT		
+	
+	
+	//  在"192.168.32.100"上ping "192.168.32.99"，仍然没有回应
+	[root@localhost ~]#ping 192.168.32.99
+	PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	^C
+	--- 192.168.32.99 ping statistics ---
+	100 packets transmitted, 0 received, 100% packet loss, time 99234ms
+	
+	
+	//  在"192.168.32.101"上ping "192.168.32.99"，有回应包，Unreachable 说明对方主机拒绝请求
+	[root@localhost ~]#ping 192.168.32.99
+	PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	From 192.168.32.99 icmp_seq=1 Destination Port Unreachable
+	From 192.168.32.99 icmp_seq=2 Destination Port Unreachable
+	From 192.168.32.99 icmp_seq=3 Destination Port Unreachable
+	^C
+	--- 192.168.32.99 ping statistics ---
+	3 packets transmitted, 0 received, +3 errors, 100% packet loss, time 2024ms
+
+
+	// 问题？为什么"192.168.32.100"和"192.168.32.101"访问"192.168.32.99"的结果不一样？
+	// 回答：因为规则有次序，前后的次序决定了处理的次序，按首次匹配的规则处理，匹配后就不会再往下匹配规则！
+	[root@localhost ~]# iptables -vnL --line-numbers			# "--line-numbers"表示显示显示详细的编号，也就是顺序显示，说明规则有前后次序
+	Chain INPUT (policy ACCEPT 144 packets, 11536 bytes)
+	num   pkts bytes target     prot opt in     out     source               destination
+	1      119  9684 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0
+	2 		32 	4592 REJECT		all  --  *      *		192.168.32.0/24 	 0.0.0.0/0 		reject-with icmp-port-unreachable	
+	......省略
+	说明：
+		"reject-with icmp-port-unreachable"表示如果时icmp报文的包，就返回内容为"unreachable"这样的数据包！
+		iptables 有一个容易犯的错，设置的策略决绝了自己，导致不能通过ssh远程登录，定义规则的时候要小心这个风险！
+	
+	
+	
+	// 生产中为了安全，有时候会故意定义一些只允许特定的人访问的规则，比如把自己的主机IP放在编号为1的规则上，策略设为 ACCEPT，这样就避免了自己的主机被拒绝
+	// -I 表示insert，1 表示插入的位置，把规则插入到 INPUT 链上编号为1的位置
+	[root@localhost ~]# iptables -t filter -I INPUT 1 -s 192.168.32.2 -j ACCEPT
+	
+	
+	[root@localhost ~]# iptables -vnL  --line-numbers
+	Chain INPUT (policy ACCEPT 64 packets, 3824 bytes)
+	num   pkts bytes target     prot opt in     out     source               destination
+	1        0     0 ACCEPT     all  --  *      *       192.168.32.2         0.0.0.0/0			 # 刚刚添加的规则编号为 1
+	2      119  9684 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0			 # 原来的1就变为了2	
+	3       32  4592 REJECT     all  --  *      *       192.168.32.0/24      0.0.0.0/0            reject-with icmp-port-unreachable
+	......省略
+	
+	
+	// 删除filter表中INPUT链的编号为2的规则, 删除后之前编号为3的规则就变为了2，依次类推！
+	[root@localhost ~]# iptables -D INPUT 2		# 这里省略了"-t filter", 因为默认使用的就是 filter 表
+	
+	// 删除filter表中INPUT链的所有规则
+	[root@localhost ~]# iptables -F INPUT		# 这里省略了"-t filter", 因为默认使用的就是 filter 表
+	
+	// 删除filter表中所有链的所有规则			
+	[root@localhost ~]# iptables -F 			# 这里省略了"-t filter", 因为默认使用的就是 filter 表
+	
+
+
+2.3 生产中有两种设置防火墙的方式
+	白名单：只有明确指定的才能访问！
+	黑名单：拒绝明确指定的访问，其它都可以访问.黑名单没有白名单安全，因为黑名单范围宽泛，生产中安全较高的环境，建议使用白名单！
+
+	
+实践：在 1921.68.32.99 主机上添加规则
+
+	// 先清除掉所有的规则
+	[root@localhost ~]# iptables -F 
+	
+	// "iptables -vnL" 相当于 "iptables -t filter -vnL"
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 33 packets, 1948 bytes)		# INPUT 链的策略默认是 ACCEPT，表示所有的连接都接受，在这种策略下添加的规则相当于黑名单 
+	pkts bytes target     prot opt in     out     source               destination
+	......省略
+	
+	
+	// -P 表示改变整个链的策略，改变后，SSH马上失去和远程主机的连接
+	[root@localhost ~]# iptables -t filter -P INPUT DROP	# 修改 input 链的策略
+	
+	
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy DROP 33 packets, 1948 bytes)		# 修改后 input 链的策略是 DROP，表示所有的连接都拒绝，在这种策略下添加的规则相当于白名单
+	pkts bytes target     prot opt in     out     source               destination
+	......省略
+	
+	
+	// 因为 input 链的策略是 DROP，默认拒绝所有连接，所以 ping 主机自己的回环地址都失败
+	[root@localhost ~]#ping 127.0.0.1
+	PING 127.0.0.1 (127.0.0.1) 56(84) bytes of data.
+	^C
+	--- 127.0.0.1 ping statistics ---
+	2 packets transmitted, 0 received, 100% packet loss, time 1003ms
+	
+	# ping主机自己的IP也失败
+	[root@localhost ~]#ping 192.168.32.99						
+	PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	^C
+	--- 192.168.32.99 ping statistics ---
+	2 packets transmitted, 0 received, 100% packet loss, time 1003ms		
+	
+	
+	说明：
+		如果链的默认策略是 DROP，只要没被允许，自己本机的 IP 都不能 ping 通
+	
+	
+	// 因为SSH不可用，所以下面的操作直接在主机上操作
+	
+	// -I 表示插入一条规则，1 表示把规则插入到 INPUT 链上编号为1的位置；-i 表示接口，使用接入接口的方式，后面可以跟网卡名，表示网卡接口！
+	[root@localhost ~]#iptables -I INPUT 1  -i lo -j ACCEPT			# lo表示回环网卡，表示从回环网卡进来都会被允许，相当于白名单效果
+	
+	
+	[root@localhost ~]#ping 127.0.0.1
+	PING 127.0.0.1 (127.0.0.1) 56(84) bytes of data.
+	64 bytes from 127.0.0.1: icmp_seq=1 ttl=64 time=0.011 ms
+	......省略
+	
+	[root@localhost ~]#ping 192.168.32.99
+	PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	64 bytes from 192.168.32.99: icmp_seq=1 ttl=64 time=0.013 ms
+	......省略
+	
+	
+	问题：规则只放行了绑定"127.0.0.1"这个IP的网卡，为什么"192.168.32.99" 这个 IP 也能 ping 通? 虽然两个IP在同一台主机上，但是绑定在不同的网卡上！
+	回答：因为"192.168.32.99" 这个 IP 属于全局范围，全局的意思是主机上任何一个网卡收到的数据报文，无论是哪一个网卡，只要能从这个网卡进来，
+		  不论这个IP地址绑定在哪个网卡接口，都是有效的。所以"192.168.32.99" 这个 IP 相当于绑定了主机上所有的网卡，对所有网卡有效。结果就是，
+		  访问 lo 网卡上根本没有配的eth0的IP也可以，所以从回环网卡进来也能访问本机IP！
+	
+	
+	[root@localhost ~]# ip a
+	1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+		link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+		inet 127.0.0.1/8 scope host lo											# "scope host"说明"127.0.0.1"这个IP不适用于全局范围
+		   valid_lft forever preferred_lft forever								# "127.0.0.1"这个IP不是全局的，所以这个IP只绑定在 lo 这块网卡
+		inet6 ::1/128 scope host
+		   valid_lft forever preferred_lft forever
+	2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+		link/ether 00:0c:29:87:03:a1 brd ff:ff:ff:ff:ff:ff
+		inet 192.168.32.99/24 brd 192.168.32.255 scope global noprefixroute eth0	# "scope global"说明"192.168.32.99"这个IP适用于全局范围
+		   valid_lft forever preferred_lft forever								# "192.168.32.99"这个IP是全局的，相当于既绑定在 eth0 这块网卡，也绑定在 lo 这块网卡！
+		inet6 fe80::9d5b:a890:199d:c2ea/64 scope link noprefixroute
+		   valid_lft forever preferred_lft forever	
+	
+	
+	// 清除规则后，本机地址不能访问，SSH也不能连接，因为 INPUT 链的策略是 DROP，如果 INPUT 链里面没有任何规则，表示拒绝所有连接！
+	[root@localhost ~]# iptables -F
+	
+	
+	// INPUT 链的策略改回默认的 ACCEPT，如果 INPUT 链里面没有任何规则，表示允许所有连接，包括本机连接和SSH连接！
+	[root@localhost ~]# iptables -t filter -P INPUT ACCEPT
+	
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 2027 packets, 131K bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	......省略
+	
+
+	总结：
+		这种实现白名单的方式会带来问题，会导致主机本身的地址都不可连接。一不小心，也会导致SSH客户端不能远程连接！
+	
+
+2.4 正确实现白名单的方式，建议使用此种方式
+		
+	// 下面三条命令实现了使用黑名单的方式，但又实现了白名单的效果
+	[root@localhost ~]#iptables -A INPUT -s 192.168.32.1 -j ACCEPT
+	[root@localhost ~]#iptables -A INPUT -i lo -j ACCEPT
+	[root@localhost ~]#iptables -A INPUT -j REJECT				# 不加条件，相当于全部拒绝，相当于白名单形式, 起到了白名单的效果
+ 
+ 
+	[root@localhost ~]#iptables -vnL --line-numbers
+	Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+	num   pkts bytes target     prot opt in     out     source               destination
+	1       97  5812 ACCEPT     all  --  *      *       192.168.32.1         0.0.0.0/0
+	2        0     0 ACCEPT     all  --  lo     *       0.0.0.0/0            0.0.0.0/0
+	3        1    76 REJECT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            reject-with icmp-port-unreachable		
+	......省略
+	
+	
+	// 如果要添加规则就插入到最后规则的前面
+	[root@localhost ~]#iptables -IINPUT 3 -s 192.168.32.0/24 -j ACCEPT
+	
+	// 清除规则后，不影响自己能连
+	[root@localhost ~]#iptables -F  
+	[root@localhost ~]#iptables -vnL
+	Chain INPUT (policy ACCEPT 215 packets, 16956 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	......省略
+	
+	
+	总结：在整个规则的最后加一个拒绝所有，用这种方式实现所谓的白名单功能，建议用这种方式添加规则 ！
+	
+	
+2.5 禁ping
+	
+	// 拒绝来自"192.168.32.101"的icmp报文(也就是ping)
+	[root@localhost ~]#iptables -A INPUT -s 192.168.32.101 -p icmp -j REJECT
+	
+	，只是ping不通，仍然可以用其它网络协议连接，比如使用SSH登录这台主机
+	
+	// "192.168.32.101"这台主机只是ping不通
+	[root@localhost ~]#ping 192.168.32.100
+	PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.
+	From 192.168.32.100 icmp_seq=1 Destination Port Unreachable
+	From 192.168.32.100 icmp_seq=2 Destination Port Unreachable
+	^C
+	--- 192.168.32.100 ping statistics ---
+	2 packets transmitted, 0 received, +2 errors, 100% packet loss, time 1003ms
+	
+	
+	// 其它协议不受影响，比如使用SSH登录
+	[root@localhost ~]#ssh 192.168.32.100			# 在"192.168.32.101"主机上登录"192.168.32.100"这台主机
+	root@192.168.32.100's password:
+	Last login: Mon Dec  5 19:54:37 2022 from 192.168.32.1
+	[root@localhost ~]#hostname -I
+	192.168.32.100
+	[root@localhost ~]#exit
+	logout
+	Connection to 192.168.32.100 closed.
+	[root@localhost ~]#hostname -I
+	192.168.32.101
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+iptables 基本匹配条件：无需加载模块，由iptables/netfilter自行提供
+	[!] -s, --source address[/mask][,...]：源IP地址或者不连续的IP地址
+	[!] -d, --destination address[/mask][,...]：目标IP地址或者不连续的IP地址
+	[!] -p, --protocol protocol：指定协议，可使用数字如0（all）
+			protocol: tcp, udp, icmp, icmpv6, udplite,esp, ah, sctp, mh or“all“
+			参看：/etc/protocols
+	[!] -i, --in-interface name：报文流入的接口；只能应用于数据报文流入环节，只应用于INPUT、FORWARD、PREROUTING链
+	[!] -o, --out-interface name：报文流出的接口；只能应用于数据报文流出的环节，只应用于FORWARD、OUTPUT、POSTROUTING链
+
+

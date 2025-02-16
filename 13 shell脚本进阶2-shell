@@ -1,0 +1,1197 @@
+
+
+2 shell脚本编程进价while循环和控制
+
+2.1 while循环
+	
+格式1：
+	while COMMANDS; do COMMANDS; done
+
+格式2：
+	while CONDITION; do
+		循环体
+	done	
+	
+
+无限循环的两种写法：
+	while true; do
+		循环体
+	done
+	
+	// ":"表示什么也不干，总返回成功，"help :"可以查看到用法
+	while : ; do
+		循环体
+	done
+	
+	
+实践1：磁盘空间报警
+
+
+实践2：防止Dos攻击的脚本
+
+
+
+2.2 until循环
+	
+	type until
+	help until
+	
+格式1：
+	until COMMANDS; do COMMANDS; done
+
+格式2：	
+	until CONDITION; do
+		循环体
+	done
+
+说明：
+	进入条件： CONDITION 为false
+	退出条件： CONDITION 为true
+	
+无限循环：
+	until false; do
+		循环体
+	done
+
+		
+2.2 continue 循环控制语句
+	continue [N]：提前结束第N层的本轮循环，而直接进入下一轮判断；最内层为第1层
+
+格式：
+	while CONDITION1; do
+	CMD1
+	...
+	if CONDITION2; then
+		continue
+	fi
+		CMDn
+		...
+	done
+
+	
+实践：
+	for ((i=0;i<10;i++));do
+		for((j=0;j<10;j++));do
+			[ $j -eq 5 ] && continue 2		# 2 代表外层循环,  continue 默认跳出本层循环， 相当于"continue 1"
+			echo $j
+		done
+		echo ---------------------------
+	done
+	
+
+	
+2.3 break 循环控制语句
+	break [N]：提前结束第N层整个循环，最内层为第1层
+
+格式：
+	while CONDITION1; do
+		CMD1
+		...
+		if CONDITION2; then
+			break
+		fi
+		CMDn
+		...
+	done
+	
+实践1：
+	for ((i=0;i<10;i++));do
+		for((j=0;j<10;j++));do
+			[ $j -eq 5 ] && break			# break 默认跳出本层循环， 相当于"break 1"
+			echo $j
+		done
+		echo ---------------------------
+	done
+
+
+实践2：	
+	for ((i=0;i<10;i++));do
+		for((j=0;j<10;j++));do
+			[ $j -eq 5 ] && break 2			# 2 代表外层循环
+			echo $j
+		done
+		echo ---------------------------
+	done
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 shell脚本进阶shift和select
+
+3.1 shift 循环控制命令
+	shift [n] 用于将参量列表 list 左移指定次数，缺省为左移一次。
+	参量列表 list 一旦被移动，最左端的那个参数就从列表中删除。while 循环遍历位置参量列表时，常用到 shift
+
+实践：批量创建账号
+	
+	cat shift_batch_user.sh
+	if [ $# -eq 0 ];then
+		echo "Usage: `basename $0` user1 user2 ..."
+		exit
+	fi
+	while [ "$1" ];do
+		if id $1 &> /dev/null;then
+			echo $1 is exist
+		else
+			useradd $1
+			echo "$1 is created"
+		fi
+		shift			# 假如运行脚本时传递了 p1、p2、p3、p4 这几个参数，结果为：第一次的 $1 为  p1，shift后，第二次循环  $1 为p2，依次类推；
+	done				# shift 默认为左移一次，如果"shift 2"表示向左移动两次, 第一次拿到的参数为 p1、p2，第二次拿到的参数为 p3、p4
+	echo "All user is created"
+	
+	
+	bash shift_batch_user.sh
+	Usage: shift_batch_user.sh user1 user2 ...
+	
+	bash shift_batch_user.sh tom alice jack
+	tom is exist
+	alice is exist
+	jack is created
+	All user is created
+	
+	
+	
+3.2 （重要）while 特殊用法 while read，while 循环的特殊用法，遍历文件或文本的每一行
+	
+格式：
+	while read line; do
+		循环体
+	done < /PATH/FROM/SOMEFILE   # 依次读取/PATH/FROM/SOMEFILE文件中的每一行，且将行赋值给变量line
+	
+	
+实践1：磁盘空间报警发邮件
+	cat while_read_diskcheck.sh
+	#!/bin/bash
+	WARNING=80
+	MAIL=root@wangxiaochun.com
+	df |sed -nr "/^\/dev\/sd/s#^([^ ]+) .* ([0-9]+)%.*#\1 \2#p"|while read DEVICE
+	USE;do
+		if [ $USE -gt $WARNING ] ;then
+			echo "$DEVICE will be full,use:$USE" | mail -s "DISK WARNING" $MAIL
+		fi
+	done
+
+实践2：
+	[ec2-user@ip-172-31-32-113 ~]$ cat score.txt
+	xiaoming:80
+	xiaohong:90
+	xiaoqiang:95
+	
+	[ec2-user@ip-172-31-32-113 ~]$ cat score.sh
+	#!/bin/bash
+	cat score.txt | tr ':' ' ' | while read name score;do
+			if [ $score -gt 90 ];then
+					echo $name is excellent
+			else
+					echo $name is low
+			fi
+	done
+	
+	[ec2-user@ip-172-31-32-113 ~]$ bash score.sh
+	xiaoming is low
+	xiaohong is low
+	xiaoqiang is excellent
+	
+
+3.3 select 循环与菜单 
+
+格式1：
+	select NAME [in WORDS ... ;] do COMMANDS; done
+
+格式2：
+	select variable in list ;do
+		循环体命令
+	done
+	
+说明：	
+	select 循环主要用于创建菜单，按数字顺序排列的菜单项显示在标准错误上，并显示 PS3 提示符，等待用户输入
+	用户输入菜单列表中的某个数字，执行相应的命令
+	用户输入被保存在内置变量 REPLY 中
+	select 是个无限循环，因此要用 break 命令退出循环，或用 exit 命令终止脚本。也可以按 ctrl+c退出循环
+	select 经常和 case 联合使用
+	与 for 循环类似，可以省略 in list，此时使用位置参量
+
+实践：
+	[root@localhost ~]#cat select.sh
+	#!/bin/bash
+	PS3="请选择功能(1-5):"
+	select menu in 备份数据库 清理日志 升级软件 降级软件 退出;do
+			case $REPLY in
+			1)
+					echo $menu
+					;;
+			2)
+					echo $menu
+					;;
+			3)
+					echo $menu
+					;;
+			4)
+					echo $menu
+					;;
+			5)
+					break
+					;;
+			*)
+					echo "输入错误"
+					;;
+			esac
+	done
+	
+	[root@localhost ~]#bash select.sh
+	1) 备份数据库
+	2) 清理日志
+	3) 升级软件
+	4) 降级软件
+	5) 退出
+	请选择功能(1-5):2
+	清理日志
+	请选择功能(1-5):4
+	降级软件
+	请选择功能(1-5):3
+	升级软件
+	请选择功能(1-5):8
+	输入错误
+	请选择功能(1-5):5
+	[root@localhost ~]#
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 shell脚本进阶函数实现
+	
+4.1 定义函数
+
+语法：
+	#语法一：
+		func_name （）{
+			...函数体...
+		}
+		
+	#语法二：
+		function func_name {
+			...函数体...
+		}
+		
+	#语法三：
+		function func_name （） {
+			...函数体...
+		}	
+	
+示例：
+	// 定义函数
+	[ec2-user@ip-172-31-32-113 ~]$ func1(){ hostname;uname -r; hostname -I; }
+	
+	// 调用函数
+	[ec2-user@ip-172-31-32-113 ~]$ func1
+	ip-172-31-32-113.ap-east-1.compute.internal
+	5.10.130-118.517.amzn2.x86_64
+	172.31.32.113 172.17.0.1
+	
+
+实践1：
+	[ec2-user@ip-172-31-32-113 ~]$ cat install_httpd.sh
+	#!/bin/bash
+	os_type(){
+			if grep -i -q ubuntu /etc/os-release;then
+					echo ubuntu
+			elif grep -i -q centos /etc/os-release;then
+					echo centos
+			else
+					echo "OS can't be supported!"
+			fi
+	}
+
+	if [ `os_type` = centos ];then
+			echo "install httpd for centos"!
+			# yum install httpd -y
+	elif [ `os_type` = ubuntu ];then
+			echo "install httpd for ubuntu"!
+			# yum install httpd -y
+	fi
+	
+	// 检查脚本语法
+	[ec2-user@ip-172-31-32-113 ~]$ bash -n install_httpd.sh
+	
+	[ec2-user@ip-172-31-32-113 ~]$ bash install_httpd.sh
+	install httpd for centos!
+	
+	
+实践2：把经常用到的函数和变量抽取为一个文件，其它脚本只需要引用该文件即可
+	
+	// 定义一个函数文件
+	[root@localhost ~]#cat functions
+	
+	RED="echo -e \E[1;31m"
+	GREEN="echo -e \E[1;32m"
+	END="\E[0m"
+	
+	os_type(){
+			if grep -i -q ubuntu /etc/os-release;then
+					echo ubuntu
+			elif grep -i -q centos /etc/os-release;then
+					echo centos
+			else
+					echo "OS can't be supported!"
+			fi
+	}
+	
+	#变量不要定义在函数中，因为只有显示调用这个函数，变量才会生效
+	#color() {
+	#		RED="echo -e \E[1;31m"
+	#		GREEN="echo -e \E[1;32m"
+	#		END="\E[0m"
+	#}
+	
+	is_ip(){
+        [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "$1 is not valid ip!"; return 1; }			# return 的值可以用来做逻辑判断 
+	}
+	
+	// 检查语法
+	[root@localhost ~]#bash -n functions
+	
+	// 导入函数文件
+	[root@localhost ~]#. functions
+
+	
+	测试一：在命令行中调用函数
+	// 调用函数
+	[root@localhost ~]#os_type
+	centos
+	// 使用全局变量
+	[root@localhost ~]#${RED}测试红色${END}		# 也可以写为"$RED测试红色$END"
+	测试红色
+	[root@localhost ~]#${GREEN}测试绿色${END}	# 也可以写为"$GREEN测试绿色$END"
+	测试绿色
+	
+	[root@localhost ~]#is_ip 1.1.1.1
+	[root@localhost ~]#is_ip x.x.x.x
+	x.x.x.x is not valid ip!
+	
+	
+	测试二：脚本中引用函数文件
+	[root@localhost ~]#cat test_function.sh
+	#!/bin/bash
+
+	. functions
+
+	if [ `os_type` = centos ];then
+			echo "install httpd for centos"!
+			# yum install httpd -y
+	elif [ `os_type` = ubuntu ];then
+			echo "install httpd for ubuntu"!
+			# yum install httpd -y
+	fi
+
+	${GREEN}安装完成${END}
+	
+	[root@localhost ~]#bash test_function.sh
+	install httpd for centos!
+	安装完成
+	
+	// -x 表示显示出运行过程
+	[root@localhost ~]#bash -x test_function.sh
+	
+	
+查看函数和删除函数：
+
+	#查看当前已定义的函数名(包括系统函数和自定义函数)
+	declare -F
+	
+	#查看当前已定义的函数定义
+	declare -f
+	
+	#查看指定当前已定义的函数名
+	declare -f func_name
+	
+	#查看当前已定义的函数名定义
+	declare -F func_name
+		
+	#删除函数
+	unset func_name
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 shell脚本进阶函数递归和信号捕捉
+
+5.1 local 变量
+	
+	// 函数内部定义的变量影响了外部定义的变量
+	[root@localhost ~]#name=linux
+	[root@localhost ~]#func(){ name=windows; }
+	[root@localhost ~]#func
+	[root@localhost ~]#echo $name
+	windows
+	
+	// 使用local变量，使函数内部的变量不要影响外部变量
+	[root@localhost ~]#func2(){ local name=linux; }
+	[root@localhost ~]#func2
+	[root@localhost ~]#echo $name
+	windows
+
+5.2 函数递归
+
+	//无出口的递归函数调用
+	[root@centos8 ~]#func () { echo $i;echo "run func";let i++; func; }
+	[root@centos8 ~]#func
+
+5.3 fork 炸弹是一种恶意程序，它的内部是一个不断在 fork 进程的无限循环，实质是一个简单的递归程序。由于程序是递归的，如果没有任何限制，这会导致这个简单的程序迅速耗尽系统里面的所有资源	
+	
+	// 函数实现，":"其实是掩人耳目，可以替换为任何字符串
+	:(){ :|:& };:
+	
+	// 其实就是递归函数，"|"作用是开启子进程，"&"作用是后台运行， 
+	bomb(){ bomb|bomb& };:
+
+
+5.4 trap 信号捕捉
+
+	#进程收到系统发出的指定信号后，将执行自定义指令，而不会执行原操作
+	trap '触发指令' 信号
+	
+	#忽略信号的操作
+	trap '' 信号
+	
+	#恢复原信号的操作
+	trap '-' 信号
+	
+	#列出自定义信号操作
+	trap -p
+	
+	#当脚本退出时，执行finish函数。这个功能非常有用
+	trap finish EXIT
+	
+	
+	// 列出所有信号
+	[root@localhost ~]#trap -l
+	 1) SIGHUP       2) SIGINT       3) SIGQUIT      4) SIGILL       5) SIGTRAP			# "CTRL + C" 其实就是发出了"2) SIGINT"这个信号，这个信号的作用是中断程序运行
+	 6) SIGABRT      7) SIGBUS       8) SIGFPE       9) SIGKILL     10) SIGUSR1
+	11) SIGSEGV     12) SIGUSR2     13) SIGPIPE     14) SIGALRM     15) SIGTERM
+	16) SIGSTKFLT   17) SIGCHLD     18) SIGCONT     19) SIGSTOP     20) SIGTSTP
+	21) SIGTTIN     22) SIGTTOU     23) SIGURG      24) SIGXCPU     25) SIGXFSZ
+	26) SIGVTALRM   27) SIGPROF     28) SIGWINCH    29) SIGIO       30) SIGPWR
+	31) SIGSYS      34) SIGRTMIN    35) SIGRTMIN+1  36) SIGRTMIN+2  37) SIGRTMIN+3
+	38) SIGRTMIN+4  39) SIGRTMIN+5  40) SIGRTMIN+6  41) SIGRTMIN+7  42) SIGRTMIN+8
+	43) SIGRTMIN+9  44) SIGRTMIN+10 45) SIGRTMIN+11 46) SIGRTMIN+12 47) SIGRTMIN+13
+	48) SIGRTMIN+14 49) SIGRTMIN+15 50) SIGRTMAX-14 51) SIGRTMAX-13 52) SIGRTMAX-12
+	53) SIGRTMAX-11 54) SIGRTMAX-10 55) SIGRTMAX-9  56) SIGRTMAX-8  57) SIGRTMAX-7
+	58) SIGRTMAX-6  59) SIGRTMAX-5  60) SIGRTMAX-4  61) SIGRTMAX-3  62) SIGRTMAX-2
+	63) SIGRTMAX-1  64) SIGRTMAX
+	[root@localhost ~]#
+	
+	
+	// 信号的格式有以下三种写法
+	trap '触发指令'  SIGINT      # 写全称
+	trap '触发指令'  INT      	 # 所有信号的前缀都是"SIG",可以取消前缀
+	trap '触发指令'  2			 # 写信号的代表数字
+	
+	
+	[root@localhost ~]#ping www.baidu.com
+	PING www.a.shifen.com (14.215.177.38) 56(84) bytes of data.
+	64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=1 ttl=128 time=11.1 ms
+	64 bytes from 14.215.177.38 (14.215.177.38): icmp_seq=2 ttl=128 time=12.8 ms
+	^C																					# "CTRL + C" 结束打印，"CTRL + C"就是发出了一个信号，程序收到这个信号就会退出		
+	--- www.a.shifen.com ping statistics ---
+	2 packets transmitted, 2 received, 0% packet loss, time 1003ms
+	rtt min/avg/max/mdev = 11.072/11.912/12.753/0.840 ms
+	[root@localhost ~]#
+
+
+	[root@localhost ~]#bc
+	bc 1.06.95
+	Copyright 1991-1994, 1997, 1998, 2000, 2004, 2006 Free Software Foundation, Inc.
+	This is free software with ABSOLUTELY NO WARRANTY.
+	For details type `warranty'.
+	^\Quit																				# "CTRL + \" 退出，实际上就是发出的"3) SIGQUIT"信号
+	[root@localhost ~]#
+	
+	
+实践1：
+	
+	#!/bin/bash
+	trap "echo 'Press ctrl+c or ctrl+\ '" int quit
+	trap -p
+	for((i=0;i<=10;i++))		# 在0-10秒按下"CTRL + C"或"CTRL + \" 将打印 'Press ctrl+c or ctrl+\ '
+	do
+		sleep 1
+		echo $i
+	done
+	
+	trap '' int
+	trap -p
+	for((i=11;i<=20;i++))	   # 在11-20秒按下"CTRL + C"或"CTRL + \" 什么都不做，也不会打印
+	do
+		sleep 1
+		echo $i
+	done
+	
+	trap '-' int				 
+	trap -p
+	for((i=21;i<=30;i++))		 # 在21-30秒按下"CTRL + C"或"CTRL + \" 退出程序
+	do
+		sleep 1
+		echo $i
+	done
+
+
+实践2：
+	#!/bin/bash
+	finish(){
+		echo finish is at `date +%F_%T` | tee -a /root/finish.log
+	}
+	
+	# 如果脚本没有正常完成(比如运行过程中按下"CTRL + C", 或关掉终端等各种情况，导致脚本运行一半)，在退出时自动调用 finish 函数，这时就可以把一些关键代码、清理垃圾、清理临时文件等操作写在这个函数中!!
+	trap finish exit
+	
+	while true ;do
+		echo running
+		sleep 1
+	done
+	
+	
+5.5 mktemp 命令用于创建并显示临时文件或文件夹，可避免冲突
+	写脚本的时候可能需要临时文件或文件夹，但是又怕和现有文件或文件夹冲突，使用 mktemp 可以解决这个问题！！
+	
+格式:
+	mktemp [OPTION]... [TEMPLATE]	# TEMPLATE 就是文件或文件夹名称，名称里面至少要有3个连续的XXX出现，比如 filenameXXX，这里的X其实就代表生成的随机数。
+	
+	常见选项：
+		-d #创建临时目录
+		-p DIR或--tmpdir=DIR #指明临时文件所存放目录位置
+	
+实践：
+	[root@localhost ~]#mktemp fileXXX
+	fileb3Y
+	[root@localhost ~]#ll fileb3Y
+	-rw------- 1 root root 0 Nov 12 23:51 fileb3Y
+	
+	[root@localhost ~]#mktemp XXXfile
+	cyhfile
+	
+	// 如果XXX放在前面，后面中间不能再出现X，否则会创建失败，这应该是程序的BUG
+	[root@localhost ~]#mktemp XXXfXile
+	mktemp: too few X's in template ‘XXXfXile’
+	
+	[root@localhost ~]#mktemp fXileXXX
+	fXileqzu
+	
+	
+	// 当前目录下创建临时文件夹 
+	[root@localhost ~]#mktemp -d logXXX
+	logBos
+	
+	// 创建临时目录，可以多级目录创建
+	[root@localhost ~]#mktemp -d  /tmp/log_dir_XXXX
+	/tmp/log_dir_HoPq	
+	
+	// -p 指明临时文件所存放目录位置
+	[root@localhost ~]#mktemp -p /tmp/log_dir_HoPq  log_XXXXX		# 也可以写为： mktemp --tmpdir=/tmp/log_dir_HoPq  log_XXXXX
+	/tmp/log_dir_HoPq/log_PrC91
+	[root@localhost ~]#tree /tmp/log_dir_HoPq/
+	/tmp/log_dir_HoPq/
+	└── log_PrC91
+
+	0 directories, 1 file
+	[root@localhost ~]#
+	
+	
+实践2：实现文件垃圾箱
+
+	方法1:脚本实现
+		[root@centos8 ~]#cat /data/scripts/rm.sh
+		#!/bin/bash
+		DIR=`mktemp -d /tmp/trash-$(date +%F_%H-%M-%S)XXXXXX`
+		mv $* $DIR
+		echo $* is move to $DIR
+		
+		[root@centos8 ~]#alias rm=/data/scripts/rm.sh	
+	
+	
+	方法2:函数实现
+		[root@centos8 ~]#function rm () { local trash=`mktemp -d /tmp/trashXXXX`;mv $* $trash; }
+		
+
+
+5.6 install 安装复制文件
+	install 功能相当于cp，chmod，chown，chgrp ,mkdir 等相关工具的集合
+	
+	安装软件三个步骤：
+		./configure
+		make
+		make install 	# "make install"实际上就是调用的 install
+		
+命令格式：	
+	install [OPTION]... [-T] SOURCE DEST 单文件
+	install [OPTION]... SOURCE... DIRECTORY
+	install [OPTION]... -t DIRECTORY SOURCE...
+	install [OPTION]... -d DIRECTORY... 		#创建空目录
+	
+	选项：
+		-m MODE，默认755
+		-o OWNER
+		-g GROUP
+		-d DIRNAME 目录
+	
+	
+	// 拷贝文件
+	install -m 700 -o root -g root srcfile desfile
+	
+	// 创建文件夹
+	install -m 770 -d /tmp/test
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 shell脚本进阶常用工具
+
+6.1 交互式转化批处理工具 expect， expect本身是个交互式命令，可以读取键盘输入，监控屏幕上出现的字符，发现某个字符出现，可以自动提交指定的字符串，可以用命令行的方式，也可以用交互式的方式
+	expect 是由Don Libes基于 Tcl（ Tool Command Language ）语言开发的
+	主要应用于自动化交互式操作的场景，借助 expect 处理交互的命令，可以将交互过程如：ssh登录，ftp登录等写在一个脚本上，使之自动化完成。
+	尤其适用于需要对多台服务器执行相同操作的环境中，可以大大提高系统管理人员的工作效率
+
+	// 安装expect 及mkpasswd 工具
+	[root@localhost ~]#yum -y install expect
+	
+	[root@localhost ~]#rpm -ql expect|head
+	/usr/bin/autoexpect
+	/usr/bin/dislocate
+	/usr/bin/expect
+	/usr/bin/ftp-rfc
+	/usr/bin/kibitz
+	/usr/bin/lpunlock
+	/usr/bin/mkpasswd
+	/usr/bin/passmass
+	/usr/bin/rftp
+	/usr/bin/rlogin-cwd
+	
+	
+expect 语法:	
+
+	expect [选项] [ -c cmds ] [ [ -[f|b] ] cmdfile ] [ args ]
+	
+	常见选项：
+		-c：从命令行执行expect脚本，默认expect是交互地执行的
+		-d：可以调试信息
+	
+	示例：
+		expect -c 'expect "\n" {send "pressed enter\n"}'
+		expect -d ssh.exp
+	
+	
+	expect中相关命令
+		spawn		 	启动新的进程
+		expect		 	从进程接收字符串
+		send 		 	用于向进程发送字符串
+		interact 	 	允许用户交互
+		exp_continue 	匹配多个字符串在执行动作后加此命令
+	
+
+expect最常用的语法(tcl语言:模式-动作)
+	
+	//单一分支模式语法：
+	[root@localhost ~]#expect
+	expect1.1> expect "hi" {send "You said hi\n"}			# 匹配到 hi 时，就会自动打印出 You said hi , 这个监听是有时间限制的，如果超时会让重新输入"模式-动作"
+	hello
+	hi															
+	You said hi												# 如果匹配到，本次监听"模式-动作"就失效。需要重新输入新的"模式-动作"
+	expect1.2> expect "hello" {send "You said hello\n"}	
+	xxx
+	haha
+	xixi
+	expect1.3> ^C											# 匹配超时，连续输入的不匹配和不输入都会超时
+	[root@localhost ~]#
+	
+	
+	// 多分支模式语法：
+	[root@localhost ~]#expect
+	expect1.1> expect "hi" { send "You said hi\n" } "hehe" { send "Hehe yourself\n"} "bye" { send "Good bye\n" } 	# 匹配hi,hello,bye任意字符串时，执行相应输出
+	hehexixi
+	Hehe yourself
+	expect1.2> ^C
+	[root@localhost ~]#
+	
+	
+实践1：非交互式复制文件
+	[root@localhost ~]#cat copy_file_script
+	#!/usr/bin/expect
+	spawn scp /etc/redhat-release 192.168.32.101:/tmp		# spawn 后面就是跟要运行的命令	
+	expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "admin000\n" }
+	}
+	expect eof
+	
+	[root@localhost ~]#chmod +x copy_file_script
+	
+	[root@localhost ~]#./copy_file_script
+	spawn scp /etc/redhat-release 192.168.32.101:/tmp
+	The authenticity of host '192.168.32.101 (192.168.32.101)' can't be established.
+	ECDSA key fingerprint is SHA256:TcIIiLI+VCMoPspFCqRZHywv50EB/CMwDoIk6RxTB50.
+	ECDSA key fingerprint is MD5:43:cb:24:f0:02:26:58:6c:cf:1b:56:67:e5:50:be:30.
+	Are you sure you want to continue connecting (yes/no)? yes
+	Warning: Permanently added '192.168.32.101' (ECDSA) to the list of known hosts.
+	root@192.168.32.101's password:
+	redhat-release                                                                        100%   37    24.5KB/s   00:00
+	[root@localhost ~]#	
+	
+	// 验证，查看 192.168.32.101 的 "/tmp"目录下是否有"redhat-release"这个文件
+	[root@localhost ~]#ll /tmp/redhat-release
+	-rw-r--r-- 1 root root 37 Nov 13 12:31 /tmp/redhat-release
+	
+	
+实践2：自动登录	
+	[root@localhost ~]#cat auto_login_script
+	#!/usr/bin/expect
+	spawn ssh 192.168.32.101
+	expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "admin000\n" }
+	}
+	interact														# 允许用户交互
+	
+	[root@localhost ~]#chmod +x auto_login_script
+	
+	[root@localhost ~]#./auto_login_script
+	spawn ssh 192.168.32.101
+	root@192.168.32.101's password:
+	Last login: Sun Nov 13 12:37:37 2022 from 192.168.32.100		# 这个时候已经登录进了 192.168.32.101
+	[root@localhost ~]#exit											# 退出 192.168.32.101  		
+	logout
+	Connection to 192.168.32.101 closed.
+	[root@localhost ~]#																			
+	
+	
+实践3：expect 变量
+	[root@localhost ~]#cat test_variable
+	#!/usr/bin/expect
+	set ip 192.168.32.101							# expect 的脚本中用set设置变量，这里意思是将变量ip的值设置为"192.168.32.101"
+	set user root
+	set password admin000
+	set timeout 10
+	spawn ssh $user@$ip								# 使用  $ 引用变量
+	expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "$password\n" }
+	}
+	interact
+	
+	[root@localhost ~]#chmod +x test_variable
+	
+	[root@localhost ~]#./test_variable
+	spawn ssh root@192.168.32.101
+	root@192.168.32.101's password:
+	Last login: Sun Nov 13 12:44:16 2022 from 192.168.32.100
+	
+	[root@localhost ~]#exit
+	logout
+	Connection to 192.168.32.101 closed.
+	[root@localhost ~]#
+	
+	
+实践4：位置参数
+	[root@localhost ~]#cat index_parameter
+	#!/usr/bin/expect
+	set ip [lindex $argv 0]							# "$argv 0"表示接收第一个参数，"$argv 1"表示接收第二个参数，"$argv 2"表示接收第三个参数，以此类推！！
+	set user [lindex $argv 1]
+	set password [lindex $argv 2]
+	spawn ssh $user@$ip
+	expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "$password\n" }
+	}
+	interact
+	
+	[root@localhost ~]#chmod +x index_parameter
+	
+	[root@localhost ~]#./index_parameter 192.168.32.101 root admin000
+	spawn ssh root@192.168.32.101
+	root@192.168.32.101's password:
+	Last login: Sun Nov 13 12:58:39 2022 from 192.168.32.100
+	[root@localhost ~]#exit
+	logout
+	Connection to 192.168.32.101 closed.
+	[root@localhost ~]#	
+	
+	
+实践5：expect 执行多个命令
+	[root@localhost ~]#cat test_create_user
+	#!/usr/bin/expect
+	set ip [lindex $argv 0]
+	set user [lindex $argv 1]
+	set password [lindex $argv 2]
+	set timeout 10
+	spawn ssh $user@$ip
+	expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "$password\n" }
+	}
+	expect "]#" { send "useradd haha\n" }								# 创建一个名为haha的用户
+	expect "]#" { send "echo haha123 |passwd --stdin haha\n" }			# 给haha这个用户设置密码为"haha123"
+	send "exit\n"														# 用于向进程发送字符串
+	expect eof
+	
+	[root@localhost ~]#chmod +x test_create_user
+	
+	[root@localhost ~]#./test_create_user 192.168.32.101 root admin000
+	spawn ssh root@192.168.32.101
+	root@192.168.32.101's password:
+	Last login: Sun Nov 13 13:04:59 2022 from 192.168.32.100
+	[root@localhost ~]#useradd haha
+	[root@localhost ~]#echo haha123 |passwd --stdin haha
+	Changing password for user haha.
+	passwd: all authentication tokens updated successfully.
+	[root@localhost ~]#exit
+	logout
+	Connection to 192.168.32.101 closed.
+	[root@localhost ~]#	
+	
+	// 测试，haha 用户创建成功
+	PS C:\Users\Aaron J WU> ssh -p 22 haha@192.168.32.101
+	haha@192.168.32.101's password:
+	Last failed login: Sun Nov 13 13:14:35 CST 2022 from 192.168.32.1 on ssh:notty
+	There was 1 failed login attempt since the last successful login.
+	[haha@localhost ~]$
+
+
+实践6：shell脚本调用 expect
+	[root@localhost ~]#cat expect.sh
+	#!/bin/bash
+	ip=$1
+	user=$2
+	password=$3
+	expect <<EOF
+	set timeout 20									# 设置超时时间
+	spawn ssh $user@$ip
+	expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "$password\n" }
+	}
+	expect "]#" { send "useradd hehe\n" }
+	expect "]#" { send "echo magedu |passwd --stdin hehe\n" }
+	expect "]#" { send "exit\n" }
+	expect eof
+	EOF	
+	
+	[root@localhost ~]#bash expect.sh
+	
+
+实践7：批量改配置文件   
+	[root@localhost ~]#cat expect2.sh
+	#!/bin/bash
+	net=192.168.32
+	user=root
+	password=admin000
+
+	for i in 100 101;do
+	ip=$net.$i
+
+	expect <<EOF
+	set timeout 20
+	spawn scp /etc/sysconfig/selinux $user@$ip:/tmp
+	expect {
+					"yes/no" { send "yes\n";exp_continue }
+					"password" { send "$password\n" }
+	}
+	expect eof
+	EOF
+
+	done
+	
+	// 检查shell脚本语法
+	[root@localhost ~]#bash -n expect2.sh
+	
+	[root@localhost ~]#bash expect2.sh
+	spawn scp /etc/sysconfig/selinux root@192.168.32.100:/tmp
+	root@192.168.32.100's password:
+	selinux                                                                               100%  561   453.9KB/s   00:00
+	spawn scp /etc/sysconfig/selinux root@192.168.32.101:/tmp
+	root@192.168.32.101's password:
+	selinux                                                                               100%  561   548.2KB/s   00:00
+	[root@localhost ~]#
+	
+	
+	// "192.168.32.100"主机验证文件拷贝，shell脚本在"192.168.32.100"主机上运行，所里这里也相当于是给本机拷贝文件！！
+	[root@localhost ~]#ll /tmp/selinux
+	-rw-r--r-- 1 root root 561 Nov 13 19:18 /tmp/selinux
+	
+	// "192.168.32.101"主机验证文件拷贝
+	[root@localhost ~]# ll /tmp/selinux
+	-rw-r--r--. 1 root root 561 Nov 13 19:18 /tmp/selinux
+
+
+总结：expect 多用于远程登录、远程拷贝文件(配合scp命令用的最多)、需要人工交互式操作的命令！！
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 shell脚本进阶数组
+
+	数组名和索引(下标):
+		索引的编号从0开始，属于数值索引
+		索引可支持使用自定义的格式，而不仅是数值格式，即为关联索引，bash 4.0版本之后开始支持
+		bash的数组支持稀疏格式（稀疏格式就是索引不连续）
+		
+	声明数组
+		#普通数组可以不事先声明,直接使用。建议先声明后使用，这样shell脚本看起来条理很清楚
+			declare -a ARRAY_NAME
+			
+		#关联数组必须先声明,再使用
+			declare -A ARRAY_NAME	
+		
+		注意：两者不可相互转换
+	
+	数组赋值
+		一次只赋值一个元素
+			ARRAY_NAME[INDEX]=VALUE	
+			范例：
+				weekdays[0]="Sunday"
+				weekdays[4]="Thursday"
+				
+				// 关联数组必须先赋值再使用
+				[root@localhost ~]# declare -A family
+				[root@localhost ~]# family[name]=Lily
+				[root@localhost ~]# family[addr]=BeiJing
+				[root@localhost ~]# family[num]=3
+				[root@localhost ~]#
+				[root@localhost ~]# echo ${family[@]}
+				Lily 3 BeiJing
+				[root@localhost ~]# echo ${family[name]}
+				Lily
+				
+		一次赋值全部元素
+			ARRAY_NAME=("VAL1" "VAL2" "VAL3" ...)
+			范例:
+				title=("ceo" "coo" "cto")
+				num=({0..10})							# 动态生成
+				alpha=({a..g})
+				file=( *.sh )							# 通配符
+				
+				// 声明并赋值
+				[root@localhost ~]# car=(BMW BENZ AUDI)
+				[root@localhost ~]# echo ${car[2]}
+				AUDI
+				[root@localhost ~]# echo $car			# 默认取第一个元素
+				BMW
+				
+		只赋值特定元素
+			ARRAY_NAME=([0]="VAL1" [3]="VAL2" ...)
+			
+		交互式对数组赋值
+			read -a ARRAY								# ARRAY 代表数组名
+			
+			[root@localhost ~]# read -a name
+			linux windows android appleos
+			[root@localhost ~]# echo $name
+			linux
+			
+	显示所有数组
+		//系统自带的就有一些数据
+		[root@localhost ~]# declare -a		
+		declare -ar BASH_VERSINFO='([0]="4" [1]="2" [2]="46" [3]="2" [4]="release" [5]="x86_64-redhat-linux-gnu")'		# "r"代表只读数组
+		declare -a PIPESTATUS='([0]="0")'
+		
+	引用数组
+		${ARRAY_NAME[INDEX]}		#如果省略[INDEX]表示引用下标为0的元素
+		
+		范例：
+		[root@localhost ~]# echo ${BASH_VERSINFO}
+		4
+		[root@localhost ~]# echo ${BASH_VERSINFO[2]}
+		46	
+	
+	引用数组所有元素
+		${ARRAY_NAME[*]}
+		${ARRAY_NAME[@]}
+		
+		范例：
+			[root@localhost ~]# echo ${BASH_VERSINFO[*]}
+			4 2 46 2 release x86_64-redhat-linux-gnu
+			[root@localhost ~]# echo ${BASH_VERSINFO[@]}
+			4 2 46 2 release x86_64-redhat-linux-gnu
+	
+	数组的长度，即数组中元素的个数
+		${#ARRAY_NAME[*]}
+		${#ARRAY_NAME[@]}
+		
+		范例：
+			[root@localhost ~]# echo ${#BASH_VERSINFO[*]}
+			6
+			[root@localhost ~]# echo ${#BASH_VERSINFO[@]}
+			6
+	
+	删除数组
+		unset ARRAY[INDEX]		// 删除数组中的某元素，会导致稀疏格式
+		删除整个数组			// unset ARRAY
+		
+		
+	数组数据处理	
+		数组切片：
+			${ARRAY[@]:offset:number}
+			说明：
+				offset #要跳过的元素个数
+				number #要取出的元素个数
+			
+			#取偏移量之后的所有元素
+			{ARRAY[@]:offset}
+		
+		向数组中追加元素：
+			ARRAY[${#ARRAY[*]}]=value
+			ARRAY[${#ARRAY[@]}]=value
+		
+		
+		范例：
+			// 初始化数组
+			[root@localhost ~]# value=({0..9})
+			// 跳过前3个元素，取后面4个元素
+			[root@localhost ~]# echo ${value[*]:3:4}		
+			3 4 5 6
+			// 跳过前3个元素，取后面所有元素
+			[root@localhost ~]# echo ${value[*]:3}
+			3 4 5 6 7 8 9
+			
+			// 向数组追加元素，
+			[root@localhost ~]# value[${#value[*]}]=10			# "${#value[*]}" 取元素个数
+			[root@localhost ~]# echo ${value[@]}				# 对于一个连续的普通的数组来说，数组的个数 = 数组的最大下标 + 1，所以顺序追加一个元素的下标就是数组的个数
+			0 1 2 3 4 5 6 7 8 9 10
+			
+			// 删除元素，数组变为"稀疏格式"
+			[root@localhost ~]# unset value[3]
+			[root@localhost ~]# unset value[5]
+			
+			// 删除数组元素，不影响原来数组的下标
+			[root@localhost ~]# echo ${value[10]}
+			10
+		
+			// 删除数组元素，数组元素的长度会发生变化
+			[root@localhost ~]# echo ${#value[*]}
+			9
+		
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+扩展：
+
+改用户密码：
+	改密码： echo 新密码 | passwd --stdin root
+	
+
+打印 1-10 的奇数和偶数:
+	[root@localhost ~]#echo {1..10..2}
+	1 3 5 7 9
+	
+	[root@localhost ~]#echo {0..10..2}
+	0 2 4 6 8 10
+
+
+管道符需要注意的地方：
+	
+	// 没有打印出"test"的原因时，管道符"|"会开启一个子进程。也就是说"read X"在子进程中运行，"echo $X"在父进程中运行
+	[root@localhost ~]#echo test | read X ; echo $X
+
+	[root@localhost ~]#echo test | { read X ; echo $X; }	# 加{}可以让命令在一个进程中运行, 加{}是最后一个命令要加";"号，而且要前后要留空格
+	test
+	[root@localhost ~]#echo test | ( read X ; echo $X )     # 加()可以让命令在一个进程中运行, 最后一个命不用加";"号，前后也可以不留空格
+	test
+
+
+linux中的变量：
+	name=linux			#普通变量
+	local name=linux	#本地变量
+	export name=linux	#环境变量，能够让变量给子进程使用
+
+	
+PS1、PS2、PS32、PS4
+	
+	PS1命令是linux系统中的一个全局变量，用于定义用户命令行的字符显示。
+		// 可以修改"用户命令行"的格式、颜色等
+		[root@localhost ~]#
+
+	PS2：第一行没输完，等待第二行输入的提示符。
+		[root@localhost ~]#cat << EOF
+		> hello
+		> EOF
+		hello
+		
+		// 临时修改PS2, PS2影响多行提示符
+		[root@localhost ~]#PS2="#"			
+		
+		[root@localhost ~]#cat << EOF
+		#hello
+		#EOF
+		hello		
+		
+	PS3：Shell脚本中使用select时的提示符
+		[root@localhost ~]#cat select.sh
+		#!/bin/bash
+		PS3="请选择功能(1-5):"
+		select menu in 备份数据库 清理日志 退出;do
+				case $REPLY in
+				1)
+						echo $menu
+						;;
+				2)
+						echo $menu
+						;;
+				3)
+						break
+						;;
+				*)
+						echo "输入错误"
+						;;
+				esac
+		done
+		
+		[root@localhost ~]#bash select.sh
+		1) 备份数据库
+		2) 清理日志
+		3) 退出
+		请选择功能(1-5):2
+		清理日志
+		请选择功能(1-5):8
+		输入错误
+		请选择功能(1-5):5
+		[root@localhost ~]#
+		
+		
+	PS4："set -x"显示脚本执行过程并将脚本内的变量的值暴露出来。PS4可以用来定义其打印出来的内容的前缀
+	
+		[root@localhost ~]#cat test.sh
+		#!/bin/bash
+		set -x									# set -x 是开启，set +x 是关闭，set -o 是查看 (xtrace)，set去追踪一段代码的显示情况。
+		echo "PS4 demo script"
+		ls -l /etc/ | wc -l		
+		
+		[root@localhost ~]#bash test.sh
+		+ echo 'PS4 demo script'				# 当使用sex -x跟踪输出时的提示符为 ++
+		PS4 demo script
+		+ ls -l /etc/
+		+ wc -l
+		199	
+	
+		
+		[root@localhost ~]#cat test.sh
+		#!/bin/bash
+		export PS4='$0.$LINENO+ '				# $0 显示当前的脚本名；$LINENO 显示当前的行号
+		set -x
+		echo "PS4 demo script"
+		ls -l /etc/ | wc -l		
+		
+		[root@localhost ~]#bash test.sh
+		test.sh.4+ echo 'PS4 demo script'		# 使用PS4后使 "{script-name}.{line-number}+" 成为set –x的命令提示符
+		PS4 demo script
+		test.sh.5+ ls -l /etc/
+		test.sh.5+ wc -l
+		199		
+		
+		扩展资料：
+			linux命令之set x详解：http://t.zoukankan.com/feiyun8616-p-6548658.html
+			Linux shell脚本内的set -x set +x set -e set -u set -n的应用：https://blog.csdn.net/alwaysbefine/article/details/114187380
+	
+	
+	
+	
+	

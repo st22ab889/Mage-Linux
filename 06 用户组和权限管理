@@ -1,0 +1,1359 @@
+1 用户和组配置文件及管理命令
+	给服务用的账户和给用户用的账户不一样, 在生产中更多是创建账号给服务使用
+	给服务用是这个账号一启动就用这个账号(身份)去运行，服务的账号不能用来登录
+	给用户的账号是给用户交互式去使用系统
+		
+1.1 认证(验证身份)
+
+用户和组的主要配置文件
+	/etc/passwd：用户及其属性信息(名称、UID、主组ID等）
+	/etc/shadow：用户密码及其相关属性(有效期)
+	/etc/group：组及其属性信息
+	/etc/gshadow：组密码及其相关属性
+
+
+/etc/passwd	
+	查看passwd的帮助信息
+		[ec2-user@ip-172-31-32-113 ~]$ whatis passwd
+		passwd: nothing appropriate
+		
+		// "nothing appropriate"说名缺少mandb
+		[ec2-user@ip-172-31-32-113 ~]$ mandb
+		
+		[ec2-user@ip-172-31-32-113 ~]$ whatis passwd
+		sslpasswd (1ssl)     - compute password hashes
+		passwd (1)           - update user's authentication tokens
+		passwd (5)           - password file	
+
+		// 查看帮助
+		[ec2-user@ip-172-31-32-113 ~]$ man 5 passwd
+	
+	
+	passwd文件格式
+		login name：登录用名（wang）
+		passwd：密码 (x), 这个密码已经放到其它文件,所以这里用x代替
+		UID：用户身份编号 (1000)
+		GID：登录默认所在组编号 (1000)
+		GECOS：用户全名或注释
+		home directory：用户主目录 (/home/wang)
+		shell：用户默认使用shell (/bin/bash)
+	
+	查看 passwd
+		# "/bin:/sbin/nologin"表示不需要登录, 随着系统启动而启动, 这就是给服务用的账户, 这个账户不能用来登录
+		# 这个文件有多少行就代表有多个账户
+		[root@ip-172-31-32-113 ~]# cat /etc/passwd
+		root:x:0:0:root:/root:/bin/bash
+		bin:x:1:1:bin:/bin:/sbin/nologin
+		daemon:x:2:2:daemon:/sbin:/sbin/nologin
+		adm:x:3:4:adm:/var/adm:/sbin/nologin
+		
+		
+		[root@ip-172-31-32-113 ~]# ps  aux
+		USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+		root         2  0.0  0.0      0     0 ?        S    Aug29   0:00 [kthreadd]
+		root         3  0.0  0.0      0     0 ?        I<   Aug29   0:00 [rcu_gp]
+	
+	查看用户是不是管理员主要看id,这个文件可以手工改,但是不推荐
+
+/etc/shadow
+	登录口令(密码)，shadow文件格式
+		登录用名
+		用户密码:一般用sha512加密(用$6表示sha512加密算法)，从centos6开始采用sha512
+		从1970年1月1日起到密码最近一次被更改的时间
+		密码再过几天可以被变更（0表示随时可被变更）
+		密码再过几天必须被变更（99999表示永不过期）
+		密码过期前几天系统提醒用户（默认为一周）
+		密码过期几天后帐号会被锁定
+		从1970年1月1日算起，多少天后帐号失效
+	
+	查看 shadow 文件
+	[root@localhost ~]#cat /etc/shadow
+		root:$6$Ft7C2l36oHISSkNa$XwdPcbRV6h0U8lSPtXbHagV5.6QXaub4niOWCsyWxTITi1M.qdSMK9gm4uUkjY3gVe/b4.fy15BMIq3SUkeqs/::0:99999:7:::
+		bin:*:18353:0:99999:7:::
+		daemon:*:18353:0:99999:7:::
+		aaron:$6$jNmykpMyEvH/zfBg$stWuLXJvrffHl0DcdK9nnGpSKgL5tTdNF8ODVjrfxKFEh8KSjiaBhj1KIfbqcbGZ37B01gnqAdgpjLNL4WGPV1::0:99999:7:::
+	
+	查看1970年1月1日到现在有多少天
+		到现在有多少秒
+		[root@localhost ~]#date +%s
+		1666007891
+		到现在有多少天
+		[root@localhost ~]#echo `date +%s`/86400 | bc
+		19282
+		
+	更改密码加密算法：
+		authconfig --passalgo=sha256 --update
+		
+/etc/group
+	文件格式
+		群组名称：就是群组名称
+		群组密码：通常不需要设定，密码是被记录在 /etc/gshadow
+		GID：就是群组的 ID
+		以当前组为附加组的用户列表(分隔符为逗号)
+	
+	查看 group 文件
+		[root@localhost ~]#cat /etc/group
+		root:x:0:
+		wheel:x:10:aaron
+		mail:x:12:postfix   		// 表示 mail 组里面有一个用户是 postfix     
+		
+		// 可以看到， mail 是 postfix 的附加组,  postfix 的主要组是 postfix
+		[root@localhost ~]#id postfix
+		uid=89(postfix) gid=89(postfix) groups=89(postfix),12(mail)	
+		
+		
+/etc/gshadow
+	查看 gshadow 文件
+		群组名称：就是群的名称
+		群组密码：组的口令,不过组的口令基本用不上,用 ！占位，表示禁用的意思
+		组管理员列表：组管理员的列表，更改组密码和成员
+		以当前组为附加组的用户列表：多个用户间用逗号分隔
+
+	查看 gshadow 文件
+		[root@localhost ~]#cat /etc/gshadow
+		root:::
+		wheel:::aaron
+		mail:::postfix
+		
+手工修改 /etc/passwd 和 /etc/group，这个只是了解,一般不会手动改
+		
+		# 相当于 vim /etc/passwd
+		vipw
+		# 相当于 vim /etc/group
+		vigr
+		
+		# 改了后校验 /etc/passwd 文件的格式
+		pwck
+		# 改了后校验 /etc/group 文件的格式
+		grpck
+	
+	
+1.2 用户管理命令
+	useradd
+	usermod
+	userdel
+
+useradd 
+	选项:
+		-u UID
+		-o 配合-u 选项，不检查UID的唯一性
+		-g GID 指明用户所属基本组，可为组名，也可以GID
+		-c "COMMENT“ 用户的注释信息
+		-d HOME_DIR 以指定的路径(不存在)为家目录
+		-s SHELL 指明用户的默认shell程序，可用列表在/etc/shells文件中
+		-G GROUP1[,GROUP2,...] 为用户指明附加组，组须事先存在
+		-N 不创建私用组做主组，使用users组做主组
+		-r 创建系统用户 CentOS 6之前: ID<500，CentOS7 以后: ID<1000
+		-m 创建家目录，用于系统用户
+		-M 不创建家目录，用于非系统用户
+		-p 指定加密的密码
+	
+	
+	创建用户不加任何选项,会按"/etc/default/useradd"这个文件的约定创建,这种模板文件一般不用改
+		[root@localhost ~]#cat /etc/default/useradd
+		# useradd defaults file
+		GROUP=100					#使用 -N 选项创建账号表示不要创建私用组做主组, 这个时候就会用 100 这个组(就是User组)作为主组
+		HOME=/home
+		INACTIVE=-1					#对应/etc/shadow文件第7列，即用户密码过期的宽限期,默认是过期了也能使用
+		EXPIRE=						#对应/etc/shadow文件第8列，即用户帐号的有效期,默认永久有效
+		SHELL=/bin/bash
+		SKEL=/etc/skel				#生成家目录会有一些文件, 这些文件就来自这个目录, 所以这个文件夹就是家目录的模板文件夹
+		CREATE_MAIL_SPOOL=yes		#创建邮箱
+		
+		[root@localhost ~]#getent group users
+		users:x:100:
+		
+		-D 显示或更改默认设置(了解)
+			// 显示默认设置
+			useradd -D
+			// 更改默认设置
+			useradd –D -s SHELL
+			useradd –D –b BASE_DIR
+			useradd –D –g GROUP
+		
+	密码的模板文件,这种模板文件一般不用改
+		"/etc/login.defs"中定义了密码的算法、密码的过期时间、UID从多少开始生成、是否创建家目录等信息
+		[root@localhost ~]#cat /etc/login.defs
+	
+	
+	创建账户示例:
+		[root@localhost ~]#useradd xiaoming
+		[root@localhost ~]#cat /etc/passwd | grep xiaoming
+		xiaoming:x:1001:1001::/home/xiaoming:/bin/bash			// 默认使用 /bin/bash	
+		
+		# 如果密码是!!，一个!表示锁定, 二个!表示双锁定,说明这个账号是不能登录的 
+		[root@localhost ~]#cat /etc/shadow | grep xiaoming
+		xiaoming:!!:19282:0:99999:7:::	
+		
+		# 设定密码,设定密码后可以看到密码生成了
+		[root@localhost ~]#passwd xiaoming
+		Changing password for user xiaoming.
+		New password:
+		BAD PASSWORD: The password is shorter than 8 characters
+		Retype new password:
+		passwd: all authentication tokens updated successfully.
+		[root@localhost ~]#cat /etc/shadow | grep xiaoming
+		xiaoming:$6$wQaayLF2$rtEQi0Xt.YdE4/6PPUGlAdntrmZKApUWc523twGuswRtoGDSJe0n4OqAEHRK/z0rsq3T60prjjnMTRNIm/Xjn.:19282:0:99999:7:::
+	
+	
+		// -r 创建系统用户,就不会创建家目录;如果后面跟了 -m, 这时候还是会创建家目录
+		useradd -r -m  用户
+		
+		
+	给用户创建密码的二种方式:
+		passwd 
+		useradd -p 加过密的密码
+	
+	密码加密的方式
+		centOS6  ==>   grub-crypt --sha-512
+		centos7 ==> python -c 'import crypt,getpass;pw="magedu";print(crypt.crypt(pw))'
+		其它方法
+			openssl passwd -6 magedu
+			去在线网站生成
+	
+	利用系统的"/dev/urandom"随机生成密码:
+		# 12表示生成12位的密码
+		[root@localhost ~]#cat /dev/urandom | tr -dc '[:alnum:]' | head -c12
+		WioLIuPxc6zN
+	
+	(了解)批量操作
+		批量创建用户  	   ==> 	 newusers passwd 格式文件
+		批量修改用户口令   ==>	 echo username:passwd | chpasswd
+	
+	给服务创建用户
+		# 生产中常见的用法,示例:
+		useradd -r -u 48 -g apache -s /sbin/nologin -d /var/www -c "Apache" apache
+		
+		不指定ID,就是从1000开始,给服务用,一般是1000以内的ID
+		-r 是随机产生1000以内的ID,如果多台机器上运行相同的服务,那么每个机器产生的ID就一样，ID不一样可能造成权限问题
+		跟上 -r 不会生成家目录, 不会生成邮箱， root用户也没有邮箱
+			[root@localhost ~]#ll /var/spool/mail/
+			total 0
+			-rw-rw----. 1 aaron    mail 0 Aug 20  2021 aaron
+			-rw-rw----. 1 xiaoming mail 0 Oct 17 21:54 xiaoming 
+		加上 -u 来指定ID，当多个机器运行同样的服务时, 用来统一环境
+		-g 指定组，默认创建的组ID也是随机指定，所以一般第一步指定ID创建组, 第二步再创建用户时把用户加到组中，这样组ID和用户ID都是固定ID，
+			id不一致会出现问题,企业中跑的好多服务是有协作关系,相互之间要用同一个账号来进行相互访问,id不统一就会被认为不是同一个账号。
+			判断账号是不是同一个不是看名字,是看ID。但是名字也要一样,名字是给人看的,ID是给机器看的。
+		
+		
+		// 创建组
+		group -r -g 80 nginx
+		// 虽然系统用户没有家目录,但还是可以指定一个家目录,用来存放服务产生的数据
+		useradd -r -g nginx -u 80 -d/data/www  -s  -c "nginx service" /sbin/nologin nginx
+	
+	快捷查看 passwd 和 shadow 文件
+		# 相当于 vim /etc/passwd
+		[root@localhost ~]#getent passwd
+		# 指定具体某一个用户
+		[root@localhost ~]#getent passwd xiaoming
+		xiaoming:x:1001:1001::/home/xiaoming:/bin/bash
+		
+		# 相当于 vim /etc/shadow
+		[root@localhost ~]#getent shadow
+		[root@localhost ~]#getent shadow xiaomingxiaoming:$6$wQaayLF2$rtEQi0Xt.YdE4/6PPUGlAdntrmZKApUWc523twGuswRtoGDSJe0n4OqAEHRK/z0rsq3T60prjjnMTRNIm/Xjn.:19282:0:99999:7:::
+		
+		[root@localhost ~]#getent group
+		
+		[root@localhost ~]#getent gshadow
+		
+usermod
+	选项:
+		-u UID: 新UID
+		-g GID: 新主组
+		-G GROUP1[,GROUP2,...[,GROUPN]]]：新附加组，原来的附加组将会被覆盖；若保留原有，则要同时使用-a选项
+		-s SHELL：新的默认SHELL
+		-c 'COMMENT'：新的注释信息
+		-d HOME: 新家目录不会自动创建；若要创建新家目录并移动原家数据，同时使用-m选项
+		-l login_name: 新的名字
+		-L: lock指定用户,在/etc/shadow 密码栏的增加 !
+		-U: unlock指定用户,将 /etc/shadow 密码栏的 ! 拿掉
+		-e YYYY-MM-DD: 指明用户账号过期日期
+		-f INACTIVE: 设定非活动期限，即宽限期
+		
+	// 改用户的 shell
+	[root@localhost ~]#getent passwd xiaoming
+	xiaoming:x:1001:1001::/home/xiaoming:/bin/bash
+	[root@localhost ~]#usermod -s /bin/false xiaoming
+	[root@localhost ~]#getent passwd xiaoming
+	xiaoming:x:1001:1001::/home/xiaoming:/bin/false
+	
+	// 给用户增加附加组
+	[root@localhost ~]#usermod -a -G aaron,root xiaoming
+	[root@localhost ~]#id xiaoming
+	uid=1001(xiaoming) gid=1001(xiaoming) groups=1001(xiaoming),0(root),1000(aaron)
+	[root@localhost ~]#
+	
+	生产中一般不会改,在上线前都是通过脚本或自动化工具完成初始化,,脚本都是经过很多次试过的,改的情况很少
+	
+
+userdel
+	选项:
+		-f, --force 强制
+		-r, --remove 删除用户家目录和邮箱
+	
+	
+	默认只删数据不删账号,这是比较安全的方式
+		[root@localhost ~]#userdel xiaoming
+		[root@localhost ~]#id xiaoming
+		id: xiaoming: no such user
+		[root@localhost ~]#getent passwd xiaoming
+		[root@localhost ~]#ll /home
+		total 0
+		drwx------. 2 aaron aaron 128 Oct 16 20:11 aaron
+		drwx------. 2  1001  1001  83 Oct 18 00:12 xiaoming				// 因为删除了用户,所以这里不显示用户,只显示用户曾经用的UID
+		[root@localhost ~]#ll /var/spool/mail/
+		total 0
+		-rw-rw----. 1 aaron mail 0 Aug 20  2021 aaron
+		-rw-rw----. 1  1001 mail 0 Oct 17 21:54 xiaoming
+	
+	-r 账号和数据都删除, 如果用户登录了不能删除,这时候加上 -f 就可以强制删除, 删除后登录的用户不会马上退出,因为此时还在内存中, 但用户退出后不能再重新登录
+		// 创建一个用户,这个用户曾经存在,而且还保留了家目录和邮箱
+		[root@localhost ~]#useradd xiaoming
+		useradd: warning: the home directory already exists.
+		Not copying any file from skel directory into it.
+		Creating mailbox file: File exists
+		[root@localhost ~]#id xiaoming
+		uid=1001(xiaoming) gid=1001(xiaoming) groups=1001(xiaoming)		// 这里UID还是1001, 说明删除UID后, 再次创建用户时, 这个UID会被再次使用
+		[root@localhost ~]#ll /home
+		total 0
+		drwx------. 2 aaron    aaron    128 Oct 16 20:11 aaron
+		drwx------. 2 xiaoming xiaoming  83 Oct 18 00:12 xiaoming
+		
+		[root@localhost ~]#useradd xiaohong
+		[root@localhost ~]#id xiaohong
+		uid=1002(xiaohong) gid=1002(xiaohong) groups=1002(xiaohong)
+		
+		// 删除 xiaoming
+		[root@localhost ~]#userdel -r xiaoming
+		
+		// 再次创建 xiaoming
+		[root@localhost ~]#useradd xiaoming
+		[root@localhost ~]#id xiaoming
+		uid=1003(xiaoming) gid=1003(xiaoming) groups=1003(xiaoming)	  	// 这里UID是1003, 说明创建新用户的UID是在最新的用户的UID上递增的, 这个递增和家目录是否存在无关
+		
+		
+		// 如果用户登录了不能删除
+		[root@localhost ~]#userdel -r xiaohong
+		userdel: user xiaohong is currently used by process 2157
+		//  -f 强制删除, 删除后登录的用户不会马上退出,创建文件等操作也能进行
+		[root@localhost ~]#userdel -f -r xiaohong
+		userdel: user xiaohong is currently used by process 2157
+		
+1.3 组帐号维护命令(了解)
+	groupadd
+		选项:
+			-g GID 指明GID号；[GID_MIN, GID_MAX]
+			-r 创建系统组，CentOS 6之前: ID<500，CentOS 7以后: ID<1000
+		示例:
+			groupadd -g 48 -r apache
+	
+	groupmod
+		选项:
+			-n group_name: 新名字
+			-g GID: 新的GID
+			
+	groupdel
+		选项:
+			-f, --force 强制删除，即使是用户的主组也强制删除组,但会导致无主组的用户不可用无法登录
+			
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 文件权限管理
+
+2.1 修改用户密码策略
+
+使用 change, change 不跟选项是交互式操作
+	选项:
+		-d LAST_DAY #更改密码的时间
+		-m --mindays MIN_DAYS
+		-M --maxdays MAX_DAYS
+		-W --warndays WARN_DAYS
+		-I --inactive INACTIVE #密码过期后的宽限期
+		-E --expiredate EXPIRE_DATE #用户的有效期
+		-l 显示密码策略
+	
+	#单独使用change是交互式操作,根据提示进行输入
+	[root@localhost ~]#chage aaron
+	Changing the aging information for aaron
+	Enter the new value, or press ENTER for the default
+
+			Minimum Password Age [0]: ^C
+	
+	#加上选项输入
+	chage -m 3 -M 42 -W 14 -I 7 -E 2020-10-10 wang
+	chage -l wang
+	
+	#让用户密码立即过期,下次登录必须改口令, "passwd -e"也能达到同样的效果
+	change -d 0  用户
+	passwd -e  用户  
+	
+	
+2.2 修改用户密码,使用非交互方式
+	
+	#适用于红帽系列的Linux版本, 只有红帽系列的Linux版本有"--stdin"选项
+	passwd --help
+	echo '123456' | passwd --stdin 用户
+	
+	#此方式更通用，适用于各种Linux版本，如:ubuntu
+	echo -e '123456\n123456' | passwd 用户
+	
+	# Ubuntu 非交互式修改用户密码
+		方式1(ubuntu和centos都支持): 格式 echo 用户:密码 |chpasswd
+			#echo wang:centos |chpasswd
+		方式2:
+			[root@ubuntu1804 ~]#passwd wang <<EOF
+			> centos
+			> centos
+			> EOF
+		方式3:
+			echo -e 'magedu\nmagedu' | passwd wang
+
+		
+2.3 su 在当前终端切换身份,不需要新开一个窗口登录
+	选项:
+		-l --login su -l UserName 相当于 su - UserName
+		-c, --command <command> pass a single command to the shell with -c
+		
+	root su至其他用户无须密码；非root用户切换时需要密码
+	su 切换新用户后，使用 exit 退回至旧的用户身份，而不要再用 su 切换至旧用户，否则会生成很多的bash子进程，环境可能会混乱。
+	
+	#不完全切换(非登录式切换):即不会读取目标用户的配置文件，不改变当前工作目录，即不完全切换
+	#实际使用中,换成其它身份访问当前目录下的数据,使用不完全切换, 切换后就在当前目录。如果使用完全切换,就在切换后的用户的家目录下
+		su UserName
+		exit
+		
+	#完全切换(登录式切换):会读取目标用户的配置文件，切换至自已的家目录，即完全切换
+		su - UserName
+		exit
+	
+	[root@localhost ~]#su aaron
+	[aaron@localhost root]$pwd
+	/root
+	[aaron@localhost root]$exit
+	exit
+	[root@localhost ~]#su - aaron
+	Last login: Tue Oct 18 12:19:09 CST 2022 on pts/0
+	[aaron@localhost ~]$pwd
+	/home/aaron
+	[aaron@localhost ~]$
+	
+	为了避免来回切换身份查看文件, 可以一部到位。格式  su - root -c "要运行的命令"
+		[aaron@localhost ~]$cat /etc/shadow
+		cat: /etc/shadow: Permission denied
+		
+		// -c 临时切换
+		[aaron@localhost ~]$su - root -c "cat /etc/shadow"
+		Password:
+		root:$6$Ft7C2l36oHISSkNa$XwdPcbRV6h0U8lSPtXbHagV5.6QXaub4niOWCsyWxTITi1M.qdSMK9gm4uUkjY3gVe/b4.fy15BMIq3SUkeqs/::0:99999:7:::
+		bin:*:18353:0:99999:7:::
+		
+		[aaron@localhost ~]$su root -c "cat /etc/shadow"
+		Password:
+		root:$6$Ft7C2l36oHISSkNa$XwdPcbRV6h0U8lSPtXbHagV5.6QXaub4niOWCsyWxTITi1M.qdSMK9gm4uUkjY3gVe/b4.fy15BMIq3SUkeqs/::0:99999:7:::
+		bin:*:18353:0:99999:7:::
+		
+2.4 (了解) newgrp 命令可以临时切换主组，如果用户本不属于此组，则需要组密码		
+	
+	newgrp [-] [group]		// 如果使用 - 选项，可以初始化用户环境
+	
+		[root@localhost ~]#id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron),10(wheel)
+		
+		#添加组
+		[root@localhost ~]#groupadd xiaoming
+		#给一个用户添加附加组
+		[root@localhost ~]#usermod -G xiaoming aaron
+		[aaron@localhost ~]$id
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron),1001(xiaoming) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023			// 这里主组是aaron
+		
+		[root@localhost ~]#su - aaron
+		Last login: Tue Oct 18 12:48:25 CST 2022 on pts/0
+		
+		[aaron@localhost ~]$touch test.txt; ll | grep test
+		-rw-rw-r--. 1 aaron aaron 0 Oct 18 14:29 test.txt				// 这里主组是 aaron
+		
+		# 临时切换到主组
+		[aaron@localhost ~]$newgrp xiaoming
+		
+		# 切换后通过"id UserName"看不出来已经把其他组提升为了临时组, 但是通过"id"能看出来 
+		[aaron@localhost ~]$id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron),1001(xiaoming)
+		
+		#id 查看用户,groups里面的第一个组是用户的主组,其它组是附加组
+		[aaron@localhost ~]$id
+		uid=1000(aaron) gid=1001(xiaoming) groups=1001(xiaoming),1000(aaron) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023		// 可以看到主组已经改变
+		
+		[aaron@localhost ~]$touch test2.txt; ll | grep test2
+		-rw-r--r--. 1 aaron xiaoming 0 Oct 18 14:29 test2.txt			// 这里主组是xiaoming
+		# 做完相应的操作后,退出临时主组, 退出后主组又退回成附加组
+		[aaron@localhost ~]$exit
+		exit
+		
+		[aaron@localhost ~]$touch test3.txt; ll | grep test3
+		-rw-rw-r--. 1 aaron aaron    0 Oct 18 14:30 test3.txt
+		
+		# 回到root用户
+		[aaron@localhost ~]$exit
+		logout
+		[root@localhost ~]#
+		
+	如果用户本不属于此组，则需要组密码	
+		[root@localhost ~]#id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron),1001(xiaoming)
+		
+		#这里相当于删除用户的附加组
+		# -G GROUP1[,GROUP2,...[,GROUPN]]]：新附加组，原来的附加组将会被覆盖；若保留原有，则要同时使用-a选项
+		[root@localhost ~]#usermod -G aaron aaron
+		
+		[root@localhost ~]#id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron)
+		
+		#给组设密码
+		[root@localhost ~]#gpasswd xiaoming
+		Changing the password for group xiaoming
+		New Password:
+		Re-enter new password:
+
+		[root@localhost ~]#su - aaron
+		Last login: Tue Oct 18 14:42:07 CST 2022 on pts/0
+		
+		#临时切换到主组, 因为用户本不属于此组，所以需要输入密码	
+		[aaron@localhost ~]$newgrp xiaoming
+		Password:
+		
+		[aaron@localhost ~]$id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron)
+		
+		[aaron@localhost ~]$touch f1.txt; ll | grep f1
+		-rw-r--r--. 1 aaron xiaoming 0 Oct 18 14:52 f1.txt			// 这里创建的文件主组是 xiaoming
+		
+		# 做完相应的操作后,退出临时主组
+		[aaron@localhost ~]$exit
+		exit
+		
+		[aaron@localhost ~]$exit
+		logout
+		[root@localhost ~]#
+		
+		删除组
+		[root@localhost ~]#groupdel xiaoming
+		[root@localhost ~]#getent group xiaoming
+		[root@localhost ~]#
+
+2.5 (了解)更改组密码 gpasswd [OPTION] GROUP
+	选项
+		-a user 将user添加至指定组中
+		-d user 从指定附加组中移除用户user
+		-A user1,user2,... 设置有管理权限的用户列表
+	不加选项表示更改组密码
+		gpasswd GROUP
+	
+
+2.6 (了解) groupmems 可以管理附加组的成员关系, usermod 也能实现在组中加人、删人
+	选项:
+		-g, --group groupname #更改为指定组 (只有root)
+		-a, --add username #指定用户加入组
+		-d, --delete username #从组中删除用户
+		-p, --purge #从组中清除所有成员
+		-l, --list #显示组成员列表
+	
+	// 列出附加组的成员,如果这个附加组是其它某个用户的主组,则不会列出这个用户
+	groupmems -l -g 附加组
+	
+	// 把一个用户添加到附加组
+	groupmems -a 用户 -g 附加组
+	
+	// 把一个用户移除附加组
+	groupmems -d 用户 -g 附加组
+
+	
+	
+	实验: 把一个用户的主组作为另外一个用户的附加组，这个在生产环境中没有意义，这里只是测试
+		[root@localhost ~]#useradd xiaoming
+		[root@localhost ~]#id xiaoming
+		
+		[root@localhost ~]#groupmems -a aaron -g xiaoming
+		// 注意: 这里只列出来 aaron 这个用户, 没有列出 xiaoming, 因为 xiaoming 这个组是aaron的附加组, 是 xiaoming 这个用户的主组, 这里只会列出附加组的成员
+		[root@localhost ~]#groupmems -l -g xiaoming
+		aaron
+		[root@localhost ~]#id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron),1001(xiaoming)
+		
+		[root@localhost ~]#groupmems -a xiaoming -g aaron
+		[root@localhost ~]#id xiaoming
+		uid=1001(xiaoming) gid=1001(xiaoming) groups=1001(xiaoming),1000(aaron)
+		
+		uid=1001(xiaoming) gid=1001(xiaoming) groups=1001(xiaoming),1000(aaron)
+		[root@localhost ~]#userdel -f -r xiaoming
+		userdel: group xiaoming not removed because it has other members.
+		
+		[root@localhost ~]#groupmems -l -g xiaoming
+		aaron
+		[root@localhost ~]#groupdel  xiaoming
+		
+		[root@localhost ~]#id aaron
+		uid=1000(aaron) gid=1000(aaron) groups=1000(aaron)
+	
+	
+2.7  id 命令可以查看用户的UID，GID等信息
+	选项:
+		-u: 显示UID
+		-g: 显示GID
+		-G: 显示用户所属的组的ID
+		-n: 显示名称，需配合ugG使用
+	
+	不加任何选选项,查看当前登录用的信息
+		id
+		
+	查看指定用户
+		id UserName
+		
+	
+2.8 文件权限管理
+	程序访问文件时的权限，权限取决于此程序的发起者
+		进程的发起者，同文件的属主：则应用文件属主权限
+		进程的发起者，属于文件属组；则应用文件属组权限
+		进程的发起者，属于"其它"
+	
+改文件的所有者和所属组
+	[root@localhost ~]#echo "this is tst file" > test.txt; ll test.txt
+	-rw-r--r--. 1 root root 17 Oct 18 15:55 test.txt	
+	
+	改文件的所有者	
+	[root@localhost ~]#chown aaron test.txt;ll test.txt
+	-rw-r--r--. 1 aaron root 17 Oct 18 15:55 test.txt
+	
+	改文件的所属者
+	[root@localhost ~]#chgrp aaron test.txt;ll test.txt
+	-rw-r--r--. 1 aaron aaron 17 Oct 18 15:55 test.txt
+	
+改目录以及目录中的文件的所有者和所属组
+	[root@localhost ~]#mkdir file
+	[root@localhost ~]#echo "this is f1 txt" > ./file/f1.txt
+	[root@localhost ~]#echo "this is f2 txt" > ./file/f2.txt
+	
+	[root@localhost ~]#ll -d file; ll file
+	drwxr-xr-x. 2 root root 34 Oct 18 16:02 file
+	total 8
+	-rw-r--r--. 1 root root 15 Oct 18 16:02 f1.txt
+	-rw-r--r--. 1 root root 15 Oct 18 16:02 f2.txt
+	
+	// 改所有者, "-R"表示递归改
+	[root@localhost ~]#chown -R aaron file
+	[root@localhost ~]#ll -d file; ll file
+	drwxr-xr-x. 2 aaron root 34 Oct 18 16:02 file
+	total 8
+	-rw-r--r--. 1 aaron root 15 Oct 18 16:02 f1.txt
+	-rw-r--r--. 1 aaron root 15 Oct 18 16:02 f2.txt
+	
+	// 改所属组的三种方式, chown 又可以改用户又可以改所属组, "-R"表示递归改
+		chgrp -R aaron file
+		chown -R aaron:aaron file
+		chown -R aaron.aaron file
+		
+	[root@localhost ~]#chown -R aaron.aaron file
+	[root@localhost ~]#ll -d file; ll file
+	drwxr-xr-x. 2 aaron aaron 34 Oct 18 16:02 file
+	total 8
+	-rw-r--r--. 1 aaron aaron 15 Oct 18 16:02 f1.txt
+	-rw-r--r--. 1 aaron aaron 15 Oct 18 16:02 f2.txt
+	
+	
+	"chgrp -R" 和“chown -R”命令很危险, 比如"chown -R aaron.aaron / data/" 中的"/ data/" 多了一空格,这就把所有的文件权限都改了,系统的权限就乱了.
+	这就是要写脚本的原因,因为脚本都是经过多次验证的,出错的机率相当小.
+	
+	
+2.9 文件权限设置(授权)	
+	
+	[root@localhost ~]#ll test.txt
+	-rw-r--r--. 1 aaron aaron 17 Oct 18 15:55 test.txt
+	
+	注意：
+		用户的最终权限，是从左向右进行顺序匹配，即，所有者，所属组，其他人，一旦匹配权限立即生效，不再向右查看其权限
+		r和w权限对 root 用户无效
+		只要所有者,所属组或other三者之一有x权限,root就可以执行
+
+
+每个文件针对每类访问者都定义了三种常用权限
+	r 	Readable,可使用文件查看类工具，比如：cat，可以获取其内容 
+	w 	Writable,可修改其内容
+	x 	Excutable,可以把此文件提请内核启动为一个进程，即可以执行（运行）此文件（此文件的内容必须是可执行）
+	
+	
+改权限 chmod
+	// 模式法格式
+	chmod [OPTION]... MODE[,MODE]... FILE...
+	// 数学发格式
+	chmod [OPTION]... OCTAL-MODE FILE...
+	#参考RFILE文件的权限，将FILE的修改为同RFILE
+	chmod [OPTION]... --reference=RFILE FILE...
+	
+	模式法:
+		MODE：who opt permission
+		who:u,g,o,a
+		opt:+,-,=
+		permission:r,w,x
+		修改指定一类用户的所有权限
+		u= g= o= ug= a= u=,g=
+		修改指定一类用户某个或某个权限
+		u+ u- g+ g- o+ o- a+ a- + -
+		-R: 递归修改权限
+	
+	数学法(工作中用的更多的是数字法)。规律1:只需要记住4、2、1, 然后相加就能组合出各种权限; 规律2: 只要是奇数肯定又运行权限
+		--- 000 0
+		--x 001 1
+		-w- 010 2
+		-wx 011 3
+		r-- 100 4 
+		r-x 101 5
+		rw- 110 6
+		rwx 111 7
+	
+
+给 cat 命令去掉 x 权限: 	
+	[root@localhost ~]#ll /bin/cat
+	-rwxr-xr-x. 1 root root 54080 Aug 20  2019 /bin/cat
+	
+	[root@localhost ~]#chmod a-x /bin/cat; ll /bin/cat
+	-rw-r--r--. 1 root root 54080 Aug 20  2019 /bin/cat
+	
+	// 只要所有者,所属组或other三者之一有x权限,root就可以执行。否则, root 都没又权限运行
+	// 一个程序没有运行权限,是运行不起来的
+	[root@localhost ~]#cat test.txt
+	-bash: /usr/bin/cat: Permission denied	
+	
+	// 给 cat 加回x权限
+	[root@localhost ~]#chmod a+x /bin/cat; ll /bin/cat
+	-rwxr-xr-x. 1 root root 54080 Aug 20  2019 /bin/cat
+	[root@localhost ~]#cat test.txt
+	this is tst file
+	
+	
+	
+对于一个文件来说, 为了安全可以不给任何权限
+	// 如下示例,改了后aaron无法访问,但是aaron是这个权限的所有者,所以aaron加回权限,然后就可以查看该文件
+	[root@localhost ~]#chmod a= test.txt;ll test.txt
+	----------. 1 aaron aaron 17 Oct 18 15:55 test.txt
+	
+	// r和w权限对 root 用户无效, 说明权限是给普通用户设的,不影响root用户
+	[root@localhost ~]#cat test.txt
+	this is tst file
+
+	[root@localhost ~]#chmod 642 test.txt; ll test.txt
+	-rw-r---w-. 1 aaron aaron 17 Oct 18 15:55 test.txt
+
+
+2.10 对目录的权限：
+	r 	可以使用ls查看此目录中文件列表
+	w 	可在此目录中创建文件，也可删除此目录中的文件，而和此被删除的文件的权限无关
+	x 	可以cd进入此目录，可以使用ls -l查看此目录中文件元数据（须配合r权限），属于目录的可访问的最小权限
+	
+	[root@localhost ~]#ll -d file
+	drwxr-xr-x. 2 aaron aaron 34 Oct 18 16:02 file
+	
+	[root@localhost ~]#chmod o+w file; ll -d file
+	drwxr-xrwx. 2 aaron aaron 34 Oct 18 16:02 file
+	
+	
+	对于目录来说,r 和 x 权限要么都给,要么都不给, 一般目录的权限就下面三种组合:
+		---		什么都不能干
+		r-x   	只能看,不能删, x 负责可以进入文件夹, r 负责读文件夹中的文件列表
+		rwx	  	什么都能干
+	
+	重点: 文件能不能删和文件本身权限无关，和文件夹权限有关。
+		因为文件夹也是保存在磁盘上，也有inode, 文件夹中的文件信息就是文件夹inode的数据块,所以访问文件就是访问文件夹inode的数据块，只要对文件夹有权限,就能操作文件夹的数据块。
+		这也解释为什么删除一个文件为什么没有把文件真正删除,因为只是删除了文件夹inode数据块中文件的inode编号, 并没有删除真正的文件。
+		
+	chmod -R 777 文件/文件夹	
+		不太建议给文件/文件夹777权限, 因为这样other都有rwx. 在生产中这是简单粗暴的方法,因为在生产环境中有时为了简单,有时候权限不够,这样给权限省事,但这样漏洞也大,黑客也省事.
+		一般来讲工作中,权限不要设的太宽松,够用就行,权限过大容易出事
+	 
+	 
+	// "X 	只给目录x权限，不给无执行权限的文件x权限，这个很少用",下面示例是对这句话的理解,不知道是否正确?
+	[aaron@localhost data]$ll -d soft/; ll soft
+	drwxrw-rw-. 2 aaron aaron 33 Oct 19 01:39 soft/
+	total 16
+	----------. 1 xiaoming xiaoming     0 Oct 19 01:38 fff
+	----------. 1 aaron    aaron    15784 Oct 19 01:38 hostname
+	
+	// 给 soft 下面所有的文件X权限, 但是fff文件不属于当前操作用户,所以x权限赋权失败
+	[aaron@localhost data]$chmod -R a+x soft/
+	chmod: changing permissions of ‘soft/fff’: Operation not permitted
+	
+	[aaron@localhost data]$ll -d soft/; ll soft		
+	drwxrwxrwx. 2 aaron aaron 33 Oct 19 01:39 soft/
+	total 16
+	----------. 1 xiaoming xiaoming     0 Oct 19 01:38 fff
+	---x--x--x. 1 aaron    aaron    15784 Oct 19 01:38 hostname
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 默认权限和特殊权限
+
+3.1 新建文件和目录的默认权限
+
+umask 可以间接影响新建文件和目录的默认权限, umask 字面意思是权限遮挡住,进而得到一个默认权限 
+	实现方式：
+		新建文件的默认权限: 666-umask，如果所得结果某位存在执行（奇数）权限，则将其权限+1,偶数不变
+		新建目录的默认权限: 777-umask
+	
+	非特权用户umask默认是 002，root的umask 默认是 022。 umask的值是八进制, 前面0省略
+		[aaron@localhost ~]$umask
+		0002
+		[root@localhost ~]#umask
+		0022
+	
+	// root
+	[root@localhost ~]#echo "test file" > ff.txt; ll ff.txt
+	-rw-r--r--. 1 root root 10 Oct 18 23:30 ff.txt				// rw-r--r-- 换算为数字权限是 644,  666-022=644
+	[root@localhost ~]#mkdir data; ll -d data
+	drwxr-xr-x. 2 root root 6 Oct 18 23:32 data					// rwxr-xr-x 换算为数字权限是 755,  777-022=755 
+	
+	// aaron
+	[aaron@localhost ~]$echo "test file" > ff2.txt; ll ff2.txt
+	-rw-rw-r--. 1 aaron aaron 10 Oct 18 23:34 ff2.txt			// rw-rw-r-- 换算为数字权限是 664, 666-002=664
+	[aaron@localhost ~]$mkdir data2; ll -d data2
+	drwxrwxr-x. 2 aaron aaron 6 Oct 18 23:34 data2				// rwxrwxr-x 换算为数字权限是775, 777-002=775
+	
+	
+	为什么文件用666减umask的值得到权限?
+	因为安全考虑,如果对文件用777减umask的值, 如果umask的值设为000, 这样文件默认就是777权限,一般不希望新建的文件有默认执行权限,因为执行权限有危险,用666来计算,权限最大也就是666
+	
+	
+临时修改 umask, 退出登录就失效
+	
+	[root@localhost ~]#umask 123; umask
+	123
+	
+	[root@localhost ~]#echo "test file" > 111.txt; ll 111.txt
+	-rw-r--r--. 1 root root 10 Oct 18 23:42 111.txt				//	rw-r--r-- 换算为数字权限是 644, 666-123=543 ==> 奇数位+1 ==> 644
+	[root@localhost ~]#mkdir config; ll -d config
+	drw-r-xr--. 2 root root 6 Oct 18 23:43 config				//	rw-r-xr-- 换算为数字权限是 654, 777-123=654
+	
+	
+	umask 很少改动, 但个别时候需要改，比如新建一个文件，这个文件需要放入密码,不能随便给人看
+		chmod 0 app.key
+	
+	如果希望一批新建文件都是0权限, 这个时候就可以通过改umask来省略每个文件都要手动改权限的操作, 这时候umask设为666或777都可以
+		// 666-666=0
+		umask 666 
+		// 666-777=-1-1-1 ==> 奇数+1 ==> 000
+		umask 777
+	
+	
+永久改umask
+	修改用户根目录下的	" .bashrc" 文件, 末尾添加umask的值,如下:
+		umask 123	
+
+	root 用户的根目录是 "/root/.bashrc"	
+	非root用户,以用户aaron为例, 根目录是"/home/aaron/.bashrc"
+	 
+
+改了umask之后记得要恢复,一般就用默认的umask
+
+	
+	
+3.2 (了解)特殊权限
+
+除了r, w, x 还有三种特殊权限: SUID, SGID, Sticky, 三个特殊权限只有在特殊场景下能看到,一般不设置
+	SUID 作用于二进制可执行文件上,用户将继承此程序所有者的权限
+	SGID
+		作用于二进制可执行文件上,用户将继承此程序所有组的权限
+		作于于目录上, 此目录中新建的文件的所属组将自动从此目录继承
+	STICKY 作用于目录上,此目录中的文件只能由所有者自已来删除
+	
+	
+SUID	
+	[aaron@localhost ~]$type passwd
+	passwd is /usr/bin/passwd
+	
+	[aaron@localhost ~]$ll /etc/shadow
+	----------. 1 root root 740 Oct 18 15:33 /etc/shadow
+	
+	// 使用 passwd 改密码实际上操作的是"/etc/shadow",但这个文件是0权限,但这里为什么又操作成功了？
+	[aaron@localhost ~]$passwd
+	Changing password for user aaron.
+	Changing password for aaron.
+	(current) UNIX password:
+	New password:
+	Retype new password:
+	passwd: all authentication tokens updated successfully.
+	
+	// 因为passwd具有suid权限,这种特殊权限意思是,当一个可执行文件具有suid权限后, 当一个用户去运行这个程序的时候,这个身份就临时变成了这个程序的所有者身份
+	// passwd的所有者是root, 当aaron使用passwd时,身份就会临时变为root,通过root访问shadow文件就自然可以,所以能改密码成功
+	[root@localhost ~]#ll `which passwd`
+	-rwsr-xr-x. 1 root root 27856 Apr  1  2020 /usr/bin/passwd		//"rws"中的s就是suid权限
+	
+	
+	记住:有没有权限更程序没关,跟身份有关系,身份具有相应的权限才能操作成功
+	
+	suid权限很危险,权限不能随便给, 如果给vim添加suid,那么任何人都可以通过vim操作任何文件
+		加suid权限的两种方式:
+			chmod u+s /usr/bin/vim		 
+			chmod 4755 /usr/bin/vim 	// 4 代表 SUID 权限, 和"r、w、x"权限体系无关,不要混肴
+		取消suid权限的方式:
+			chmod 755 /usr/bin/vim
+	
+SGID
+	场景1: 作用于二进制可执行文件上,用户将继承此程序所有组的权限,范例如下:
+		添加SGID权限:
+			chmod g+s 可执行文件
+			chmon 2755 可执行文件		// 2 代表 SGID 权限, 和"r、w、x"权限体系无关,不要混肴
+		删除SGID权限:
+			chmod g-s   可执行文件
+	
+	场景2: 作于于目录上, 此目录中新建的文件的所属组将自动从此目录继承。格式 chomd g+s 文件夹名称
+		[root@localhost ~]#mkdir -p /data/music;ll -d /data/music; cd /data/music; chmod 777 /data
+		drw-r-xr--. 2 root root 6 Oct 19 00:39 /data/music
+		
+		[root@localhost music]#chmod 777 /data/music; ll -d /data/music
+		drwxrwxrwx. 2 root root 6 Oct 19 00:39 /data/music
+		
+		// 普通用户创建一个文件
+		[aaron@localhost ~]$cd /data/music/; touch wish.mp3; ll wish.mp3
+		-rw-rw-r--. 1 aaron aaron 0 Oct 19 00:42 wish.mp3
+		
+		// 给music文件夹加上SGID权限
+		[root@localhost music]#chmod g+s /data/music/; ll -d /data/music/
+		drwxrwsrwx. 2 root root 22 Oct 19 00:42 /data/music/					// "rws" 中的s就是SGID权限
+		
+		// 普通用户再创建一个文件
+		[aaron@localhost music]$ touch wish2.mp3; ll
+		total 0
+		-rw-rw-r--. 1 aaron root  0 Oct 19 00:47 wish2.mp3						// 这个文件所属组已经变成 root
+		-rw-rw-r--. 1 aaron aaron 0 Oct 19 00:42 wish.mp3						// 旧文件所属组不变
+		
+		//给music文件换个组
+		[root@localhost music]#chgrp bin /data/music/; ll -d /data/music/
+		drwxrwsrwx. 2 root bin 39 Oct 19 00:47 /data/music/
+		
+		// 普通用户再创建一个文件
+		[aaron@localhost music]$ touch wish3.mp3; ll
+		total 0
+		-rw-rw-r--. 1 aaron root  0 Oct 19 00:47 wish2.mp3						// 旧文件所属组不变
+		-rw-rw-r--. 1 aaron bin   0 Oct 19 00:50 wish3.mp3						// 这个文件所属组已经变成 bin
+		-rw-rw-r--. 1 aaron aaron 0 Oct 19 00:42 wish.mp3						// 旧文件所属组不变
+		[aaron@localhost music]$
+		
+
+STICKY  
+	作用于目录上,此目录中的文件只能由所有者自已来删除。比如张三建的文件,李四去删除了,这样肯定不合理,为了避免这种情况 所以有了STICKY权限
+	STICKY 权限就是每个人都可以建自己的文件,但是不能删其它人的文件,只能删自己创建的文件
+	
+	// 系统目录"/tmp"默认就带STICKY权限
+	[root@localhost ~]#ll -d /tmp/
+	drwxrwxrwt. 24 root root 4096 Oct 19 00:53 /tmp/		// "rwt"中的t就是STICKY权限,这个文件夹的权限实际上是777,只不过t把x覆盖了,显示不出来
+	
+	// 添加STICKY权限:
+		chmod o+t /tmp
+		chmod 1777 /tmp		// 1 代表 STICKY 权限, 和"r、w、x"权限体系无关,不要混肴
+	// 删除STICKY权限
+		chmod o-t /tmp
+	
+	// 用户aaron在"/tmp"目录新建文件
+	[aaron@localhost ~]$touch /tmp/aaron.txt
+		
+	// 用户xiaoming是没有权限删除的
+	[xiaoming@localhost ~]$rm -rf /tmp/aaron.txt
+	rm: cannot remove ‘/tmp/aaron.txt’: Operation not permitted	
+
+总结：
+	常用 "r、w、x" 对应的数字权限是 4、2、1
+	特殊权限"SUID、SGID、STICKY"对应的数字权限是 4、2、1
+	
+	权限位映射
+		SUID: user,占据属主的执行权限位,因为占了执行权限位,如何分辨有没有执行权限,根据大小写判断
+			s：属主拥有x权限
+			S：属主没有x权限
+		SGID: group,占据属组的执行权限位
+			s： group拥有x权限
+			S：group没有x权限
+		Sticky: other,占据other的执行权限位
+			t：other拥有x权限
+			T：other没有x权限
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 文件特殊属性和FACL
+
+4.1 chattr 可以对文件或目录加一些特殊属性, 普通用户没有权限使用chattr
+	为了控制和防止root误操作(防止删、改),通过设置文件的特殊属性是可以做到的
+	
+	加特殊权限i, 不能删除，改名，更改; +i 表示加权限 i, -i 表示移除 i 权限
+		chattr +i file/dir
+		chattr -i file/dir
+	
+	加特殊权限a, 只能追加内容，不能删除，改名
+		chattr +a file/dir
+		chattr -a file/dir
+	
+	显示特定属性, lsattr 和 ll 一样, 可以单用, 也支持 -a、-d 等参数
+		lsattr
+	
+
+加特殊属性i
+	[root@localhost ~]#touch fff.txt; ll fff.txt
+	-rw-r--r--. 1 root root 0 Oct 19 14:56 fff.txt
+	
+	//加了i权限后不能修改、删除、改名、改权限、改属性、移动位置
+	[root@localhost ~]#chattr +i fff.txt; ll fff.txt
+	-rw-r--r--. 1 root root 0 Oct 19 14:56 fff.txt
+	
+	// 使用 lsattr 查看已经加上了 i 权限, 使用 11 看不出来
+	[root@localhost ~]#lsattr fff.txt
+	----i----------- fff.txt
+	
+	[root@localhost ~]#echo "this is text file" > fff.txt
+	-bash: fff.txt: Permission denied
+	[root@localhost ~]#rm -rf fff.txt
+	rm: cannot remove ‘fff.txt’: Operation not permitted
+	[root@localhost ~]#mv fff.txt  /data/
+	mv: cannot move ‘fff.txt’ to ‘/data/fff.txt’: Operation not permitted
+	
+	// 去除文件的特殊权限
+	[root@localhost ~]#chattr -i fff.txt; ll fff.txt
+	-rw-r--r--. 1 root root 0 Oct 19 14:56 fff.txt
+	
+	[root@localhost ~]#lsattr fff.txt
+	---------------- fff.txt
+	
+	[root@localhost ~]#rm -rf fff.txt
+
+
+加特殊属性a
+	
+	[root@localhost ~]#mkdir test; touch test/a.txt test/b.txt; ll test
+	total 0
+	-rw-r--r--. 1 root root 0 Oct 19 15:14 a.txt
+	-rw-r--r--. 1 root root 0 Oct 19 15:14 b.txt
+	
+	// 给 test 目录下面的 a.txt 添加a权限后, "a.txt"不能删不能改, 能追加
+	[root@localhost ~]#chattr +a test/a.txt ; lsattr test/
+	-----a---------- test/a.txt									// 说明加了特殊权限 a
+	---------------- test/b.txt									// 什么都没有说明是普通文件
+	
+	//加了殊属性a,可以追加内容
+	[root@localhost ~]#echo "a text" >> ./test/a.txt; cat ./test/a.txt
+	a text
+	
+	//不能清空内容
+	[root@localhost ~]#> ./test/a.txt
+	-bash: ./test/a.txt: Operation not permitted
+	
+	// 一个目录下如果有特殊权限的文件,这个目录和目录中有特殊权限的文件不能被删除, 目录下的普通文件可以被删除
+	[root@localhost ~]#rm -rf test/; ll test/
+	rm: cannot remove ‘test/a.txt’: Operation not permitted
+	total 4
+	-rw-r--r--. 1 root root 7 Oct 19 15:21 a.txt
+	
+	// 删除a属性
+	[root@localhost ~]#chattr -a test/a.txt; lsattr test/a.txt
+	---------------- test/a.txt
+	
+	[root@localhost ~]#rm -rf test/
+	
+	
+chattr 操作目录
+	[root@localhost ~]#mkdir data; touch data/readme.md; mkdir data/config;tree data
+	data
+	├── config
+	└── readme.md
+
+	1 directory, 1 file
+	
+	// 给 data 目录添加特殊权限。如果目录以及目录下面的文件都要加特殊权限, 使用 -R 参数,如  chattr +i -R data
+	[root@localhost ~]#chattr +i data; lsattr -d data; lsattr -a data
+	----i----------- data
+	----i----------- data/.
+	---------------- data/..
+	---------------- data/readme.md
+	---------------- data/config
+	
+	// 如果目录加了特殊权限i, 目录里面的内容也不能被删除, 或改名, 但是可以被修改
+	[root@localhost ~]#rm -rf data/config/  data/readme.md
+	rm: cannot remove ‘data/config/’: Permission denied
+	[root@localhost ~]#mv data/readme.md data/readme2.md
+	mv: cannot move ‘data/readme.md’ to ‘data/readme2.md’: Permission denied
+	[root@localhost ~]#echo "text file" > data/readme.md
+	[root@localhost ~]#echo "text file" >> data/readme.md
+	
+	[root@localhost ~]#lsattr -a data/config/
+	---------------- data/config/.
+	----i----------- data/config/..				// ..代表上层目录, 所以这个目录其实就是代表data目录
+	
+	
+	// 去除目录的特殊权限 i
+	[root@localhost ~]#chattr -i data; rm -rf data
+	
+
+
+4.2 (了解)访问控制列表 ACL(Access Control List), 网络里面也有ACL, 这里是指在文件上面设置acl
+	功能强大, 不过在通常的linux服务器上设置权限没有特别复杂的场景要求,所以功能强大用的不一定多
+		CentOS7 默认创建的xfs和ext4文件系统具有ACL功能
+		CentOS7 之前版本，默认手工创建的ext4文件系统无ACL功能,需手动增加
+		
+ACL的作用是: 除了文件的所有者，所属组和其它人，可以对更多的用户设置权限。
+	
+	
+如果希望某个普通用户对文件有读写权限,有下面方案:
+	改文件所有者, 但是所有者变了
+	把other变为读写, 但是任何其它人都能读写
+	传统linux只能对三类人设权限, acl可以只针对一个人设权限,它可以更加精确设置除了所有者,other以外的人单独设权限
+
+
+给文件或文件夹加acl权限:
+	
+	[root@localhost data]#touch test.txt; ll test.txt
+	-rw-r--r--. 1 root root 0 Oct 19 16:01 test.txt
+	
+	// 用户 aaron 可以读,但不能写
+	[aaron@localhost data]$cat test.txt
+	[aaron@localhost data]$echo aaron >> test.txt
+	-bash: test.txt: Permission denied
+	
+	
+	// 使用acl: 只针对aaron设置读写权限
+	[root@localhost data]#setfacl -m u:aaron:rw test.txt
+	
+	// 变化1: 可以看到组位置的权限变为"--+",说明这个文件被加了acl权限
+	// 变化2: 没有加acl前,组的权限是"r--"; 加acl后,组位置的权限变为"rw-"。注意: 一旦设了acl, 看到的已经不是组的权限了, 是facl中的mask权限
+	//        facl中的mask权限: 除了所有者和other以外的人的最大权限, 所有者和other以外的人的就包括普通用户(aaron、xiaoming) 和 所属组
+	[root@localhost data]#ll test.txt
+	-rw-rw-r--+ 1 root root 0 Oct 19 16:01 test.txt			
+	
+	// aaron这个用户已经有读写权限
+	[aaron@localhost data]$cat test.txt; cat test.txt
+	aaron
+	
+	// 查看文件acl权限
+	[root@localhost data]#getfacl test.txt
+	# file: test.txt
+	# owner: root
+	# group: root
+	user::rw-
+	user:aaron:rw-
+	group::r--								// 这里原来组的权限
+	mask::rw-								// 这里是mask权限,会显示在原来组权限的位置上
+	other::r--								// 这里是other权限
+	
+	// 禁用掉小明的读写权限
+	[root@localhost data]#setfacl -m u:xiaoming:- test.txt
+	[root@localhost data]#getfacl test.txt
+	# file: test.txt
+	# owner: root
+	# group: root
+	user::rw-
+	user:aaron:rw-
+	user:xiaoming:---
+	group::r--
+	mask::rw-
+	other::r--
+	
+	// 小明没有了读写权限
+	[xiaoming@localhost data]$cat test.txt ; echo xiaoming >> test.txt
+	cat: test.txt: Permission denied
+	-bash: test.txt: Permission denied
+	
+	
+修改acl的mask权限:
+	[xiaoming@localhost data]$ll test.txt
+	-rw-rw-r--+ 1 root root 6 Oct 19 16:15 test.txt
+	
+	//文件加了acl权限后, acl权限占用了原来的组权限,所以修改组权限就是修改acl的mask权限
+	//mask权限修改为r后, "文件所属组中的用户"以及"被设置过acl权限的用户"的最高权限只有r权限
+	[[root@localhost data]#chmod g=r test.txt; ll test.txt
+	-rw-r--r--+ 1 root root 6 Oct 19 16:15 test.txt
+	
+	[root@localhost data]#getfacl test.txt
+	# file: test.txt
+	# owner: root
+	# group: root
+	user::rw-
+	user:aaron:rw-                  #effective:r--
+	user:xiaoming:---
+	group::r--
+	mask::r--
+	other::r--
+
+	// 被设置过acl权限的用户, mask 权限改为r后, aaron只能读这个文件
+	[aaron@localhost data]$cat test.txt
+	aaron
+	[aaron@localhost data]$echo "text" >> test.txt
+	-bash: test.txt: Permission denied
+	
+	// xiaohong 加入到文件的所属组, 同样只能读不能写 
+	[root@localhost data]#usermod -Groot xiaohong
+	[xiaohong@localhost data]$echo xiaohong > test.txt
+	-bash: test.txt: Permission denied
+	[xiaohong@localhost data]$cat test.txt
+	aaron
+		
+	
+	//删除单个用户的acl权限, 现在 xiaoming 变为 other
+	//注意: 如果之前改过 acl的mask权限, 在删除单个用户的acl权限后, mask的权限又会变为"rw-", 这一点很奇怪
+	[root@localhost data]#setfacl -x u:xiaoming test.txt
+	[root@localhost data]#getfacl test.txt
+	# file: test.txt
+	# owner: root
+	# group: root
+	user::rw-
+	user:aaron:rw-
+	group::r--
+	mask::rw-
+	other::r--
+	
+	// 给文件的other加上w权限
+	[root@localhost data]#chmod o+w test.txt
+	
+	//因为小明现在属于other, other组的权限是可读可写, 所以小明现在课读写
+	[xiaoming@localhost data]$echo "xiaoming" >> test.txt;cat test.txt
+	aaron
+	xiaoming
+
+
+删除acl的mask权限:
+	-x 删除单个用户的acl权限
+		setfacl -x u:用户 文件
+	
+	-b 删除全部用户的acl权限
+		[root@localhost data]#setfacl -b test.txt ; ll test.txt  ; getfacl test.txt
+		-rw-r--rw-. 1 root root 30 Oct 19 17:00 test.txt								// 从这里看到, 文件已经还原
+		# file: test.txt
+		# owner: root
+		# group: root
+		user::rw-
+		group::r--
+		other::rw-
+	
+	
+ACL生效顺序：
+	所有者 -> 自定义用户 -> 所属组|自定义组 -> 其他人
+	
+	acl自定义组添加方法:
+		setfac -m g:组名:rx 文件
+	
+	示例说明权限生效顺序: 一个文件的权限设置为所有者最小、所属组稍微大一点、other权限设为最大
+		[root@localhost data]#touch config.yaml; chmod u=,g=r,o=rwx config.yaml; ll config.yaml
+		----r--rwx. 1 root root 0 Oct 19 18:01 config.yaml
+		
+		// root 可读可写, 不受限, 所有者改为xiaoming
+		[root@localhost data]#chown xiaoming config.yaml ; ll config.yaml
+		----r--rwx. 1 xiaoming root 0 Oct 19 18:01 config.yaml
+		
+		// xiaoming 访问, 文件所有者访问,没有权限
+		[xiaoming@localhost data]$cat config.yaml ; echo xiaoming > config.yaml
+		cat: config.yaml: Permission denied
+		-bash: config.yaml: Permission denied
+		
+		// 把xiaohong加入到所属组中
+		[root@localhost data]#groupmems -g root -a xiaohong; id xiaohong
+		groupmems: user 'xiaohong' is already a member of 'root'
+		uid=1002(xiaohong) gid=1002(xiaohong) groups=1002(xiaohong),0(root)
+		
+		// xiaohong 访问,不能写
+		[xiaohong@localhost data]$id
+		uid=1002(xiaohong) gid=1002(xiaohong) groups=1002(xiaohong),0(root) 
+		[xiaohong@localhost data]echo xiaohong >> config.yaml
+		-bash: config.yaml: Permission denied
+		
+		// aaron访问, 能读能写
+		[aaron@localhost data]$echo aaron > config.yaml ; cat config.yaml
+		aaron
+		
+		条件: 
+			文件的权限是 ---r--rwx
+		
+		
+		结果:		
+			xiaoming 是文件的拥有者,但不能读写
+			xiaohong 是加入了文件所属组, 能读不能写
+			aaron 属于这个文件的other,能读能写
+			
+		原因：
+			用户访问一个文件,先看用户是不是所有者,如果是所有者,权限直接生效;
+			如果不是所有者,看是不是组的成员,如果是组权限直接生效; 如果不是组成员,other 权限生效;
+			
+		总结: 访问一个文件时, 并不关心用户对于文件的身份,只关心用户的具体权限。
+			
+			
+复制一个文件的acl给新的文件:
+	getfacl file1 | setfacl --set-file=- file2
+		
+
+--set选项会把原有的ACL项都删除，用新的替代，需要注意的是一定要包含UGO的设置，不能象-m一样只是添加ACL就可以
+	setfacl --set u::rw,u:wang:rw,g::r,o::- file1
+	
+	
+备份和还原ACL
+	主要的文件操作命令cp和mv都支持ACL，只是cp命令需要加上-a 参数。-a 参数就是保留各种属性
+		cp -a file1  file2 
+	
+	但是tar等常见的备份工具是不会保留目录和文件的ACL信息, 但可以通过间接方法实现
+		#备份ACL
+		getfacl -R /tmp/dir > acl.txt
+		#消除ACL权限
+		setfacl -R -b /tmp/dir
+		
+		#还原ACL权限
+		setfacl -R --set-file=acl.txt /tmp/dir
+		#还原ACL权限
+		setfacl --restore acl.txt
+		
+		#查看ACL权限
+		getfacl -R /tmp/dir
+		
+		
+小实验: acl的特殊用法
+	
+	[root@localhost ~]#ll /usr/bin/chmod
+	-rwxr-xr-x. 1 root root 58592 Aug 20  2019 /usr/bin/chmod
+
+	[root@localhost ~]#chmod a-x /usr/bin/chmod ; ll /usr/bin/chmod
+	-rw-r--r--. 1 root root 58592 Aug 20  2019 /usr/bin/chmod
+	
+	// 现在 chmod 没有了x权限,怎么办？ 
+	[root@localhost ~]#chmod a+x /usr/bin/chmod
+	-bash: /usr/bin/chmod: Permission denied
+	
+	// 利用acl恢复chmod的x权限
+	[root@localhost ~]#setfacl -m u:root:x /usr/bin/chmod ; ll /usr/bin/chmod ; getfacl /usr/bin/chmod
+	-rw-r-xr--+ 1 root root 58592 Aug 20  2019 /usr/bin/chmod
+	getfacl: Removing leading '/' from absolute path names
+	# file: usr/bin/chmod
+	# owner: root
+	# group: root
+	user::rw-
+	user:root:--x						// 可以看到利用acl加回x权限
+	group::r--
+	mask::r-x
+	other::r--
+	
+	// 使用 chmod 再家辉 x 权限
+	[root@localhost ~]#chmod a+x /usr/bin/chmod; ll /usr/bin/chmod
+	-rwxr-xr-x+ 1 root root 58592 Aug 20  2019 /usr/bin/chmod
+	
+	// 删除acl权限,还原chmod权限
+	[root@localhost ~]#setfacl -b /usr/bin/chmod ; ll /usr/bin/chmod
+	-rwxr--r-x. 1 root root 58592 Aug 20  2019 /usr/bin/chmod
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+备注:
+	如果文件夹仅有读权限,可以看到文件夹里面的文件列表,但是看不到文件的数据内容
+		// 可以查看目录中的文件
+		ls DIR
+		
+		// 看不到节点号，定位不了数据内容，所以看不到文件
+		ls -il DIR 
+
+	如果文件夹仅有写权限:
+		ll DIR							// 没有权限
+		ll DIR/xxx.txt					// 有权限
+		echo "xxx" >> DIR/xxx.txt		// 有权限, 前提是这个用户对这个文件有写权限
+		
+	如果文件夹仅有X权限:
+		cd DIR							// 有权限
+		ll DIR							// 无权限
+

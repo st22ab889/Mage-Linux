@@ -1,0 +1,299 @@
+4 反向代理和haproxy的特性
+	Nginx作为web服务器的用途更突出些！Proxy是专业级的反向代理，没有web功能！
+	HAProxy反向代理比Nginx更加强大,作为反向代理来讲，会面对大量的并发连接用户！
+	LVS高并发可以突破百万计，Nginx在10万级以上，Proxy介入百万级和十万级之间！对于小公司来说，Nginx足够用！
+	HAProxy自身没有提供HA(高可用)功能，只是适用于高可用环境. 常用的组合是 keepalived + HAProxy
+		
+4.1 负载均衡类型
+	四层：LVS(Linux Virtual Server)、Nginx(1.9版之后)、HAProxy(High Availability Proxy)
+		LVS四层不会和客户端建立TCP握手，只是把数据报文转发到后端服务器。所以LVS不参与连接，只做转发!
+		Nginx和HAProxy的四层代理并不是真正的四层，是伪四层，
+			反向代理TCP时，会介入握手过程，会分别和前端和后端服务器分别建立三次握手
+			Nginx反向代理UDP时，虽然少了建立连接过程，但仍然是伪代理。HAProxy在当前最新版本(3.0)还不支持UDP。
+	七层：HAProxy、Nginx
+	硬件：F5、Netscaler、Array(https://www.arraynetworks.com.cn)、深信服、北京灵州
+	
+4.2 应用场景
+	四层：Redis、Mysql、RabbitMQ、Memcache等
+	七层：Nginx、Tomcat、Apache、PHP、图片、动静分离、API等	
+	
+4.3 HAProxy介绍
+	是一款具备高并发(几十万以上)、高性能的TCP和HTTP负载均衡器，支持基于cookie的持久性，自动故障切换，支持正则表达式及web状态统计
+	
+	HAProxy版本：
+		企业版
+		社区版：要选择TLS版本，TLS版本是长期支持版
+
+4.4 不具备的功能
+	HAProxy不支持正向代理，squid、nginx可以支持
+	HAProxy不支持缓存代理，varnish 支持缓存代理
+	HAProxy不支持web服务，nginx、tengine、apache、php、tomcat 支持web服务
+	HAProxy在当前最新版本(3.0)还不支持UDP
+	HAProxy单机性能相比LVS性能较差
+	
+扩展：缓存代理服务器
+	缓存代理的作用是将资源的副本预先保存在代理服务器。当再次接收到请求时，缓存代理不会直接从源服务器获取资源，而是将缓存中的资源响应给请求者
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 haproxy的包安装和编译安装及配置文件结构
+	HAProxy在centos7、centos7都放在光盘中(系统源)，不同的系统版本差别比较大。
+		centos8光盘中的版本是 1.8.23
+		centos7光盘中的版本是 1.5.18
+	Nginx在centos7及之前的版本不在光盘中，放在epel源中。centos8放到了光盘中!
+
+5.1 安装
+	yum安装:
+		[opc@web-nginx ~]$ yum install -y haproxy
+		
+		[opc@web-nginx ~]$ haproxy -v
+		HA-Proxy version 1.5.18 2016/05/10
+
+		# 准备socket文件目录，这个目录也可以顺便作为 haproxy 这个用户的家目录
+		[opc@web-nginx ~]$ sudo mkdir /var/lib/haproxy			
+		
+		# 创建用户和组。在"haproxy.cfg"文件中指定了user和group为haproxy，在启动服务的时候，会自动创建haproxy这个用户和组
+		[opc@web-nginx ~]$ sudo useradd -r -s /sbin/nologin -d /var/lib/haproxy haproxy	
+			创建nologin用户时，即使使用"-d"指定起始(家)目录，在"/etc/passwd"文件中，可以看到这个用户的家目录为指定的目录，但实际上目录不存在。
+			创建nologin用户时不指定家目录，在"/etc/passwd"文件中，可以看到这个用户的家目录为"/home/{user}"，但实际上目录也不存在。
+			如果要使nologin用户有家目录，可以使用 mkdir 创建这个目录!
+			
+		[opc@web-nginx ~]$ sudo systemctl enable --now haproxy
+		Created symlink from /etc/systemd/system/multi-user.target.wants/haproxy.service to /usr/lib/systemd/system/haproxy.service.
+
+		
+	编译安装:
+		vim /usr/lib/systemd/system/haproxy.service		
+		......
+		[Service]
+		ExecStartPre=/usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -c -q
+		ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -p
+		/var/lib/haproxy/haproxy.pid
+		ExecReload=/bin/kill -USR2 $MAINPID
+		LimitNOFILE=100000								# 单进程最多能打开的文件描述符，这个值要设置的大些
+		......
+		参考PDF!
+		
+	注意事项:使用"systemctl start haproxy"启动服务失败，有时不会提示，需要使用"systemctl status haproxy"查看状态，状态为"active"说明启动成功
+		
+5.2 HAProxy 的配置文件haproxy.cfg由两大部分组成，分别是global和proxies部分
+	global：全局配置段
+		进程及安全配置相关的参数
+		性能调整相关参数
+		Debug参数
+	proxies：代理配置段
+		defaults：为frontend, backend, listen提供默认配置
+		frontend：前端，相当于nginx中的 server {}
+		backend：后端，相当于nginx中的 upstream {}
+			frontend和backend组合使用，frontend 监听端口并接受请求，然后将请求转发给backend
+		listen：同时拥有前端和后端配置,配置简单,生产推荐使用
+	
+	注：
+		HAProxy的配置文件格式可以不缩进，但为了阅读方便，有必要保持缩进格式!
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+6 haproxy的反向代理实现
+
+6.1 global 配置参数说明
+	chroot  # 把进程禁锢在一个文件，只能访问这个文件夹，避免被攻击后，影响其它文件或进程
+	
+	# 以后台方式运行，不加的话以前台方式运行，会占用终端资源，不利于后面持续运行
+	Daemon 	# 注意：大部分的业务按照传统方式都是后台运行，但容器里面跑的服务都是前台运行。如果haproxy是运行在容器中，就不要设置 daemon
+	
+	# 可以利用socket文件和proxy的通讯，比如把后端某些服务器下线，或者调整后端服务器的优先级。可以指定多个
+	stats socket /var/lib/haproxy/haproxy.sock mode 600 level admin process 1
+		mode 600: 这定义了套接字的文件权限。600 表示文件所有者有读写权限，而其他人没有任何权限
+		level admin: 定义了访问套接字的用户的权限级别。admin 级别允许用户执行大多数操作，包括查看所有统计信息和配置参数，以及进行某些管理任务
+		process 1: 表示套接字文件仅用于与 HAProxy 的主进程(process 1)通信。HAProxy 在启动时可能会创建多个进程（一个主进程和多个工作进程）
+				   通过这个参数可以限制通过此套接字文件的通信只与主进程进行。这有时是有用的，因为某些操作(如重新加载配置)只能由主进程执行
+	
+	nbproc n		# 开启的haproxy worker 进程数，默认进程数是一个. 这个值应该等于CPU的核数
+	nbthread n   	# 多线程，一般来讲用进程就可以了，不用多线程
+	maxconn n 		# 每个haproxy进程的最大并发连接数, 设置100000都没问题
+	
+	# 每个haproxy进程ssl最大连接数,用于haproxy配置了证书的场景下。
+	# HAproxy作为七层代理时不推荐在client和HAProxy之间配置SSL，影响性能。
+	# 可以把HAproxy作为四层代理，让client和后端服务器使用SSL加密，HAproxy只是在中间传输被加密的数据而已，不做解密等操作。
+	maxsslconn n 	
+	
+	maxconnrate n		# 每个进程每秒创建的最大连接数量，控制瞬间并发
+	
+	# 后端服务器有多个，不同时发送健康检查请求，间隔发送健康检查请求，建议2-5(20%-50%)之间，默认值0
+	# 假如健康检查每隔1秒一次，这里值设为5，5代表50%，间隔的时间就为1s的前后50%，所以间隔的时间为 1*0.5 到 1+1*0.5 之间的一个随机时间
+	spread-checks n 	# 避免 Haproxy 同时发出多个健康检查请求，不至于造成瞬间的高峰期波动
+	
+	# Linux服务需要指定PID路径是为了防止同一个程序运行多个副本(或实例)
+	pidfile 			# 指定pid文件路径，这个pid文件记录的就是pid值
+	
+	log 127.0.0.1 local2 info 	# 定义全局的syslog服务器；最多可以定义两个。可以本地放一份，甚至还可以启用UDP把日志放在远程服务器
+	
+	其它配置详见PDF ===>> "3.4.1.1 global 配置参数说明" 
+	
+6.2 socket文件可以指定多个
+
+		vim /etc/haproxy/haproxy.cfg
+		global
+			# 可以让每个进程对应关联一个socket文件
+			# 关联后好处时给socket文件发消息，可以通告这个socket文件来控制对应的进程
+			stats socket /var/lib/haproxy/haproxy.sock1 mode 600 level admin process 1
+			stats socket /var/lib/haproxy/haproxy.sock2 mode 600 level admin process 2
+			nbproc 2
+			......
+		......	
+		
+		systemctl restart haproxy
+		
+		ll /var/lib/haproxy/
+		total 4
+		-rw-r--r-- 1 root root 5 Mar 31 18:49 haproxy.pid
+		srw------- 1 root root 0 Mar 31 18:49 haproxy.sock1
+		srw------- 1 root root 0 Mar 31 18:49 haproxy.sock2
+		
+	详见PDF ===>> "3.4.1.2 多进程和线程" 
+	
+6.3 HAProxy日志配置
+	HAProxy 自己不记录日志，把日志通过 127.0.0.1，默认514端口，把日志发送到rsyslog服务去记录日志，用的时候要考虑HAProxy的压力。
+	不但可以发送到本机的rsyslog服务，也可以发送到远程rsyslog主机记录日志，但这样会加重HAProxy的负载，所以可以考虑在后端服务器记录日志！
+	
+	注：rsyslog是基于传统syslog协议的开源日志收集工具，rsyslog服务既可以使用TCP协议，也可以使用UDP协议。
+
+	详见PDF ===>> "3.4.1.3 HAProxy日志配置" 
+	
+6.4 Proxies配置-defaults
+	
+	详见PDF ===>> "3.4.2.1 Proxies配置-defaults" 
+	
+	
+6.5 Proxies配置-listen 简化配置
+	
+	# listen 配置示例，一个listen对应后端一组服务器
+	listen WEB_SERVER
+		bind 10.0.0.7:80
+		# log global						# 表示用全局的日志						
+		mode http
+		option forwardfor					# 透传客户端真实IP至后端web服务器
+		server web1 10.0.0.17:8080 check 	# 加 check 关键字就能实现健康检测，原理是用TCP连接每秒向后端服务器发送包，响应包正常说明健康
+		server web2 10.0.0.27:8080 check    
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+7 haproxy的反向代理frontend
+	如果要实现根据条件转发到不同的服务器，比如动静分离，需要用到 frontend 和 backend ! 
+	frontend 和 backend 的关系可以是一对多、多对多、多对一 !
+
+7.1 frontend 配置
+	
+	# 可以采用后面形式命名：业务-服务-端口号
+	frontend magedu_web_port 			
+		# bind可以绑定IP，监听端口、Unix Sock、File Descriptor，如果是https监听，还可以配置公钥和私钥 
+		bind :80,:8080
+		# 注意：当HAProxy配合keepalived时需要注意的问题
+		#	如果需要绑定非本机的IP，需要开启内核参数：net.ipv4.ip_nonlocal_bind=1 
+		#   如果只写了端口，没写IP，说明这个端口对所有的IP都有效，那就不需要开始"net.ipv4.ip_nonlocal_bind"内核参数
+		bind 10.0.0.7:10080,:8801-8810,10.0.0.17:9001-9010	# 9001-9010 表示从9001到9010的所有端口
+		mode http|tcp 
+		use_backend <backend_name>							# 调用的后端服务器组名称
+		# 针对所有server配置,当前端服务器的连接数达到上限后的后援(等待)队列长度(连接数达到上限后,会将后面来的连接放在等待队列中)
+		backlog <backlog>									# 注意：backlog不支持backend
+	
+	
+	详见PDF ===>> "3.4.2.3 Proxies配置-frontend" 	
+
+7.2 backend 配置
+
+	示例
+		backend magedu-test-http-nodes
+			mode tcp
+			default-server inter 1000 weight 6
+			# server 后面跟的是后端服务器的名称，这里名称建议直接写为后端服务器的ip，在HAProxy的状态页面看起比较直观
+			# server web1 10.0.0.17:80 weight 2 check addr 10.0.0.117 port 8080		
+			server 10.0.0.17 10.0.0.17:80 weight 2 check addr 10.0.0.117 port 8080
+			# server 10.0.0.27 10.0.0.27:80 check
+			server web2 10.0.0.27:80 check
+	
+	backend中的一个server的配置
+		check			# 健康检查
+			# 默认检查的是server的IP。也可以指定其它地址，好处是检查的地址和提供服务的地址可以不在同一个网段(类似心跳线)，减少业务网络的流量
+			# 虽然可以减少业务网络的流量，优化网络，但缺点是有可能健康检查的哪个接口正常，真正的业务网络已经挂了，这样就出现了偏差
+			addr <IP> 			
+			port <num> 	# 端口
+			inter <num> # 健康状态检查间隔时间，默认2000 ms
+			fall <num> 	# 后端服务器从线上转为线下的检查的连续失效次数，默认为3
+			rise <num> 	# 后端服务器从下线恢复上线的检查的连续有效次数，默认为2
+		weight <weight> # 默认为1，最大值为256，0(状态为蓝色)表示不参与负载均衡，但仍接受持久连接。不加权重相当于rr，加了权重相当于wrr
+		backup 			# 将后端服务器标记为备用状态,后端服务器全部down后就会启用备用服务器，类似Sorry Server
+		
+		# 将后端服务器标记为不可用状态，即维护状态，除了持久模式，将不再接受连接,状态为深黄色,优雅下线,不再接受新用户的请求
+		# 除了持久模式意思是在设置disabled之前就已经建立的连接，可以不影响老用户，设置之后，使用"systemctl reload haproxy"重新加载配置
+		disabled 		
+		
+		# 下面两项重定向功能效果一样，使用的时候可以随便挑选一个
+		redirect prefix http://www.baidu.com/ 	# 将请求临时(302)重定向至其它URL，只适用于http模式
+		redir http://www.baidu.com 				# 将请求临时(302)重定向至其它URL，只适用于http模式
+		
+		maxconn <maxconn> 						# 当前后端server的最大并发连接数
+
+	
+7.3 使用子配置文件保存配置。haproxy 在配置文件并不支持使用include导入子配置文件，但可以使用 "-f" 参数
+	
+	vim /lib/systemd/system/haproxy.service
+	.......
+	[Service]
+	# 修改下面两行,使用 "-f" 参数指定 配置文件 或 放配置文件的文件夹。ExecStartPre 是启动前的语法检查。注意:子配置文件的文件后缀必须为.cfg
+	ExecStartPre=/usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -f /etc/haproxy/conf.d/ -c -q	
+	ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -f /etc/haproxy/conf.d/ -p /var/lib/haproxy/haproxy.pid
+	# ExecReload描述了重启当前服务时执行的命令
+	ExecReload=/bin/kill -USR2 $MAINPID		
+	.......
+	
+	systemctl daemon-reload   # 用于重新加载系统中的`systemd`服务配置文件。这个命令通常在安装或更新服务后执行，以确保服务的配置更改能够生效
+	systemctl restart haproxy
+	
+	详见PDF ===>> "3.4.3 使用子配置文件保存配置" 	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展1：
+	一台主机的IP为 192.168.32.112 , 假如这台主机安装有 HAProxy 和 httpd 两个服务：
+		HAProxy 监听 192.168.32.112:80
+		httpd   监听 127.0.0.1:80
+	问题：如上 HAProxy 和 httpd 都监听80端口，会不会造成端口冲突?
+	回答：不会造成端口冲突，因为绑定的IP地址不同。
+	
+扩展2：
+	私有云就是公司内部自己搭建虚拟化平台，解决方案有openstack，vmware vsphere、k8s，k8s在慢慢取代openstack！
+	一些云厂商内部用 openstack，大部分企业k8s用的越来越多，还是要看具体场景！
+	对于公司来讲，初期可以用公有云，具有一定规模后，用机房自己搭建一个私有云环境降低成本！
+	
+扩展3：
+	第三方linux包：https://pkgs.org/	
+
+扩展4：
+	nologin用户：
+		Linux系统中，nologin用户通常没有特定的起始目录(家目录)，因为nologin用户的主要作用是用来限制用户的登录权限，让其无法通过该账户登录系统。
+		通过将nologin用户的Shell设置为"/sbin/nologin"或"/usr/sbin/nologin",可以有效防止这些账户被恶意登录.
+		
+		nologin用户通常用于一些特殊的用户账户，比如系统管理员账户或者一些程序运行账户。
+		创建Linux用户时通过"-d"选项指定起始目录，即使在创建nologin用户时指定起始目录，这个目录也不会被创建，除非使用 mkdir 手动创建。
+		由于nologin用户无法登录系统，因此指定起始目录可能没有实际意义。
+		
+	系统管理员账户是nologin用户有什么意义?
+		通过将系统管理员账户设置为nologin，可以防止该账户被恶意用户或攻击者利用来进行未经授权的登录和操作。
+		系统管理员账户设置为nologin，即使攻击者知道了管理员账户的用户名和密码，由于账户被设置为nologin，也无法成功登录并执行恶意操作。
+		所以系统管理员账户设置为nologin用户的主要意义在于增强系统的安全性
+		
+		尽管系统管理员账户设置为nologin用户后无法直接通过常规的登录方式（如密码登录、SSH登录等）进行访问，但仍然可以通过其他方式进行管理。
+		例如，使用sudo命令以其他用户身份执行特权操作。这样管理员可以在需要时执行必要的系统管理任务，而不会受到nologin设置的限制。
+		所以系统管理员账户设置为nologin用户并不会限制管理员的管理功能。
+		
+扩展5：	
+	Linux服务需要指定PID路径是为了防止同一个程序运行多个副本（或实例）。
+		PID是进程的标识符，Linux系统通过PID来识别不同的进程。指定PID路径后，程序在启动时会读取该路径下的PID文件，
+		检查其中的PID是否已经在系统进程列表中存在。如果存在，则当前的实例不能运行，因为已经存在一个运行实例；
+		如果不存在，则正常启动运行。这样可以确保同一个程序只运行一个实例，避免多个实例之间的冲突和资源竞争	
+	
+
+
+
+

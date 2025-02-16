@@ -1,0 +1,461 @@
+1 实现私有CA和证书申请
+
+1.1 创建私有CA
+	
+	[root@localhost ~]#cat /etc/pki/tls/openssl.cnf
+	......省略
+	[ CA_default ]
+	
+	
+	dir     = /etc/pki/CA       # Where everything is kept
+	certs       = $dir/certs        # Where the issued certs are kept
+	crl_dir     = $dir/crl      # Where the issued crl are kept
+	database    = $dir/index.txt    # database index file.
+	#unique_subject = no            # Set to 'no' to allow creation of
+						# several certs with same subject.
+	new_certs_dir   = $dir/newcerts     # default place for new certs.
+
+	certificate = $dir/cacert.pem   # The CA certificate
+	serial      = $dir/serial       # The current serial number
+	crlnumber   = $dir/crlnumber    # the current crl number
+						# must be commented out to leave a V1 CRL
+	crl     = $dir/crl.pem      # The current CRL
+	private_key = $dir/private/cakey.pem# The private key
+	......省略
+	# A few difference way of specifying how similar the request should look
+	# For type CA, the listed attributes must be the same, and the optional
+	# and supplied fields are just that :-)
+	policy          = policy_match			// 设定当前用的策略
+
+	# For the CA policy  
+	[ policy_match ]
+	countryName             = match			//	CA所在的国家
+	stateOrProvinceName     = match			//	州或省份
+	organizationName        = match			//  (比如公司)
+	organizationalUnitName  = optional		// 	部门
+	commonName              = supplied		// 	给哪个组织使用
+	emailAddress            = optional		//  邮箱	
+	......省略
+	
+
+	// 根据openssl的配置创建目录以及权限，centos7已经自带这些目录，centos8需要手动创建这些目录"mkdir -p /etc/pki/CA/{certs,crl,newcerts,private}"
+	[root@localhost ~]#tree /etc/pki/CA
+	/etc/pki/CA
+	├── certs
+	├── crl
+	├── newcerts
+	└── private
+
+	4 directories, 0 files
+	
+	
+	// centos7、8 没有 index.txt 和 serial 文件，需要手动创建，否则给用户颁发证书的时候会报错
+	[root@localhost ~]#touch /etc/pki/CA/index.txt
+	[root@localhost ~]#echo 01 > /etc/pki/CA/serial				# 注意：初始化值要写为十六进制格式，不能写为"echo 1 > /etc/pki/CA/serial"
+	
+
+交互式创建CA根证书：
+	
+	// 创建私钥，权限要设置的严格些， entos8创建私钥时默认权限就很严格，可以不用umask命令；主要用在centos8之前的版本
+	[root@localhost ~]#(cd /etc/pki/CA/; umask 066; openssl genrsa -out private/cakey.pem 2048)
+	Generating RSA private key, 2048 bit long modulus
+	..............+++
+	...+++
+	e is 65537 (0x10001) 
+
+	[root@localhost ~]#ll /etc/pki/CA/private/
+	total 4
+	-rw------- 1 root root 1675 Nov 27 11:27 cakey.pem	
+	
+
+	// 利用私钥创建CA自签名证书。CA证书的有效期时间要长些，如果CA证书过期了，那么它颁发的所有证书就都过期了
+	// 选项， -new：生成新证书签署请求；-x509：专用于CA生成自签证书；-key：生成请求时用到的私钥文件；-days：证书的有效期限；-out: 证书的保存路径
+	[root@localhost CA]#openssl req -new -x509 -key /etc/pki/CA/private/cakey.pem -days 3650 -out /etc/pki/CA/cacert.pem
+	You are about to be asked to enter information that will be incorporated
+	into your certificate request.
+	What you are about to enter is what is called a Distinguished Name or a DN.
+	There are quite a few fields but you can leave some blank
+	For some fields there will be a default value,
+	If you enter '.', the field will be left blank.
+	-----
+	Country Name (2 letter code) [XX]:CN										# 国家代码：https://country-code.cl/
+	State or Province Name (full name) []:GuangDong
+	Locality Name (eg, city) [Default City]:GuangZhou
+	Organization Name (eg, company) [Default Company Ltd]:Digital Cash Ltd
+	Organizational Unit Name (eg, section) []:management							 # 部门
+	# 给哪个服务器颁发，就是服务器的主机名，如果是网站就是域名(这个证书只能给这个域名使用，域名的名称要匹配，否则会报错)，这里是给CA用的，可以写成如下：
+	Common Name (eg, your name or your server's hostname) []:ca.digitalcash.com	 
+	Email Address []:support@digitalcash.com	
+	
+	// 生成的证书放在windows文件中查看更直观，但是需要把".pem"后缀改为"cer"或"crt"
+	[root@localhost ~]#ll /etc/pki/CA/cacert.pem
+	-rw-r--r-- 1 root root 1497 Nov 27 12:11 /etc/pki/CA/cacert.pem
+	
+	// 以文本方式显示证书内容
+	[root@localhost ~]#openssl x509 -in /etc/pki/CA/cacert.pem -noout -text
+	Certificate:
+		Data:
+			Version: 3 (0x2)
+			Serial Number:					# 序列号
+				e1:29:12:ca:cb:5a:59:f6
+		Signature Algorithm: sha256WithRSAEncryption		# 签名算法
+			# Issuer 表示证书签署者(也就是证书的发布者、颁发者) 
+			Issuer: C=CN, ST=GuangDong, L=GuangZhou, O=Digital Cash Ltd, OU=management, CN=ca.digitalcash.com/emailAddress=support@digitalcash.com
+			Validity	# 有效期
+				Not Before: Nov 27 04:11:17 2022 GMT
+				Not After : Nov 24 04:11:17 2032 GMT
+			# Subject表示公钥拥有者(使用证书的人)，因为是自签名证书，所以颁发证书的人和使用证书的人一样，所以 Issuer 和 Subject的信息一样
+			Subject: C=CN, ST=GuangDong, L=GuangZhou, O=Digital Cash Ltd, OU=management, CN=ca.digitalcash.com/emailAddress=support@digitalcash.com
+			Subject Public Key Info:						# 公钥信息
+				Public Key Algorithm: rsaEncryption
+					Public-Key: (2048 bit)
+					Modulus:
+						00:f4:7a:9d:b8:41:72:2c:0e:a7:58:01:a9:35:6c:
+						d4:90:91:36:8e:a0:01:92:cc:eb:0b:84:22:67:fc:
+						29:36:a6:46:d5:0b:14:e6:5d:75:c5:8c:81:7c:20:
+						8b:c6:a2:da:25:7a:10:40:24:fc:3e:80:1b:b1:07:
+						d8:07:0b:3d:8f:a8:89:72:87:98:ce:8e:e2:41:81:
+						4d:98:47:f8:3e:fd:1d:6f:7d:ab:4b:72:2f:f1:63:
+						b7:fb:05:f6:61:96:42:82:97:85:c7:fd:45:f2:e4:
+						ad:36:55:91:15:73:a4:20:85:64:d3:a3:30:af:cb:
+						b5:33:3e:cb:8f:46:40:a7:14:af:75:b3:5c:68:f9:
+						e1:0f:55:a1:6d:17:ea:ff:55:84:a0:51:1c:b6:fa:
+						b9:28:bd:9a:12:97:e2:c1:d1:f7:33:71:fd:6b:a5:
+						32:16:9c:58:74:f2:ee:a3:86:f5:06:fb:6c:95:ee:
+						cd:62:92:42:46:46:24:9e:04:bb:54:ba:21:44:c6:
+						51:84:47:71:ab:3c:1b:8f:4c:3d:fc:51:3e:8c:3b:
+						44:b8:e7:6a:77:e7:c4:5c:28:d2:eb:dc:59:a5:3b:
+						c0:ba:14:07:1c:8c:e4:84:06:6b:b4:04:c4:d0:7c:
+						3e:94:1a:29:c9:e9:48:2d:1c:83:63:08:6f:18:04:
+						8d:e7
+					Exponent: 65537 (0x10001)
+			X509v3 extensions:
+				X509v3 Subject Key Identifier:
+					8E:BC:50:BA:11:37:D7:64:07:D9:BB:40:9B:C2:97:39:2C:8E:F6:58
+				X509v3 Authority Key Identifier:
+					keyid:8E:BC:50:BA:11:37:D7:64:07:D9:BB:40:9B:C2:97:39:2C:8E:F6:58
+
+				X509v3 Basic Constraints:
+					CA:TRUE
+		Signature Algorithm: sha256WithRSAEncryption
+			 90:bf:47:91:e4:be:50:06:bd:63:a7:43:0d:8c:d0:97:cb:01:
+			 f9:79:3c:03:59:a0:6d:ae:dd:ff:b6:e5:4d:cf:1a:66:26:b1:
+			 9e:ca:16:e3:0b:6a:52:57:d9:d7:4c:74:71:e9:6d:cd:9e:31:
+			 93:65:9b:91:f8:be:b7:0f:72:0e:e7:4e:aa:bb:c5:8f:df:ae:
+			 95:69:b1:66:6d:16:90:f1:40:c9:3e:35:7b:79:0e:e2:33:a1:
+			 58:5f:eb:bb:3b:2f:d4:34:b7:c6:b7:f5:57:f2:c7:2b:8e:26:
+			 f4:81:ad:3a:a3:ff:7d:bd:ae:04:2e:8b:16:33:fc:a4:a1:4c:
+			 08:55:83:cb:dd:b6:0a:4d:4b:8b:da:30:ac:4b:78:96:5d:6c:
+			 89:e7:2d:45:6c:c2:de:0b:a0:7f:0a:96:85:14:76:d5:8e:e0:
+			 c9:80:73:70:9e:de:18:4f:71:ae:3c:43:96:ab:70:66:81:0c:
+			 77:d0:2d:9d:b5:64:26:9f:dc:50:f4:bd:61:62:2a:5f:3c:d0:
+			 62:71:1c:94:d8:35:51:ca:46:01:b6:2a:ac:80:26:45:d2:8d:
+			 73:14:cd:b3:d0:16:74:6c:71:df:34:d1:5d:28:bc:eb:62:7e:
+			 f2:06:59:18:79:4d:a5:eb:7d:ed:bb:e9:f2:31:1d:77:f3:11:
+			 f4:36:91:1a
+	
+	// 可以挑选公钥的信息看
+	[root@localhost ~]#openssl x509 -in /etc/pki/CA/cacert.pem -noout -dates
+	notBefore=Nov 27 04:11:17 2022 GMT
+	notAfter=Nov 24 04:11:17 2032 GMT
+	
+	[root@localhost ~]#openssl x509 -in /etc/pki/CA/cacert.pem -noout -subject
+	subject= /C=CN/ST=GuangDong/L=GuangZhou/O=Digital Cash Ltd/OU=management/CN=ca.digitalcash.com/emailAddress=support@digitalcash.com	
+
+
+非交互式创建CA根证书：可以写在脚本中实现自动化
+	// 一条命令生成私钥和证书，如果不指定有效期，也不会使用证书配置文件里面定义的有效期，这个证书的有效期默认只有一个月
+	openssl req -utf8 -newkey rsa:1024 -subj "/CN=www.magedu.org" -keyout app.key -nodes -x509 -out app.crt
+	选项说明：
+		-newkey 指定算法
+		-keyout	生成私钥
+		-x509 -out 生成证书
+		
+	
+在centos7中生成自签名证书有更简单的方法，这个方法在centos8上不可用
+
+	// 其实就是通过 Makefile 脚本实现，这个脚本调用了 openssl 命令，把这个文件拷贝到centos8，这样 centos8 也能支持
+	// 还可以修改"Makefile"实现自定义功能，比如创建私钥默认要求加密，但是可以修改脚本中创建私钥的命令，就可以做到创建私钥时默认不加密！
+	[root@localhost ~]#cd /etc/pki/tls/certs/; ls
+	ca-bundle.crt  ca-bundle.trust.crt  make-dummy-cert  Makefile  renew-dummy-cert	
+	
+	// 列出功能以及用法
+	[root@localhost certs]#make
+	This makefile allows you to create:
+	......省略
+	
+	[root@localhost certs]#make /data/httpd.crt
+	umask 77 ; \
+	/usr/bin/openssl req -utf8 -new -key /data/httpd.key -x509 -days 365 -out /data/httpd.crt
+	Enter pass phrase for /data/httpd.key:											# 设置私钥密码
+	You are about to be asked to enter information that will be incorporated
+	into your certificate request.
+	......省略
+	
+	[root@localhost certs]#ll /data/httpd*
+	-rw------- 1 root root 1497 Nov 27 13:12 /data/httpd.crt		# 自签名证书
+	-rw------- 1 root root 1766 Nov 27 13:10 /data/httpd.key		# 私钥
+	
+	// 可以看到私钥被加密，后面在用到私钥的时候都需要解密
+	[root@localhost certs]#cat /data/httpd.key
+	-----BEGIN RSA PRIVATE KEY-----
+	Proc-Type: 4,ENCRYPTED
+	DEK-Info: AES-128-CBC,50455FB49E284028CEDD5F924F7B2414
+	......省略
+	
+	// 公钥文件
+	[root@localhost certs]#cat /data/httpd.crt
+	-----BEGIN CERTIFICATE-----
+	MIIEIzCCAwugAwIBAgIJAOV5jHy2+S/IMA0GCSqGSIb3DQEBCwUAMIGnMQswCQYD
+	......省略
+
+	总结：
+		如果就一个服务需要证书,就可以不用搭建CA，直接给这个服务生成一个自签名证书
+		如果有多个服务，就有必要搭建私有私有CA，然后给不同的服务颁发证书
+
+
+1.2 用户生成私钥和证书申请
+	
+	// 模拟给 nginx 这个服务申请证书
+	[root@localhost ~]#mkdir /data/nginx
+	
+	// 生成服务用的私钥
+	[root@localhost ~]#(umask 066; openssl genrsa -out /data/nginx/nginx.key 2048)
+	Generating RSA private key, 2048 bit long modulus
+	....................................................+++
+	....+++
+	e is 65537 (0x10001)
+	
+	// 生成证书请求文件
+	[root@localhost ~]#openssl req -new -key /data/nginx/nginx.key -out /data/nginx/nginx.csr
+	You are about to be asked to enter information that will be incorporated
+	into your certificate request.
+	What you are about to enter is what is called a Distinguished Name or a DN.
+	There are quite a few fields but you can leave some blank
+	For some fields there will be a default value,
+	If you enter '.', the field will be left blank.
+	-----			# 当前证书策略是countryName、stateOrProvinceName、organizationName这三项要和CA根证书保持一致，如果不保持一致，也能申请证书，但是申请的证书无效
+	Country Name (2 letter code) [XX]:CN				# 和CA根证书保持一致
+	State or Province Name (full name) []:GuangDong		# 和CA根证书保持一致
+	Locality Name (eg, city) [Default City]:ShenZhen
+	Organization Name (eg, company) [Default Company Ltd]:Digital Cash Ltd		# 和CA根证书保持一致
+	Organizational Unit Name (eg, section) []:business
+	Common Name (eg, your name or your server's hostname) []:business.digitalcash.com
+	Email Address []:business@digitalcash.com
+
+	Please enter the following 'extra' attributes
+	to be sent with your certificate request			# 提示输入额外信息，不用填，直接回车到结束
+	A challenge password []:
+	An optional company name []:
+	
+	[root@localhost ~]#ll /data/nginx/
+	total 8
+	-rw-r--r-- 1 root root 1110 Nov 27 14:34 nginx.csr		# 证书请求文件
+	-rw------- 1 root root 1675 Nov 27 14:27 nginx.key 		# 证书私钥
+	
+	
+1.3 CA颁发证书
+	
+	// 如果不些有效期，证书默认时间为365天，这个值来自于PKI文件中配置的值。
+	// 颁发的证书按照标准应该放在"/etc/pki/CA/certs/"目录下，这是标准做法，当然也可以自定义路径
+	[root@localhost ~]#openssl ca -in /data/nginx/nginx.csr -out /etc/pki/CA/certs/nginx.crt -days 1000
+	Using configuration from /etc/pki/tls/openssl.cnf
+	Check that the request matches the signature
+	Signature ok
+	Certificate Details:
+			Serial Number: 1 (0x1)
+			Validity
+				Not Before: Nov 27 07:51:04 2022 GMT
+				Not After : Aug 23 07:51:04 2025 GMT
+			Subject:
+				countryName               = CN
+				stateOrProvinceName       = GuangDong
+				organizationName          = Digital Cash Ltd
+				organizationalUnitName    = business
+				commonName                = business.digitalcash.com
+				emailAddress              = business@digitalcash.com
+			X509v3 extensions:
+				X509v3 Basic Constraints:
+					CA:FALSE
+				Netscape Comment:
+					OpenSSL Generated Certificate
+				X509v3 Subject Key Identifier:
+					4D:8A:03:03:75:59:CB:16:8B:F8:AA:53:C9:D7:14:29:65:A1:49:F7
+				X509v3 Authority Key Identifier:
+					keyid:BF:87:91:20:C0:C0:34:F2:11:A0:6B:D6:C4:75:E0:A4:01:F4:E7:06
+
+	Certificate is to be certified until Aug 23 07:51:04 2025 GMT (1000 days)
+	Sign the certificate? [y/n]:y
+
+
+	1 out of 1 certificate requests certified, commit? [y/n]y
+	Write out database with 1 new entries
+	Data Base Updated
+	
+
+	[root@localhost ~]#tree /etc/pki/CA
+	/etc/pki/CA
+	├── cacert.pem			# CA证书
+	├── certs
+	│   └── nginx.crt		# 用户的证书文件
+	├── crl
+	├── index.txt
+	├── index.txt.attr		# 文件中的"unique_subject"的值为yes，表示一个证书请求文件不能申请多个证书；值为no，表示可以申请多个证书
+	├── index.txt.old		# "index.txt"文件的前一个版本备份
+	├── newcerts
+	│   └── 01.pem			# 用户证书的备份文件
+	├── private
+	│   └── cakey.pem		# CA私钥
+	├── serial
+	└── serial.old			# "serial"文件的前一个版本备份
+
+	4 directories, 9 files
+	
+	
+	// 用户证书的索引数据库，V表示证书有效
+	[root@localhost ~]#cat /etc/pki/CA/index.txt
+	V       250823075104Z           01      unknown /C=CN/ST=GuangDong/O=Digital Cash Ltd/OU=business/CN=business.digitalcash.com/emailAddress=business@digitalcash.com
+	
+	// 表示下一个证书的编号就是02
+	[root@localhost ~]#cat /etc/pki/CA/serial
+	02
+	
+	
+1.4 验证指定编号对应证书的有效性
+	[root@localhost ~]#openssl ca -status 01
+	Using configuration from /etc/pki/tls/openssl.cnf
+	01=Valid (V)
+	
+	// 因为编号02证书还没有生成，所以显示出错
+	[root@localhost ~]#openssl ca -status 02
+	Using configuration from /etc/pki/tls/openssl.cnf
+	Serial 02 not present in db.
+	Error verifying serial 02!	
+	
+	
+1.5 将生成的证书发给用户
+	
+	// 模拟发给用户
+	[root@localhost ~]#cp /etc/pki/CA/certs/nginx.crt /data/nginx/
+	
+	[root@localhost ~]#ll /data/nginx/
+	total 16
+	-rw-r--r-- 1 root root 4769 Nov 27 16:12 nginx.crt		// 用户证书文件
+	-rw-r--r-- 1 root root 1102 Nov 27 15:50 nginx.csr		// 用户证书请求文件，一旦证书颁发成功，这个文件也就没有用了
+	-rw------- 1 root root 1675 Nov 27 14:27 nginx.key		// 用户私钥
+	
+	
+	问题: 将"/data/nginx/nginx.crt"文件导入到Windows中，双击打开，为什么在证书路径中看不到上级CA证书的信息？
+	原因：因为没有将根CA证书导入到系统中，只要将根证书导入到系统，在打开用户证书时，就会自动匹配到根证书，然后显示出证书路径！
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+2 证书管理和ssh服务工作原理
+	
+
+2.1 用一个证书请求文件申请多个证书
+	
+	[root@localhost ~]#cat /etc/pki/CA/index.txt.attr
+	unique_subject = yes
+
+	说明:
+		unique_subject值为yes，表示一个证书请求文件不能申请多个证书
+		unique_subject值为no，表示一个证书请求文件可以申请多个证书
+	
+	判断是不是同一个证书请求文件在申请证书的依据是"/etc/pki/CA/index.txt"文件，这个文件记录了已经颁发的证书的信息，包括 countryName、stateOrProvinceName、
+	organizationName、organizationalUnitName、commonName、emailAddress，如果这些一样，说明用的是同一个证书请求文件！
+	
+	
+2.2 跨组织实现公有CA
+	
+	[root@localhost ~]#cat /etc/pki/tls/openssl.cnf
+	......省略
+	policy          = policy_match
+	
+	# For the CA policy
+	[ policy_match ]
+	countryName             = match
+	stateOrProvinceName     = match
+	organizationName        = match
+	organizationalUnitName  = optional
+	commonName              = supplied
+	emailAddress            = optional
+
+	# For the 'anything' policy
+	# At this point in time, you must list all acceptable 'object'
+	# types.
+	[ policy_anything ]
+	countryName             = optional
+	stateOrProvinceName     = optional
+	localityName            = optional
+	organizationName        = optional
+	organizationalUnitName  = optional
+	commonName              = supplied
+	emailAddress            = optional
+	......省略
+	
+	说明：
+		1).如果颁发证书使用的是policy_match策略，那么证书请求文件中的countryName、stateOrProvinceName、organizationName字段就必须和根证书这三个字段保持一致，
+		   否则证书将申请失败
+		2).如果要实现跨组织申请公有证书，只需要把 policy 的值设为 policy_anything
+		3).可以自行设定策略中的哪些字段是match，但是设置后，对应的证书请求文件中的相关字段就要匹配根证书的这些字段
+	
+	
+2.3 吊销证书 以及 生成证书吊销列表文件
+	颁发证书后，如果证书不想要了，或者发现申请证书时填写了非法信息、不真实信息等，或者用户违反规则(比如离职)，或服务注销，这个时候就可以吊销证书！
+	证书吊销后，需要把吊销的证书放到证书吊销列表文件中，然后把这个文件放在一个公有网络上，让大家主动能拿到这个文件，这样就知道哪些证书被吊销了！
+	在Windows上打开证书，证书里面有个字段为"CRL分发点"(不是每个证书都有这个字段)，这个字段的值是一个url,通过这个url就能拿到吊销列表文件！
+
+	
+吊销证书：
+	
+	// 吊销证书，这里用的是newcerts目录下的证书，这个目录下的证书就是曾经颁发的证书，证书文件以证书编号命名
+	[root@localhost ~]#openssl ca -revoke /etc/pki/CA/newcerts/01.pem
+	Using configuration from /etc/pki/tls/openssl.cnf
+	Revoking Certificate 01.
+	Data Base Updated
+	
+	// 可以看到证书已经被吊销
+	[root@localhost ~]#openssl ca -status 01
+	Using configuration from /etc/pki/tls/openssl.cnf
+	01=Revoked (R)
+	
+	// R说明这个证书已经被吊销
+	[root@localhost ~]#cat /etc/pki/CA/index.txt
+	R       250823075104Z   221127103750Z   01      unknown /C=CN/ST=GuangDong/O=Digital Cash Ltd/OU=business/......省略
+
+
+生成证书吊销列表文件：
+	
+	// 吊销证书前同样需要先初始化一个编号，编号用以十六进制形式
+	[root@localhost ~]#echo 01 > /etc/pki/CA/crlnumber				 # 不能写为"echo 1 > /etc/pki/CA/crlnumber" 
+	
+	//注意：每吊销一个证书，都需要手动运行以下命令生成新的证书吊销列表文件 
+	[root@localhost ~]#openssl ca -gencrl -out /etc/pki/CA/crl.pem
+	Using configuration from /etc/pki/tls/openssl.cnf
+	
+	// 每吊销一次证书，这个文件中的值都会在上一个值的基础上加1，表示下次吊销证书时就使用这一个编号 
+	[root@localhost ~]#cat /etc/pki/CA/crlnumber
+	02
+	
+	[root@localhost ~]#cat /etc/pki/CA/crl.pem
+	-----BEGIN X509 CRL-----
+	MIICGzCCAQMCAQEwDQYJKoZIhvcNAQELBQAwgaoxCzAJBgNVBAYTAkNOMRIwEAYD
+	......省略
+	
+	// 将"/etc/pki/CA/crl.pem"放在Windows中，后缀改为".crl"，双击就能打开，就能可视化看到证书吊销列表详细信息
+	// 其中字段"CRL数字"对应的值就来源于"/etc/pki/CA/crlnumber"文件中的值，吊销时使用这个文件中的值，吊销完成后这个值在上个值的基础上加1，下次吊销证书时再用！
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+扩展：生成证书的标准流程
+	1)创建私有CA：
+	2)客户端：
+		生成私钥文件(client.key)
+		基于私钥生成证书请求文件（.csr）
+		将证书请求文件（.csr）提交给证书颁发机构CA，CA对其进行“签名”（对提交的证书生成摘要，使用CA根证书对应的私钥进行加密），得到真正的签发证书（.cer或者.crt）
+	3)CA签署该请求，生成证书，再传给客户端
+	4)客户端拿到签发后的证书，根据需要再进行各种格式转换（.pem .p12 .jks等等）
+
+

@@ -1,0 +1,690 @@
+
+本页中"[!]"中的"!"是取反的意思，表示除了这部分之外的那部分！
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+3 iptables的扩展模块用法 
+	
+	扩展匹配条件：需要加载扩展模块（/usr/lib64/xtables/*.so），方可生效
+	
+	扩展模块的查看帮助 ：man iptables-extensions
+	
+	// iptables 包中包含了很多iso文件，每一个so文件都是一个扩展的功能模块，要使用扩展功能模块，要指定模块名，并且要添加模块支持的选项
+	[root@localhost ~]#rpm -ql iptables | grep .so
+	/usr/lib64/xtables/libxt_sctp.so
+	/usr/lib64/xtables/libxt_set.so
+	/usr/lib64/xtables/libxt_socket.so
+	/usr/lib64/xtables/libxt_standard.so
+	/usr/lib64/xtables/libxt_state.so
+	/usr/lib64/xtables/libxt_statistic.so
+	/usr/lib64/xtables/libxt_string.so
+	/usr/lib64/xtables/libxt_tcp.so
+	/usr/lib64/xtables/libxt_tcpmss.so
+	/usr/lib64/xtables/libxt_time.so		# 这个模块就是通过时间进行空间
+	
+	......省略
+	
+	[root@localhost ~]#rpm -ql iptables | grep .so | wc -l
+	118
+	
+	// 查看扩展模块帮助，比如要查看 libxt_time 模块，打开帮助后就搜索 time 
+	[root@localhost ~]#man iptables-extensions 8			# 8可以省略
+	......省略
+	
+	
+	扩展匹配条件：
+		隐式扩展：-m 指定模块名，但有些模块通过"-p"选项指定协议，比如"-p tcp", 而tcp协议本来就是一个模块，这相当于间接指定了模块， 从而不需要使用"-m"显示指定!
+				  不需要使用"-m"指定模块名的扩展模块用法，称之为"隐式扩展", 使用"-m"显示指定也没有错！
+				  隐式扩展主要指的就是各种协议！
+		显式扩展：必须加"-m"指定模块
+	
+	
+3.1 隐式扩展:iptables 在使用-p选项指明了特定的协议时，无需再用-m选项指明扩展模块的扩展机制，不需要手动加载扩展模块
+	
+	tcp 协议的扩展选项:
+		[!] --source-port, --sport port[:port]：匹配报文源端口,可为端口连续范围
+		[!] --destination-port,--dport port[:port]：匹配报文目标端口,可为连续范围
+		[!] --tcp-flags mask comp
+				mask 需检查的标志位列表，用,分隔 , 例如 SYN,ACK,FIN,RST
+				comp 在mask列表中必须为1的标志位列表，无指定则必须为0，用,分隔tcp协议的扩展选项
+	
+
+		// 拒绝"192.168.32.101"这台主机访问本机的80端口. "--dport"表示目标端口
+		iptables -A INPUT -s 192.168.32.101 -p tcp --dport 80 -j REJECT
+		
+		// 拒绝"192.168.32.101"这台主机访问本机的 80、81、82、83 端口，可以使用"--dport 80:83"这种写法，如果拒绝的不是连续的端口，就只能单独写在每条规则中！
+		iptables -A INPUT -s 192.168.32.101 -p tcp --dport 80:83 -j REJECT
+	 
+		
+		// 实现第一次握手的权限控制. 如果 SYN =1，ACK、FIN、RST为0，表示是第一次握手
+		--tcp-flags SYN,ACK,FIN,RST SYN		# 表示要检查的标志位为SYN,ACK,FIN,RST四个，其中SYN必须为1(单独写在最后)，余下的必须为0，说明是第一次握手
+		--syn		# 因为判断第一次握手的情况比较多，所以提供了等价的写法。"--syn" 等价于 "--tcp-flags SYN,ACK,FIN,RST SYN"
+		
+		
+		// 实现第二次握手的权限控制 
+		--tcp-flags SYN,ACK,FIN,RST SYN,ACK		# 单独写在最后的标记位表示值为1，所以这里表示 SYN 和 ACK 为 1
+	
+		// TCP协议包6个标记位全为1或全为0，这种是不存在的，存在就是错误包
+		--tcp-flags ALL ALL			#  检测6个标记位全为1的包
+		--tcp_flags ALL NONE		#  检测6个标记位全为0的包
+	
+	
+	udp 协议的扩展选项
+		[!] --source-port, --sport port[:port]：匹配报文的源端口或端口范围
+		[!] --destination-port,--dport port[:port]：匹配报文的目标端口或端口范围
+
+
+	icmp 协议的扩展选项
+		[!] --icmp-type {type[/code]|typename}
+			type/code
+				0/0 echo-reply icmp应答
+				8/0 echo-request icmp请求
+		
+		// 能ping对方主机，但对方主机不能ping这台主机
+		iptables -A INPUT -s 192.168.32.101 -p icmp --icmp-type 8 -j REJECT			# "--icmp-type 8 -j REJECT"表示拒绝请求包，这就有方向性了！
+		
+		// 能ping对方主机，但对方主机不能ping这台主机；"-d"指定目标主机；"-A OUTPUT"表示往OUTPUT链上增加规则 ；
+		iptables -A OUTPUT -d 192.168.32.100 -p icmp --icmp-type 0 -j REJECT		# "--icmp-type 0 -j REJECT" 表示拒绝给目标主机发出应答包！
+		
+		// 对方主机和本主机不能互ping。因为 ping 对方时，对方回来的包也是icmp包；对方ping本机，直接也被拒绝！
+		iptables -A INPUT -s 192.168.32.101 -p icmp -j REJECT
+		
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+4 iptables的扩展模块用法
+
+	显示扩展即必须使用-m选项指明要调用的扩展模块名称，需要手动加载扩展模块
+	格式：
+		[-m matchname [per-match-options]]
+	
+	扩展模块的使用帮助：
+		CentOS 7,8: man iptables-extensions
+		CentOS 6: man iptables					# CentOS6上扩展模块的帮助没有独立出来
+		
+
+4.1 multiport扩展：以离散方式定义多端口匹配,最多指定15个端口
+
+	#指定多个源端口，端口不能指定太多，有个数要求
+	[!] --source-ports,--sports port[,port|,port:port]...
+	
+	# 指定多个目标端口，":"就是支持连续范围，从多少到多少
+	[!] --destination-ports,--dports port[,port|,port:port]...
+	
+	#多个源或目标端
+	[!] --ports port[,port|,port:port]...
+
+	// 拒绝"192.168.32.101"主机访问本机80和6379端口
+	iptables -A INPUT -s 192.168.32.101 -p tcp -m multiport --dports 80,6379 -j REJECT
+
+	
+4.2 iprange扩展：指明连续的（但一般不是整个网络）ip地址范围
+	
+	# 源IP地址范围
+	[!] --src-range from[-to] 
+	
+	# 目标IP地址范围
+	[!] --dst-range from[-to] 目标IP地址范围
+
+	
+	// 拒绝 192.168.32.5 到 192.168.32.10 这6个IP访问本机，如果没指明网络协议，就是指所有网络协议
+	iptables -A INPUT  -m iprange --src-range 192.168.32.5-192.168.32.10 -j DROP		
+
+	
+4.3 mac扩展，mac 模块可以指明源MAC地址,，适用于：PREROUTING, FORWARD，INPUT 这三个链
+	
+	# mac 控制精确到了数据链路层
+	[!] --mac-source XX:XX:XX:XX:XX:XX
+
+	// 拒绝mac地址为"00:50:56:12:34:56"的主机访问本机
+	iptables -A INPUT  -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+
+	
+	问题：为什么没有目标mac的选项？
+	回答：如果目标mac不是本机，网卡直接就把包抛弃，交换机甚至都不会把数据包发给主机。
+	
+	
+4.4 string扩展，对报文中的应用层数据做字符串模式匹配检测
+	--algo {bm|kmp} 字符串匹配检测算法
+		bm：Boyer-Moore
+		kmp：Knuth-Pratt-Morris
+	--from offset 开始偏移，因为真正的数据从应用层到数据链路层包了很多层，可以把这些定义协议本身的数据给跳过，然后开始检测
+	--to offset 结束偏移
+	[!] --string pattern 要检测的字符串模式
+	[!] --hex-string pattern要检测字符串模式，16进制格式
+	
+	
+	从下图中可以看出之前经过前62个字节，才会设计用真正传输的数据：
+	
+		|-----------------------------------------------------------------|-------------------------------------
+		|				frame 头										  |			application 头			   |
+		------------------------------------------------------------------|-------------------------------------
+		| 8byte前导信息  | dest mac 6 byte | src mac 6 byte | type 2 byte | IP 20 | TCP 20 | http | data | FCS |
+		--------------------------------------------------------------------------------------------------------
+	
+	// 因为请求里面不带"12345"这个字符串，返回的数据有可能带，所以需要在服务器的 OUTPUT 链上添加规则
+	iptables -A OUTPUT -p tcp --sport 80 -m string --algo bm --from 62 --string "12345" -j REJECT		# "--algo bm" 表示使用bm算法
+	
+
+4.5 time扩展，根据将报文到达的时间与指定的时间范围进行匹配。注意：CentOS 8 此模块有问题
+
+	--datestart YYYY[-MM[-DD[Thh[:mm[:ss]]]]] 	# 日期
+	--datestop YYYY[-MM[-DD[Thh[:mm[:ss]]]]]
+	--timestart hh:mm[:ss] 						# 时间
+	--timestop hh:mm[:ss]
+	[!] --monthdays day[,day...] 				# 每个月的几号
+	[!] --weekdays day[,day...] 				# 星期几，1 – 7 分别表示星期一到星期日
+	--kerneltz									# 内核时区（当地时间），不建议使用，CentOS 7版本以上系统默认为 UTC
+		注意： centos6 不支持kerneltz ，--localtz指定本地时区(默认)
+	
+	
+	// 每天的 22:00 到 23:00 不允许访问本机(注意：这个时间是UTC时间)。在centos8上运行这个命令会提示找不到time模块
+	iptables -A INPUT -m time --timestart 22:00 --timestop 23:00 -j ACCEPT
+	
+	// 打印出utc时间
+	date -u  
+	
+	// 中国的时间减去8小时就是UTC时间
+	
+	
+4.6 connlimit扩展，根据每客户端IP做并发连接数数量匹配，可防止Dos(Denial of Service，拒绝服务)攻击
+	
+	--connlimit-upto N 		#连接的数量小于等于N时匹配
+	--connlimit-above N 	#连接的数量大于N时匹配
+	
+	
+	// 如果对方主机发起的tcp连接超过20个，并且访问的是本机80端口，本机将会拒绝
+	iptables -A INPUT -p tcp --dport 80 -m connlimit --connlimit-above 20 -j REJECT
+	
+	
+4.7 limit扩展，基于收发报文的速率做匹配 , 令牌桶过滤器
+	
+	--limit-burst number 					# 前多少个包不限制
+	--limit 								# [/second|/minute|/hour|/day]
+	
+	// 限流，限制数据传输不要太快。icmp包是一秒发一个。下面的规则表示：前5个包不限流，之后每分钟允许通过10个包。
+	iptables -I INPUT  -p icmp --icmp-type 8 -m limit --limit 10/minute --limit-burst 5 -j ACCEPT	# "--icmp-type 8"表示请求包
+	iptables -I INPUT 2 -p icmp -j REJECT				# 配合上面的规则一起使用，表示不满足上面的规则就直接拒绝
+	
+
+4.8 (很重要)state扩展，state 扩展模块，可以根据”连接追踪机制“去检查连接的状态，较耗资源
+	conntrack机制：追踪本机上的请求和响应之间的关系
+	注意：这里的状态和TCP协议的状态没有关系，这里仅仅表示网络的通讯状态，和TCP、UDP、ICMP没有任何关系！
+	
+	state模块会把通讯的信息记录在内存中，会把网络通讯分为若干个状态！连接跟踪功能模块具有状态的检测功能，可以根据这些状态进行访问控制！
+	连接跟踪功能模块其实就是记录访问主机的连接信息，所以它才可以根据状态进行控制！
+	
+	状态类型：
+		NEW：新发出请求；连接追踪信息库中不存在此连接的相关信息条目，因此，将其识别为第一次发出的请求。
+			谁访问谁都可以，不管用什么协议，第一次的、单向的一个包发送到对方主机就算NEW！
+		ESTABLISHED：NEW状态之后，连接追踪信息库中为其建立的条目失效之前期间内所进行的通信状态。
+			除了第一个包，后面的包都算 ESTABLISHED。比如A发给B是第一个包，A再次给B发个包 或 B回给A一个包，这个包就算ESTABLISHED
+		RELATED：新发起的但与已有连接相关联的连接，如：ftp协议中的数据连接与命令连接之间的关系
+			ftp会自动打开和某个端口相关的其它端口，这就是相关的连接
+		INVALID：无效的连接，如flag标记不正确
+			比如TCP协议中的6个标记位全为1或全为0都是错误的包
+		UNTRACKED：未进行追踪的连接，如：raw表中关闭追踪
+	
+		
+	说明：
+		如果启用了连接跟踪功能模块，在内核里面有一个内存空间可以记录下来连接情况，对应会生成"/proc/net/nf_conntrack"文件，文件会记录连接信息！
+		系统重启，默认情况下连接跟踪功能模块没有加载，使用 iptables 指定 state 模块时(比如 "-m state --state")会自动加载state模块，不需要人为加载。
+		centos6有个BUG，只要一运行iptables命令，比如"iptables -vnL"，就会自动加载 state 模块!
+	
+	
+	
+实践1：实现老用户可以ping，新用户不可以ping
+	
+	在 192.168.32.100 主机上 ping 192.168.32.99  主机
+		[root@localhost ~]#ping 192.168.32.99
+		PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+		64 bytes from 192.168.32.99: icmp_seq=1 ttl=64 time=0.360 ms
+		......省略
+		注意：这里要一直ping，不要停
+	
+	
+	在 192.168.32.99 主机上添加规则
+	
+		[root@localhost ~]# cat /proc/net/nf_conntrack
+		cat: /proc/net/nf_conntrack: No such file or directory
+	
+		[root@localhost ~]# iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT
+		[root@localhost ~]# iptables -A INPUT -m state --state NEW -j REJECT
+		
+		[root@localhost ~]# iptables -vnL
+		Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+		 pkts bytes target     prot opt in     out     source               destination
+		   64  4504 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            state ESTABLISHED
+			0     0 REJECT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            state NEW reject-with icmp-port-unreachable
+		......省略
+		
+		// 加载"state"模块后，"/proc/net/nf_conntrack"文件自动生产，里面记录的是旧的连接
+		[root@localhost ~]# cat /proc/net/nf_conntrack
+		ipv4     2 tcp      6 300 ESTABLISHED src=192.168.32.99 dst=192.168.32.1 sport=22 dport=50743 src=192.168.32.1 dst=192.168.32.99 sport=50743 dport=22 [ASSURED] mark=0 zone=0 use=2
+		ipv4     2 icmp     1 29 src=192.168.32.100 dst=192.168.32.99 type=8 code=0 id=1565 src=192.168.32.99 dst=192.168.32.100 type=0 code=0 id=1565 mark=0 zone=0 use=2
+	
+
+	测试	
+		// 在 192.168.32.101 主机上 ping 192.168.32.99 主机，这里拒绝了远程主机，因为这台主机是新用户
+		[root@localhost ~]#ping 192.168.32.99
+		PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+		From 192.168.32.99 icmp_seq=1 Destination Port Unreachable
+		......省略	
+		
+		
+		// 在 192.168.32.100 主机上观察, 可以看到仍然能ping通
+		......省略
+		64 bytes from 192.168.32.99: icmp_seq=1 ttl=64 time=0.360 ms
+		64 bytes from 192.168.32.99: icmp_seq=1 ttl=64 time=0.360 ms
+		^C																# 停止ping
+		--- 192.168.32.99 ping statistics ---
+		
+		
+		// 在 192.168.32.100 主机上重新发起ping，不能ping通，因为这算一个新发起的请求
+		[root@localhost ~]#ping 192.168.32.99
+		PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+		From 192.168.32.99 icmp_seq=1 Destination Port Unreachable
+		
+		
+		// 这里是在windows上使用ssh登录远程主机，因为一直在连，所以不会被拒绝。如果退出重新连接或新开一个窗口连接远程主机都会被拒绝！
+		
+		// 清除规则
+		[root@localhost ~]#iptables -F
+
+
+实践2：内核参数"/proc/sys/net/netfilter/nf_conntrack_max"
+
+	// 在 192.168.32.100 主机上添加规则
+
+		[root@localhost ~]# cat /proc/sys/net/netfilter/nf_conntrack_max
+		cat: /proc/sys/net/netfilter/nf_conntrack_max: No such file or directory
+		
+		
+		// 启用了连接跟踪功能模块，才会生成"/proc/sys/net/netfilter/nf_conntrack_max"这个文件
+		[root@localhost ~]#iptables -A INPUT -m state --state NEW -j ACCEPT
+	
+	
+		// "nf_conntrack_max"是个很重要的内核参数，这个参数决定了连接跟踪最多有多少个记录
+		[root@localhost ~]# cat /proc/sys/net/netfilter/nf_conntrack_max
+		65536				# 默认只能记录65536条，生产中这个值偏小，当记录达到上线， 新用户的请求不能被记录，也无法建立连接！
+	
+	
+		[root@localhost ~]#echo 1 >  /proc/sys/net/netfilter/nf_conntrack_max
+		[root@localhost ~]#cat /proc/sys/net/netfilter/nf_conntrack_max
+		1
+	
+	
+	// 192.168.32.99 ping 192.168.32.100 ping 主机
+	
+		[root@localhost ~]# ping 192.168.32.100
+		PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.		# 不能ping通，处于一直等待的状态
+		
+	
+	// 查看  192.168.32.100 的日志
+		[root@localhost ~]#tail  /var/log/messages -f
+		Dec  6 13:40:57 localhost kernel: nf_conntrack: table full, dropping packet		# 因为"nf_conntrack_max"文件中的值为1，只能记录1条连接记录
+		Dec  6 13:40:58 localhost kernel: nf_conntrack: table full, dropping packet
+		......省略
+	
+		// 当把"/proc/sys/net/netfilter/nf_conntrack_max"文件中的值设大了，"192.168.32.99"从马上等待转变为ping通状态
+		[root@localhost ~]#echo 10 >  /proc/sys/net/netfilter/nf_conntrack_max
+		
+		
+	// 观察  192.168.32.99 主机	
+	
+		......省略
+		PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.
+		64 bytes from 192.168.32.100: icmp_seq=297 ttl=64 time=2.52 ms
+		64 bytes from 192.168.32.100: icmp_seq=298 ttl=64 time=1.45 ms
+		64 bytes from 192.168.32.100: icmp_seq=299 ttl=64 time=1.23 ms
+		......省略	
+	
+	
+	说明：	
+		1)接跟踪，需要加载模块： modprobe nf_conntrack_ipv4
+			[root@localhost ~]# lsmod | grep conntrack
+			nf_conntrack_ipv4      15053  0
+			nf_defrag_ipv4         12729  1 nf_conntrack_ipv4
+			xt_conntrack           12760  0
+			nf_conntrack          139264  2 xt_conntrack,nf_conntrack_ipv4	// 加载了此模块才支持连接跟踪功能，不用人为加载，只要调用state模块就会自动加载
+			libcrc32c              12644  2 xfs,nf_conntrack
+		2)当服务器连接多于最大连接数时dmesg 可以观察到"：kernel: ip_conntrack: table full, dropping packet"错误,并且导致建立TCP连接很慢。
+		3)各种状态的超时后，链接会从表中删除
+		
+	
+	总结：
+		生产中启用了state模块，才会生成"nf_conntrack_max"文件，文件中的值决定了能记录多少条连接，超过就无法建立连接。
+		"nf_conntrack_max"文件中的值默认为65536，所以只能记录65536个连接，生产中这个值偏小，当记录达到上限，新用户的请求不能被记录，也无法建立连接！
+		centos6上要特别注意：只要一运行iptables命令，比如"iptables -vnL"，就会自动加载 state 模块，这个时候要检查"nf_conntrack_max"文件中的值！
+	
+	
+	(重要)连接过多的解决方法两个：
+		(1) 加大nf_conntrack_max 值
+			vi /etc/sysctl.conf
+			net.nf_conntrack_max = 393216
+			net.netfilter.nf_conntrack_max = 393216
+		
+		(2) 降低 nf_conntrack timeout时间
+			vi /etc/sysctl.conf
+			net.netfilter.nf_conntrack_tcp_timeout_established = 300
+			net.netfilter.nf_conntrack_tcp_timeout_time_wait = 120
+			net.netfilter.nf_conntrack_tcp_timeout_close_wait = 60
+			net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 120
+			iptables -t nat -L -n
+			
+
+实践3：192.168.32.100 主机能访问 192.168.32.99 主机，但 192.168.32.99 主机不能访问 192.168.32.100 主机
+	
+	// 在 192.168.32.100 主机上设定如下规则
+	iptables -A INPUT -s 192.168.32.99 -m state --state NEW -j REJECT
+	
+	// 在 192.168.32.100 主机上能ping通 192.168.32.99
+	[root@localhost ~]#ping 192.168.32.99
+	PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	64 bytes from 192.168.32.99: icmp_seq=1 ttl=64 time=0.295 ms
+	64 bytes from 192.168.32.99: icmp_seq=2 ttl=64 time=1.30 ms
+	......省略
+	
+	// 在 192.168.32.99 主机上不能ping通 192.168.32.100
+	[root@localhost ~]# ping 192.168.32.100
+	PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.
+	From 192.168.32.100 icmp_seq=1 Destination Port Unreachable
+	From 192.168.32.100 icmp_seq=2 Destination Port Unreachable
+	......省略
+	
+	
+	// 清除规则
+	[root@localhost ~]#iptables -F
+	
+	
+总结：
+	(1) 连接状态很有意义，可以判断是新用户还是老用户的连接，利用状态就能实现单向通讯！
+	(2) 只有启用了state模块,才会生成"/proc/net/nf_conntrack"、"/proc/sys/net/netfilter/nf_conntrack_max"这两个文件，当重启系统后，
+		这两个文件就没了，需要重新加载连接跟踪模块。
+	
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+5 iptables的规则保存和自定义链
+
+5.1 Target（就算处理动作）
+	
+	target 包括以下类型：
+		自定义链, ACCEPT， DROP， REJECT，RETURN, LOG，SNAT，DNAT，REDIRECT，MASQUERADE
+		
+		LOG：非中断target,本身不拒绝和允许,放在拒绝和允许规则前，并将日志记录在/var/log/messages系统日志中
+			--log-level level 		级别： debug，info，notice, warning, error, crit, alert,emerg
+			--log-prefix prefix 	日志前缀，用于区别不同的日志，最多29个字符
+
+	最常用的 target 有： ACCEPT， DROP， REJECT，LOG
+	
+	// 把"10.0.0.0/24"这个网段访问主机的新连接，并且访问的是80、21、22、23端口，就把访问记录在日志中，并且每条日志记录以 "new connections: "开头
+	iptables -I INPUT -s 10.0.0.0/24 -p tcp -m multiport --dports 80,21:23 -m state --state NEW -j LOG --log-prefix "new connections: "
+
+
+5.2 规则优化最佳实践
+	1).安全放行所有入站和出站的状态为ESTABLISHED状态连接,建议放在第一条，效率更高
+		ESTABLISHED表示后续的连接，后续的连接如果存在说明是老用户，老用户应该设为允许
+	2).谨慎放行入站的新请求
+		新请求就算NEW状态的请求
+	3).有特殊目的限制访问功能，要在放行规则之前加以拒绝
+		比如链上有一个时间规则，如果把时间规则放在后面，前面的规则匹配了就会放行，相当于时间规则没起作用
+	4).同类规则（访问同一应用，比如：http ），匹配范围小的放在前面，用于特殊处理
+	5).不同类的规则（访问不同应用，一个是http，另一个是mysql ），匹配范围大的放在前面，效率更高	
+		-s 172.16.0.0/16 -p tcp --dport 80 -j REJECT	# 网段的访问量比单机访问量大，往前放就可以减少检查次数，效率会更高
+		-s 10.0.0.6 -p tcp --dport 3306 -j REJECT
+	6).应该将那些可由一条规则能够描述的多个规则合并为一条,减少规则数量,提高检查效率。因为规则越多，检查次数越多，效率也越低
+	7).设置默认策略，建议白名单（只放行特定连接）
+		"iptables -P INPUT DROP"，不建议，容易出现“自杀现象”
+		规则的最后一条定义"拒绝所有的规则"做为默认策略，推荐使用
+		
+		
+5.3 iptables规则保存, 重启后规则不丢
+	使用iptables命令定义的规则，手动删除之前，其生效期限为kernel存活期限。也就是说一关机规则就消失！
+	
+	// iptables-save 是个二进制程序文件
+	[root@localhost ~]# ll `which iptables-save`
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/sbin/iptables-save -> xtables-multi
+	[root@localhost ~]# file /usr/sbin/xtables-multi
+	/usr/sbin/xtables-multi: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked (uses shared libs), ......省略
+	
+	[root@localhost ~]# iptables -A INPUT  -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+	
+	// iptables-save 并不会保存规则，只是把规则打印出来
+	[root@localhost ~]# iptables-save
+	# Generated by iptables-save v1.4.21 on Tue Dec  6 03:45:20 2022
+	*filter
+	:INPUT ACCEPT [6:364]
+	:FORWARD ACCEPT [0:0]
+	:OUTPUT ACCEPT [4:504]
+	-A INPUT -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+	COMMIT
+	# Completed on Tue Dec  6 03:45:20 2022
+	
+	//使用重定向保存规则
+	[root@localhost ~]#iptables-save > /root/iptables.rule
+	
+	// 清空规则
+	[root@localhost ~]#iptables -F
+	
+	// iptables-restore 把保存的规则重新加载到内存中，单独使用 iptables-restore 命令在等待输入，说明支持标准输入和重定向
+	[root@localhost ~]# iptables-restore < /root/iptables.rule
+	
+	// 可以看到规则又重新加载到内存中
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 37 packets, 2396 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+		0     0 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            MAC 00:50:56:12:34:56
+	......省略
+	
+	
+	
+开机自动加载规则的方法1：
+	(1) 先把规则保存到一个文件中
+	(2) vim /etc/rc.d/rc.local1						# 开机会自动运行"/etc/rc.d/rc.local1"文件中的命令
+		iptables-restore < /PATH/RULE_FILE
+	(3) chmod +x /etc/rc.d/rc.local1
+	
+	
+开机自动加载规则的方法2：
+	// 清空规则
+	[root@localhost ~]# iptables -F
+
+	[root@localhost ~]# yum -y install iptables-services	# 安装 iptables-service，利用iptables.service实现规则的保存
+	
+	[root@localhost ~]# rpm -ql iptables-services
+	/usr/lib/systemd/system/iptables.service				# 利用这个文件保存规则
+	......省略
+	
+	[root@localhost ~]# cat /usr/lib/systemd/system/iptables.service
+	[Unit]
+	Description=IPv4 firewall with iptables
+	Before=network-pre.target
+	Wants=network-pre.target
+	Before=ip6tables.service
+	After=syslog.target
+	AssertPathExists=/etc/sysconfig/iptables				# 这个文件就是 iptables-services 的配置文件
+
+	[Service]
+	Type=oneshot
+	RemainAfterExit=yes
+	ExecStart=/usr/libexec/iptables/iptables.init start		# 当 service启动时会运行这个文件，这个文件会自动加载 iptables-services 的配置文件
+	ExecReload=/usr/libexec/iptables/iptables.init reload
+	ExecStop=/usr/libexec/iptables/iptables.init stop
+	Environment=BOOTUP=serial
+	Environment=CONSOLETYPE=serial
+	StandardOutput=syslog
+	StandardError=syslog
+
+	[Install]
+	WantedBy=basic.target
+	
+	
+	// 这个文件存的就算系统自带的规则
+	[root@localhost ~]# cat /etc/sysconfig/iptables
+	# sample configuration for iptables service
+	# you can edit this manually or use system-config-firewall
+	# please do not ask us to add additional ports/services to this default configuration
+	*filter
+	:INPUT ACCEPT [0:0]
+	:FORWARD ACCEPT [0:0]
+	:OUTPUT ACCEPT [0:0]
+	-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+	-A INPUT -p icmp -j ACCEPT
+	-A INPUT -i lo -j ACCEPT
+	-A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+	-A INPUT -j REJECT --reject-with icmp-host-prohibited
+	-A FORWARD -j REJECT --reject-with icmp-host-prohibited
+	COMMIT
+	
+	
+	// 启动 iptables-services
+	[root@localhost ~]# systemctl start iptables
+	
+	
+	// 可以看到 iptables-services 默认就带的有规则 ，这些规则实际上就是从"/etc/sysconfig/iptables"这个文件中来的
+	[root@localhost ~]#  iptables -vnL
+	Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+	  125  8240 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            state RELATED,ESTABLISHED
+		0     0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0
+		0     0 ACCEPT     all  --  lo     *       0.0.0.0/0            0.0.0.0/0
+		0     0 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            state NEW tcp dpt:22
+		0     0 REJECT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            reject-with icmp-host-prohibited
+
+	Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+		0     0 REJECT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            reject-with icmp-host-prohibited
+
+	Chain OUTPUT (policy ACCEPT 83 packets, 7188 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+		
+	
+	// 停止 iptables-services
+	[root@localhost ~]# systemctl stop iptables
+	
+	
+	// 停止后自带的规则也没有启用了
+	[root@localhost ~]#  iptables -vnL
+	Chain INPUT (policy ACCEPT 120 packets, 7840 bytes)
+	pkts bytes target     prot opt in     out     source               destination
+	......省略
+	
+	
+	// 添加子的规则
+	[root@localhost ~]# iptables -A INPUT  -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+	
+	
+	// 覆盖自带的规则
+	[root@localhost ~]# iptables-save > /etc/sysconfig/iptables
+	
+	
+	// 这个文件中保存的内容就是自己定义的规则
+	[root@localhost ~]# cat /etc/sysconfig/iptables
+	# Generated by iptables-save v1.4.21 on Tue Dec  6 05:46:53 2022
+	*filter
+	:INPUT ACCEPT [130:9040]
+	:FORWARD ACCEPT [0:0]
+	:OUTPUT ACCEPT [94:7732]
+	-A INPUT -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+	COMMIT
+	# Completed on Tue Dec  6 05:46:53 2022
+	
+	// 清空规则
+	[root@localhost ~]# iptables -F
+	
+	[root@localhost ~]# systemctl start iptables
+	
+	// 这里的规则就是刚刚添加的规则，所以启动"iptables.services"其实就是从"/etc/sysconfig/iptables"这个文件中加载规则
+	[root@localhost ~]# iptables -vnL
+	Chain INPUT (policy ACCEPT 32 packets, 1904 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+		0     0 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            MAC 00:50:56:12:34:56
+	......省略
+	
+	// 如果设为开机启动，那么重启开机就会自动加载"/etc/sysconfig/iptables"文件中定义的规则
+	[root@localhost ~]# systemctl enable iptables
+	Created symlink from /etc/systemd/system/basic.target.wants/iptables.service to /usr/lib/systemd/system/iptables.service.
+	
+	
+	// 清空规则，还原环境
+	[root@localhost ~]# iptables -F
+	
+	
+总结：	
+	持久保存防火墙规则：
+		CentOS 7,8： iptables-save > /PATH/TO/SOME_RULES_FILE
+		CentOS 6：	 service iptables save 						#将规则覆盖保存至/etc/sysconfig/iptables文件中
+
+	
+	加载防火墙规则：
+		CentOS 7,8 重新载入预存规则文件中规则：	
+			iptables-restore < /PATH/FROM/SOME_RULES_FILE
+		
+		CentOS 6：
+			#会自动从/etc/sysconfig/iptables 重新载入规则
+			service iptables restart		
+	
+	
+	开机自动重载防火墙规则：
+		方式1：用脚本保存各个iptables命令；让此脚本开机后自动运行，/etc/rc.d/rc.local 文件中添加脚本路径 /PATH/TO/SOME_SCRIPT_FILE
+		
+		方式2：用规则文件保存各个规则，开机时自动载入此规则文件中的规则，在/etc/rc.d/rc.local文件添加
+					iptables-restore < /PATH/FROM/IPTABLES_RULES_FILE
+			   这种方式也使用于Ubuntu！
+			   
+		方式2：定义Unit File, CentOS 7，8 可以安装 iptables-services 实现 iptables.service
+				yum -y install iptables-services
+				iptables-save > /etc/sysconfig/iptables
+				systemctl --now enable iptables.service
+	
+	
+5.4 自定义链
+	自定义链相当于自定义函数，可以把常用的功能定义成自定义链，之后只可以用内置链调用自定义链！
+	比如往INPUT链中添加很多规则，修改的时候就很不方便，利用自定义链可以把规则分类，相当于规则模块化，在 INPUT 链中就可以引用分类后的模块！
+	
+	链管理相关选项：
+		-N：new, 自定义一条新的规则链
+		-E：重命名自定义链；引用计数不为0的自定义链不能够被重命名，也不能被删除
+		-X：delete，删除自定义的空的规则链
+		-P：Policy，设置默认策略；对filter表中的链而言，其默认策略有：ACCEPT：接受, DROP：丢弃
+	
+	
+	iptables -N web-chain	# 创建一个名为 web-chain 的自定义链！
+	
+	iptables -E WEB-CHAIN	# 重命名自定义链，名称一般大写，因为自带的内置链名称也是大写
+	
+	iptables -vnL			# 创建自定义链后，默认就会把链加到 filter 表中
+	
+	iptables -A WEB-CHAIN -p tcp  -m multiport --dports 80,443 -j ACCEPT
+	iptables -A WEB-CHAIN -p tcp  -m multiport --dports 8080,9090 -j ACCEPT
+	
+	iptables -N DB-CHAIN	# 创建自定义链后，默认就会把链加到 filter 表中
+	
+	iptables -A DB-CHAIN -p tcp  -m multiport --dports 3306,6379,11211 -j ACCEPT
+	
+	iptables -vnL			#可以看到新添加的链以及链上的规则，这时还没有生效，自定义链需要关联到内置链，真正的勾子函数才会起作用！
+	
+	iptables -A INPUT -s 10.0.0.0/24 -j WEB-CHAIN		# 把 WEB-CHAIN 和 INPUT 关联在一起
+	iptables -A INPUT -s 10.0.0.100 -j DB-CHAIN			# 把 DB-CHAIN 和 INPUT 关联在一起
+	
+	// 模块化思想管理大量规则非常方便，规则比较多用这种方式比较合理
+	iptables -vnL
+	
+	// 同样可以保存规则
+	iptables-save > /root/iptables.rule
+	
+	iptables -F INPUT				# 清除INPUT链下面的规则
+	iptables -F WEB-CHAIN			# 清除WEB-CHAIN链下面的规则
+	iptables -X WEB-CHAIN			# 删除自定义链要满足两个条件：自定义链没有被内置链引用；自定义链下面没有规则
+	
+	
+	注意: "iptables -F" 只会删除规则，包括自定义链的规则，但是不会删除自定义链
+	
+
+例子：在centos7上启用firewalld，就会发现定义了很多自定义链，并且关联到内置链！
+	systemctl start firewalld.service		# firewalld 底层用的还是 iptables
+	iptables -vnL
+
+	
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
