@@ -19,7 +19,7 @@ logout
 [ec2-user@ip-172-31-32-113 ~]$
 
 参考资料:
-	[su、sudo、sudo su、sudo -i的用法和区别](https://blog.csdn.net/baidu_38172402/article/details/88677290)
+	[su还是sudo？Linux用户必备的命令区别解析，速学速用！](https://mp.weixin.qq.com/s?__biz=Mzg4ODQ1NTE2Mg==&mid=2247569049&idx=1&sn=e408fbd5273b67beeddbfb744a3d5c44)
 	[禁止用户使用 sudo su 命令进入root 模式 ](https://www.cnblogs.com/liujunjun/p/12247008.html)
 
 
@@ -340,7 +340,7 @@ type is a shell builtin
 
 
 type -a 列出外部命令和内部命令
-// 可以看到 type -a 即是内部命令也是外部命令,使用echo时默认使用内部命令,因为内部命令效率高
+// 可以看到 echo 即是内部命令也是外部命令,使用echo时默认使用内部命令,因为内部命令效率高
 [root@localhost ~]# type -a echo
 echo is a shell builtin
 echo is /usr/bin/echo
