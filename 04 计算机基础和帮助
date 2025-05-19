@@ -608,7 +608,7 @@ gedit 工具是图形工具
 	Run "sudo yum update" to apply all updates.
 	[ec2-user@ip-172-31-32-113 ~]$
 
-/etc/issue # 登录后提示文件
+/etc/issue # 登录前提示文件
 	[root@localhost ~]# cat  /etc/issue
 	\S
 	Kernel \r on an \m
@@ -621,7 +621,7 @@ gedit 工具是图形工具
 为了解决这个问题，会话与窗口可以"解绑"：窗口关闭时，会话并不终止，而是继续运行，等到以后需要的时候，再让会话"绑定"其他窗口
 终端复用器软件就是会话与窗口的"解绑"工具，将它们彻底分离, 类似的终端复用器还有Screen，Tmux
 	（1）它允许在单个窗口中，同时访问多个会话。这对于同时运行多个命令行程序很有用。
-	（2） 它可以让新窗口"接入"已经存在的会话。
+	（2）它可以让新窗口"接入"已经存在的会话。
 	（3）它允许每个会话有多个连接窗口，因此可以多人实时共享会话。
 	（4）它还支持窗口任意的垂直和水平拆分。
 
@@ -661,8 +661,8 @@ tmux的使用,功能更加强大
 	它还支持窗口任意的垂直和水平拆分
 yum -y install tmux
 tmux						#新建会话,第一个启动的 Tmux 窗口，编号是0，第二个窗口的编号是1，以此类推;   新建指定名称的会话 tmux new -s <session-name>
-Ctrl+b , 松收按"			#划分上下两个窗格
-Ctrl+b , 松收按% 			#划分左右两个窗格
+Ctrl+b , 松手按"			#划分上下两个窗格
+Ctrl+b , 松手按% 			#划分左右两个窗格
 Ctrl+b , 松手按方向键		#切换窗格
 exit 						#退出窗格,如果一个会话中有多个窗格,退出最后一个窗格后,会话结束
 
@@ -707,14 +707,14 @@ echo $SHELL
 echo $PS1
 echo -e '\a'			# 警告声,-e 表示启用\字符的解释功能
 echo					# 换行
-echo -n					# 不慌行
+echo -n					# 不换行
 echo -e 'a\tb'			# \t 表示tab键
 echo -e '\E[1;31mLinux\E[0m'		# 让打印出的字体带颜色
 echo -e '\E[1;41;31mLinux\E[0m'		# 41-47表示背景颜色
 	
 echo高级功能
-echo -e '\033[2J' 		#清屏, clear,ctrl + L 也可以清屏 
-echo -e '\033[10A'		#光标上移10行
+echo -e '\033[2J' 		# 清屏, clear,ctrl + L 也可以清屏 
+echo -e '\033[10A'		# 光标上移10行
 
 wc -l  文件	  # 查看一个文件有多少行
 
@@ -894,8 +894,9 @@ yum -y install bash-completion
 
 显示命令的简短描述
 	新安装的系统第一次打开运行这个命令没有作用,要等一会才才有(系统需要下载安装). 也可以运行 mandb 生成 wahtis 数据库, cendos6 之前用 makewhatis 生成 wahtis 数据库
-	[root@localhost ~]#whatis ls
-	ls (1)               - list directory contents
+	[root@localhost ~]#whatis rm
+	rm (1)               - remove files or directories
+	rm (1p)              - remove directory entries
 	
 "help 内部命令" 列出内部命令的帮助说明
 	[root@localhost ~]#help type
