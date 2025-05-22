@@ -65,13 +65,13 @@ ifcfg-etho
 	[root@localhost sysconfig]#type ll
 	ll is aliased to `ls -l --color=auto'
 	
-按文件大小排序(大到小排序)
-	ls -lS
-	ls -lSr  		// 小到打排
+按文件大小排序
+	ls -lS			// 大到小排序
+	ls -lSr  		// 小到大排序
 
-按时间排序(新到旧排)
-	ls -lt
-	ls -ltr  		// 旧到新排
+按时间排序
+	ls -lt		    	// 新到旧排序
+	ls -ltr  		// 旧到新排序
 	
 查看文件夹信息
 	ls -ld /etc
@@ -111,7 +111,7 @@ Context: system_u:object_r:admin_home_t:s0
 Access: 2022-10-14 20:07:39.953896194 +0800
 Modify: 2021-08-20 19:23:51.798006179 +0800
 Change: 2021-08-20 19:23:51.798006179 +0800
- Birth: -
+ Birth: -							// 文件的创建时间,需要安装专门的工具
 
 访问时间并不会访问一次就更改一次,触发的条件为: 距离上次访问超过1天 或 修改的时间比读的时间新,在读文件时也会触发访问时间的更新,这主要时提高磁盘的IO性能,因为频繁的更新访问时间意义不大
 运行下面命令就会出现"修改的时间比读的时间新"这种情况, 同时ChangeTime也变的和ModifyTime时间一样
@@ -152,6 +152,10 @@ alias which='alias | /usr/bin/which --tty-only --read-alias --show-dot --show-ti
 
 只显示文件夹本身,不显示其它文件
 	[root@localhost ~]#ls -d /etc
+	/etc
+
+不使用别名,使用命令本身,命令前加"\"
+	[root@localhost ~]#\ls -d /etc
 	/etc
 
 2.3 文件可以粗略的分为两类,文本文件和二进制文件;网页属于文本文件
@@ -323,7 +327,7 @@ cp ~aaron/123.txt /opt/111.txt
 	// 		{,.bak}  逗号后面是".bak",  和 123.txt 组合就是 123.txt.bak
 	
 	
--r 和 —R 表示拷贝文件见:
+-r 和 —R 表示拷贝文件夹:
 	cp -r /etc  /tmp/etc-bak
 	
 	如果 etc-bak 文件夹已经存在, 那么 etc 目录会放在 etc-bak 这个目录下,cp不是幂等性(同一个命令执行多次,效果一样)的,所以cp有风险
@@ -363,8 +367,8 @@ cp ~aaron/123.txt /opt/111.txt
 	-rw-r--r--. 1 root root 4.5G Oct 16 13:23 zero
 	crw-rw-rw-. 1 root root 1, 5 Oct 16 13:21 zero.bak
 
-生成中经常用cp做备份
-	比如 /data 就是放生产环境中的数据,真正的备份一般是跨机房、跨地区备份，一般会备份多份
+生产中经常用cp做备份
+	比如 /data 就是放生产环境中的数据,真正的备份一般是跨机房、跨地区备份，一般会备份多份. "-a" 包含 "-r" 的属性,所以可以拷贝文件夹.
 	cp -a /data	/opt/data-`date +%F`
 	
 
