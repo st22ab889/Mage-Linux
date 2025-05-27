@@ -443,9 +443,9 @@ hostnamectl set-hostname 主机名称
 	
 ls -a /root  ==》 "ls" 表示命令, "-a" 表示选项,  "/root"表示操作的对象
 命令三种风格: 每个命令支持的风格不一样
-	ls -a		// unix风格,短选项,如 -a
-	ls --all		// GNU风格, 长选项,如 -all
-	ps  a		// BSD风格, 一个字母, 如a
+	ls -a			// unix风格,短选项,如 -a
+	ls --all		// GNU风格, 长选项,如 --all
+	ps  a			// BSD风格, 一个字母, 如a
 
 选项可以写在一起,有些命令不要求顺序,有些命令要求顺序
 ls -al 等价于 ls -la
