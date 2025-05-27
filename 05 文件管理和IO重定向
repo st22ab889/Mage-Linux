@@ -272,9 +272,8 @@ touch $(date -d "l year" +%F_%T).log
 	
 3.2 复制文件和目录
 
-cp 源     目标  
-cp 多个源 一个目录
-cp -t 源  目标
+cp 一个源或多个源 目标  
+cp -t 目标   一个源或多个源 
 
 把aaron家目录下的 123.txt 拷贝到 /opt 目录下
 cp ~aaron/123.txt /opt
