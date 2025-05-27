@@ -2,7 +2,7 @@
 1 Linux远程连接和基本操作
 
 1.1  sudo -i
-在使用ubuntu系统时，刚安装的Ubuntu系统无法登陆到root用户，可以使用 sudo - i 命令进入root用户下使用passwd改变root用户密码。
+在使用ubuntu系统时，刚安装的Ubuntu系统无法登陆到root用户，可以使用 sudo -i 命令进入root用户下使用passwd改变root用户密码。
 "sudo -i"是 Linux 终端命令下改变用户对命令使用权限的命令,用来把当前用户切换到root, 切换后可以使用"exit" 退出 root 用户, 适合Ubuntu、centos、aws EC2等Linux系统
 
 centOS, ssh连接, 用户名和密码进行连接,所以在切换时需要用密码验证
