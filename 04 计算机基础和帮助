@@ -1006,9 +1006,9 @@ Linux官方在线文档和知识库
 	
 7.1 文件系统和目录结构
 linux中的 / 叫正斜线   
-	cd /    // Linux回到根目录
+	cd /    # Linux回到根目录
 windows中的 \ 叫反斜线   
-	cd \    // windows回到根目录
+	cd \    # windows回到根目录
 
 
 linux内核文件	
