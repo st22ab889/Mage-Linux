@@ -496,9 +496,9 @@ lsb_release -a
 
 4.5
 Linux两种时间: 系统时间(由Linux内核通过CPU的工作频率进行的); 硬件时钟(主板时间); 这两个时间默认一样的
-date 查看系统时间
-clock  #查看硬件时间
-hwclock  #查看硬件时间, 实际上就是使用的clock
+date 		#查看系统时间
+clock  		#查看硬件时间
+hwclock  	#查看硬件时间, 实际上就是使用的clock
 	[root@centos8 ~]#ll /usr/sbin/clock
 	lrwxrwxrwx. 1 root root 7 Apr 24 2020 /usr/sbin/clock -> hwclock
 clock -s  #以硬件时钟为准，校正系统时钟
