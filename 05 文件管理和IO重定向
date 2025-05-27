@@ -202,7 +202,7 @@ touch  xxx_{a..z}.txt
 ls f[abcd].txt   
 
 ls f[a-d].txt   		// a-d 表示 a、A、b、B、c、C、d, 注意少了D
-ls f[A-D].txt			// A-D 表示  A、b、B、c、C、d、D, 注意少了A
+ls f[A-D].txt			// A-D 表示  A、b、B、c、C、d、D, 注意少了a
   
 ls f[A-D].txt -1		// -1 表示用1列来显示,也就是竖着显示, 1 是数字 1
 
