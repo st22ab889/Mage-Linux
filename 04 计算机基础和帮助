@@ -868,7 +868,7 @@ yum -y install bash-completion
 	-rw-r--r--. 1 root root 0 Jun  7  2013 /etc/motd
 	
 在命令历史中根据关键字搜索命令,从后往前找,显示出后直接回车,不用把命令敲完整. 
-	ctrl-r		#在命令历史中搜索命令
+	ctrl+r		#在命令历史中搜索命令
 	Ctrl+g		#从历史搜索模式退出	
 
 
