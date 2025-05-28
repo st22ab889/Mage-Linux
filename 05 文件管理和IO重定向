@@ -607,7 +607,7 @@ inode 是有大小限制的:
 	30244 -rw-r--r--. 2 root root 0 Oct 16 20:19 111.txt				// 2表示有2个衔接
 	30244 -rw-r--r--. 2 root root 0 Oct 16 20:19 ./data/123.txt
 	
-	输出源文件
+	删除源文件
 	[root@localhost test]#rm -rf ./data/123.txt
 	
 	[root@localhost test]#ll -i
@@ -1075,4 +1075,4 @@ Linux中可以将一个或多个用户加入用户组中，用户组是通过Gro
 	
 	2. 提示空间快满，使用 rm 删除了很大的无用文件后，df 仍然看到空间不足，为什么？如何解决？
 		方法1：使用lsof查看是否正在被使用，如果进程不重要，可以kill杀死进程
-		方法2：如果进程重要不可断开，先把大文件清零cat  /dev/null  >  /boot/big清空正在使用的文件，释放空间
+		方法2：如果进程重要不可断开，先把大文件清零 cat /dev/null > /boot/big 清空正在使用的文件，释放空间
