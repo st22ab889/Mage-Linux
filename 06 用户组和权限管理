@@ -243,13 +243,13 @@ useradd
 		useradd -r -g nginx -u 80 -d/data/www  -s  -c "nginx service" /sbin/nologin nginx
 	
 	快捷查看 passwd 和 shadow 文件
-		# 相当于 vim /etc/passwd
+		# 相当于 cat /etc/passwd
 		[root@localhost ~]#getent passwd
 		# 指定具体某一个用户
 		[root@localhost ~]#getent passwd xiaoming
 		xiaoming:x:1001:1001::/home/xiaoming:/bin/bash
 		
-		# 相当于 vim /etc/shadow
+		# 相当于 cat /etc/shadow
 		[root@localhost ~]#getent shadow
 		[root@localhost ~]#getent shadow xiaomingxiaoming:$6$wQaayLF2$rtEQi0Xt.YdE4/6PPUGlAdntrmZKApUWc523twGuswRtoGDSJe0n4OqAEHRK/z0rsq3T60prjjnMTRNIm/Xjn.:19282:0:99999:7:::
 		
@@ -648,9 +648,9 @@ userdel
 	-rw-r--r--. 1 aaron root 15 Oct 18 16:02 f2.txt
 	
 	// 改所属组的三种方式, chown 又可以改用户又可以改所属组, "-R"表示递归改
-		chgrp -R aaron file
-		chown -R aaron:aaron file
-		chown -R aaron.aaron file
+	chgrp -R aaron file
+	chown -R :aaron file
+	chown -R aaron.aaron file
 		
 	[root@localhost ~]#chown -R aaron.aaron file
 	[root@localhost ~]#ll -d file; ll file
@@ -746,7 +746,7 @@ userdel
 
 2.10 对目录的权限：
 	r 	可以使用ls查看此目录中文件列表
-	w 	可在此目录中创建文件，也可删除此目录中的文件，而和此被删除的文件的权限无关
+	w 	可在此目录中创建文件，也可删除此目录中的文件，和此目录中的文件的权限无关
 	x 	可以cd进入此目录，可以使用ls -l查看此目录中文件元数据（须配合r权限），属于目录的可访问的最小权限
 	
 	[root@localhost ~]#ll -d file
@@ -1330,7 +1330,7 @@ ACL生效顺序：
 	mask::r-x
 	other::r--
 	
-	// 使用 chmod 再家辉 x 权限
+	// 使用 chmod 再加回 x 权限
 	[root@localhost ~]#chmod a+x /usr/bin/chmod; ll /usr/bin/chmod
 	-rwxr-xr-x+ 1 root root 58592 Aug 20  2019 /usr/bin/chmod
 	
