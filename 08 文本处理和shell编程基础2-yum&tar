@@ -181,8 +181,7 @@ mlocate.db 这个数据库默认并不存在,只有当系统运行一段时间�
 			只有当其它人（other）有写权限时，find -perm -002才会匹配
 		
 	12) 正则表达式
-		-regextype type
-		-regex pattern
+		-regextype type -regex pattern
 		
 		// -regextype 指定使用扩展表达式还是基本表达式
 		find /you/find/dir -regextype posix-extended -regex "regex"
