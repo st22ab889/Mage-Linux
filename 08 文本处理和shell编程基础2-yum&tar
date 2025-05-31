@@ -334,7 +334,7 @@ find 经常和 xargs 命令进行组合,形式如下：
 	 选择适合压缩的文件, 比如文本文件适合， MP4、MP3等就不适合压缩！
 	
 
-(了解) compress 和 uncompress ,	压缩比比较查!!
+(了解) compress 和 uncompress ,	压缩比比较渣!!
 	此工具来自于ncompress包,此工具目前已经很少使用,对应的文件是 .Z 后缀
 
 	格式
