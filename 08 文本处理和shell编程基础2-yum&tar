@@ -139,10 +139,10 @@ mlocate.db 这个数据库默认并不存在,只有当系统运行一段时间�
 		find / \( -path "/sys" -o -path "/proc" \) -a -prune -o -type f -a -mmin -1
 
 	9) 根据文件大小来查找
-		-size [+|-]			#UNIT #常用单位：k, M, G，c（byte）,注意大小写敏感
-		#UNIT 				#表示(#-1, #],如：6k 表示(5k,6k]
-		-#UNIT 				#表示[0,#-1],如：-6k 表示[0,5k]
-		+#UNIT 				#表示(#,∞),如：+6k 表示(6k,∞)
+		-size [+|-]#UNIT 			#常用单位：k, M, G，c（byte）,注意大小写敏感
+			#UNIT 				#表示(#-1, #],如：6k 表示(5k,6k]
+			-#UNIT 				#表示[0,#-1],如：-6k 表示[0,5k]
+			+#UNIT 				#表示(#,∞),如：+6k 表示(6k,∞)
 		
 		[root@ip-172-31-32-113 ~]# find / -size 219M
 		/var/cache/yum/x86_64/2/amzn2-core/gen/primary_db.sqlite
