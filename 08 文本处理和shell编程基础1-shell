@@ -409,8 +409,8 @@
 			/etc/profile
 			/etc/profile.d/*. sh
 			/etc/bashrc
-			~/ .bash_ profile
-			~/ .bashrc
+			~/.bash_profile
+			~/.bashrc
 			/etc/bashrc
 		
 	非交互式登录
