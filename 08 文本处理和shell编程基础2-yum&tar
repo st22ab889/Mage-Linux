@@ -472,7 +472,7 @@ tar，tar 即 Tape ARchive 磁带归档，可以对目录和多个文件打包�
 		// 解包, x 解包, v 显示解压过程中的详细信息, 默认解压到当前路径
 		tar xvf etc.tar
 		
-		// -C 指定解压的目标路径
+		// -C 指定解包的目标路径
 		tar xvf etc.tar -C /tmp
 		
 		// 使用 gzip 解压缩, 然后解包
