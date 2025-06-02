@@ -637,7 +637,7 @@ line ranges：行范围
 	
 	
 3.6 next
-	next 可以提前结束对本行处理而直接进入下一行处理（awk自身循环）
+	next 可以提前结束对本行处理而直接进入下一行处理(awk自身循环)
 	
 	[root@localhost ~]#awk -F: '{if($3%2!=0) next; print $1,$3}' /etc/passwd
 	root 0
