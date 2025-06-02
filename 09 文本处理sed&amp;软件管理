@@ -455,7 +455,7 @@
 	rpm -e rpm --nodeps
 	
 	// 在救援模式下操作，使用救援模式下的rpm命令重新给原系统安装rpm
-	// 这里假如原系统挂载到"/mnt/sysimage"目录, 而关盘文件挂载到"/run/install/repo"目录, 而光盘文件中提供了很多RPM包,其中就包含RPM本身这个包
+	// 这里假如原系统挂载到"/mnt/sysimage"目录, 而光盘文件挂载到"/run/install/repo"目录, 而光盘文件中提供了很多RPM包,其中就包含RPM本身这个包
 	rpm -ivh /run/install/repo/packages/rpm-4.11.3-45.el7.x86_64.rpm --root=/mnt/sysimage
 	
 	
@@ -532,7 +532,7 @@
 	
 	
 	
-	注意: 即使导入后更改或破坏了"/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7"这个文件,就会校验失败
+	注意: 导入后更改或破坏"/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7"此文件,就会校验失败
 	
 	
 
@@ -564,7 +564,7 @@
 
 4.1 yum客户端配置
 	
-	// "/etc/yum.conf"为所有仓库提供公共配置, cachedir时缓存目录, 保存包的相关的元数据文件
+	// "/etc/yum.conf"为所有仓库提供公共配置, cachedir是缓存目录, 保存包的相关的元数据文件
 	//  下面是 CentOS7 的配置文件,CentOS8这个配置文件不一样 
 	[root@localhost ~]#cat /etc/yum.conf
 	[main]
@@ -669,7 +669,7 @@
  
 4.3 要把 extras 和 epel 源配置上, epel上有很多很好玩很丰富的包
 	
-	// extras 用的不多,但是偶尔会用以下, 比如可以通过 extras 来生成 epel源,  不过生成的epel源在国外, 所以建议还是自己写 epel
+	// extras 用的不多,但是偶尔会用一下, 比如可以通过extras来生成epel源,不过生成的epel源在国外,所以建议还是自己写epel源
 	
 	// 列出源的信息
 	[root@localhost ~]#yum repolist
@@ -793,10 +793,10 @@
 	
 	
 	// rpm 包放在 myrepo 目录下
-	mkdir /data/myrepo; cd /data/myrepo
+	mkdir /data/myrepo
 	
 	// 运行后会在myrepo目录下生成repodata文件夹, 之后" /data/myrepo"就可以当作仓库使用
-	createrepo .
+	createrepo /data/myrepo
 	
 	
 方式3: 把互联网上的epel源的仓库拿过来在公司内部搭建仓库
@@ -810,7 +810,7 @@
 	
 	//  yum安装包时会自动安装包的依赖包
 	//  	centos7在卸载的时候只卸载本身,不卸载依赖包。
-	//      centos8在卸载的时候会联通依赖包一起卸载！！！
+	//      centos8在卸载的时候会连同依赖包一起卸载！！！
 	yum remove httpd -y
 	
 	
@@ -1009,11 +1009,11 @@
 	
 	
 	// 同样可以使用如下方法卸载内核(注意:不能卸载当前正在使用的内核)
-	// 假如现在已经切回到就内核,卸载新内核有如下方法；
+	// 假如现在已经切回到旧内核,卸载新内核有如下方法；
 	
 	方式1:
 		// 找到操作的ID
-		[root@localhost ~]#ryum history
+		[root@localhost ~]#yum history
 		-bash: ryum: command not found
 		[root@localhost ~]#yum history
 		Loaded plugins: fastestmirror
