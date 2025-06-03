@@ -718,8 +718,8 @@ expect最常用的语法(tcl语言:模式-动作)
 	#!/usr/bin/expect
 	spawn scp /etc/redhat-release 192.168.32.101:/tmp		# spawn 后面就是跟要运行的命令	
 	expect {
-			"yes/no" { send "yes\n";exp_continue }
-			"password" { send "admin000\n" }
+		"yes/no" { send "yes\n";exp_continue }
+		"password" { send "admin000\n" }
 	}
 	expect eof
 	
@@ -746,8 +746,8 @@ expect最常用的语法(tcl语言:模式-动作)
 	#!/usr/bin/expect
 	spawn ssh 192.168.32.101
 	expect {
-			"yes/no" { send "yes\n";exp_continue }
-			"password" { send "admin000\n" }
+		"yes/no" { send "yes\n";exp_continue }
+		"password" { send "admin000\n" }
 	}
 	interact														# 允许用户交互
 	
@@ -772,8 +772,8 @@ expect最常用的语法(tcl语言:模式-动作)
 	set timeout 10
 	spawn ssh $user@$ip								# 使用  $ 引用变量
 	expect {
-			"yes/no" { send "yes\n";exp_continue }
-			"password" { send "$password\n" }
+		"yes/no" { send "yes\n";exp_continue }
+		"password" { send "$password\n" }
 	}
 	interact
 	
@@ -798,8 +798,8 @@ expect最常用的语法(tcl语言:模式-动作)
 	set password [lindex $argv 2]
 	spawn ssh $user@$ip
 	expect {
-			"yes/no" { send "yes\n";exp_continue }
-			"password" { send "$password\n" }
+		"yes/no" { send "yes\n";exp_continue }
+		"password" { send "$password\n" }
 	}
 	interact
 	
@@ -824,8 +824,8 @@ expect最常用的语法(tcl语言:模式-动作)
 	set timeout 10
 	spawn ssh $user@$ip
 	expect {
-			"yes/no" { send "yes\n";exp_continue }
-			"password" { send "$password\n" }
+		"yes/no" { send "yes\n";exp_continue }
+		"password" { send "$password\n" }
 	}
 	expect "]#" { send "useradd haha\n" }								# 创建一个名为haha的用户
 	expect "]#" { send "echo haha123 |passwd --stdin haha\n" }			# 给haha这个用户设置密码为"haha123"
@@ -865,8 +865,8 @@ expect最常用的语法(tcl语言:模式-动作)
 	set timeout 20									# 设置超时时间
 	spawn ssh $user@$ip
 	expect {
-			"yes/no" { send "yes\n";exp_continue }
-			"password" { send "$password\n" }
+		"yes/no" { send "yes\n";exp_continue }
+		"password" { send "$password\n" }
 	}
 	expect "]#" { send "useradd hehe\n" }
 	expect "]#" { send "echo magedu |passwd --stdin hehe\n" }
@@ -885,18 +885,17 @@ expect最常用的语法(tcl语言:模式-动作)
 	password=admin000
 
 	for i in 100 101;do
-	ip=$net.$i
+		ip=$net.$i
 
-	expect <<EOF
-	set timeout 20
-	spawn scp /etc/sysconfig/selinux $user@$ip:/tmp
-	expect {
-					"yes/no" { send "yes\n";exp_continue }
-					"password" { send "$password\n" }
-	}
-	expect eof
-	EOF
-
+		expect <<EOF
+		set timeout 20
+		spawn scp /etc/sysconfig/selinux $user@$ip:/tmp
+		expect {
+			"yes/no" { send "yes\n";exp_continue }
+			"password" { send "$password\n" }
+		}
+		expect eof
+		EOF
 	done
 	
 	// 检查shell脚本语法
