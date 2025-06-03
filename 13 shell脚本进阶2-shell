@@ -294,21 +294,21 @@
 	[ec2-user@ip-172-31-32-113 ~]$ cat install_httpd.sh
 	#!/bin/bash
 	os_type(){
-			if grep -i -q ubuntu /etc/os-release;then
-					echo ubuntu
-			elif grep -i -q centos /etc/os-release;then
-					echo centos
-			else
-					echo "OS can't be supported!"
-			fi
+		if grep -i -q ubuntu /etc/os-release;then
+			echo ubuntu
+		elif grep -i -q centos /etc/os-release;then
+			echo centos
+		else
+			echo "OS can't be supported!"
+		fi
 	}
 
 	if [ `os_type` = centos ];then
-			echo "install httpd for centos"!
-			# yum install httpd -y
+		echo "install httpd for centos"!
+		# yum install httpd -y
 	elif [ `os_type` = ubuntu ];then
-			echo "install httpd for ubuntu"!
-			# yum install httpd -y
+		echo "install httpd for ubuntu"!
+		# yum install httpd -y
 	fi
 	
 	// 检查脚本语法
@@ -328,20 +328,20 @@
 	END="\E[0m"
 	
 	os_type(){
-			if grep -i -q ubuntu /etc/os-release;then
-					echo ubuntu
-			elif grep -i -q centos /etc/os-release;then
-					echo centos
-			else
-					echo "OS can't be supported!"
-			fi
+		if grep -i -q ubuntu /etc/os-release;then
+			echo ubuntu
+		elif grep -i -q centos /etc/os-release;then
+			echo centos
+		else
+			echo "OS can't be supported!"
+		fi
 	}
 	
 	#变量不要定义在函数中，因为只有显示调用这个函数，变量才会生效
 	#color() {
-	#		RED="echo -e \E[1;31m"
-	#		GREEN="echo -e \E[1;32m"
-	#		END="\E[0m"
+	#	RED="echo -e \E[1;31m"
+	#	GREEN="echo -e \E[1;32m"
+	#	END="\E[0m"
 	#}
 	
 	is_ip(){
