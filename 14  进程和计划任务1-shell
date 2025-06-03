@@ -265,7 +265,7 @@
 				Returns exit status of command or success if command is null.
 			
 		
-			[root@localhost ~]#eval echo {1..$n}				# eval 会有两次操作，第一次是替换变脸，第二次是运行命令
+			[root@localhost ~]#eval echo {1..$n}				# eval 会有两次操作，第一次是替换变量，第二次是运行命令
 			1 2 3 4 5 6 7 8 9 10
 			
 			
