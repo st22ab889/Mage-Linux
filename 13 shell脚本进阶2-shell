@@ -265,7 +265,7 @@
 
 语法：
 	#语法一：
-		func_name （）{
+		func_name () {
 			...函数体...
 		}
 		
@@ -275,7 +275,7 @@
 		}
 		
 	#语法三：
-		function func_name （） {
+		function func_name () {
 			...函数体...
 		}	
 	
