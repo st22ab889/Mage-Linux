@@ -1099,11 +1099,11 @@ expect最常用的语法(tcl语言:模式-动作)
 
 linux中的变量：
 	name=linux			#普通变量
-	local name=linux	#本地变量
+	local name=linux	#local 关键字必须在函数体内部, 其作用范围也仅限于函数体内部
 	export name=linux	#环境变量，能够让变量给子进程使用
 
 	
-PS1、PS2、PS32、PS4
+PS1、PS2、PS3、PS4
 	
 	PS1命令是linux系统中的一个全局变量，用于定义用户命令行的字符显示。
 		// 可以修改"用户命令行"的格式、颜色等
@@ -1165,7 +1165,7 @@ PS1、PS2、PS32、PS4
 		ls -l /etc/ | wc -l		
 		
 		[root@localhost ~]#bash test.sh
-		+ echo 'PS4 demo script'				# 当使用sex -x跟踪输出时的提示符为 ++
+		+ echo 'PS4 demo script'				# 当使用 sex -x 跟踪输出时的提示符为 +
 		PS4 demo script
 		+ ls -l /etc/
 		+ wc -l
@@ -1180,7 +1180,7 @@ PS1、PS2、PS32、PS4
 		ls -l /etc/ | wc -l		
 		
 		[root@localhost ~]#bash test.sh
-		test.sh.4+ echo 'PS4 demo script'		# 使用PS4后使 "{script-name}.{line-number}+" 成为set –x的命令提示符
+		test.sh.4+ echo 'PS4 demo script'		# 使用PS4后使 "{script-name}.{line-number}+" 成为 set –x 的命令提示符
 		PS4 demo script
 		test.sh.5+ ls -l /etc/
 		test.sh.5+ wc -l
