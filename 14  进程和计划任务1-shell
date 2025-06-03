@@ -7,16 +7,16 @@
 		#返回字符串变量var的字符的长度,一个汉字算一个字符
 		${#var}
 		
-		#返回字符串变量var中从第offset个字符后（不包括第offset个字符）的字符开始，到最后的部分，offset的取值在0 到 ${#var}-1 之间(bash4.2后，允许为负值)
+		#返回字符串变量var中从第offset个字符后（不包括第offset个字符）的字符开始，到最后的部分，offset的取值在0 到 ${#var}-1 之间.bash4.2后，允许为负值
 		${var:offset}
 		
 		#返回字符串变量var中从第offset个字符后（不包括第offset个字符）的字符开始，长度为number的部分
 		${var:offset:number}
 		
-		#取字符串的最右侧几个字符,取字符串的最右侧几个字符, 注意：冒号后必须有一空白字符
+		#取字符串的最右侧几个字符, 注意：冒号后必须有个空格
 		${var: -length}
 		
-		#从最左侧跳过offset字符，一直向右取到距离最右侧lengh个字符之前的内容,即:掐头去尾
+		#从最左侧跳过offset字符，一直向右取到距离最右侧lengh个字符之前的内容.即:掐头去尾
 		${var:offset:-length}
 		
 		#先从最右侧向左取到length个字符开始，再向右取到距离最右侧offset个字符之间的内容,注意：-length前空格,并且length必须大于offset
