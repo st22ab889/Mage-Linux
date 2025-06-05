@@ -73,7 +73,7 @@
 
 
 	[root@localhost ~]#ifconfig
-	eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500						# BROADCAST 指的是广播，MULTICAST指的是单薄
+	eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500						# BROADCAST 指的是广播，MULTICAST指的是多播
 			inet 192.168.32.101  netmask 255.255.255.0  broadcast 192.168.32.255
 			inet6 fe80::855d:2d56:b31e:41c9  prefixlen 64  scopeid 0x20<link>
 			ether 00:0c:29:f9:a9:0f  txqueuelen 1000  (Ethernet)
@@ -114,7 +114,7 @@
 			Supported ports: [ TP ]
 			Supported link modes:   10baseT/Half 10baseT/Full				#  当前网卡支持的链路模式： 10兆的半双工，10兆的全双工 
 									100baseT/Half 100baseT/Full				#  100兆的半双工，100兆的全双工
-									1000baseT/Full							#  100兆的全双工	
+									1000baseT/Full							#  1000兆的全双工	
 			Supported pause frame use: No
 			Supports auto-negotiation: Yes
 			Supported FEC modes: Not reported
@@ -249,7 +249,7 @@
 
 
 网线：属于物理层，定义了电气特性（电压、电阻、尺寸规格等）
-	双绞线(Twisted-Pair)：两根拆在一起抵消电磁干扰，目前用的最多的是超五类线，接网线时，线的颜色顺序有严格的要求，只有按照正确的顺序接，干扰才会最弱。比如使用超五类线，按照正确的颜色顺序接，才能达到千兆！！
+	双绞线(Twisted-Pair)：两根缠在一起抵消电磁干扰，目前用的最多的是超五类线，接网线时，线的颜色顺序有严格的要求，只有按照正确的顺序接，干扰才会最弱。比如使用超五类线，按照正确的颜色顺序接，才能达到千兆！！
 	光纤和接口(Fiber-Optic)：光信号不受电磁干扰，稳定，速度快；如果家用电脑要直接使用光纤上网，需要购买光纤网卡和光纤模块。
 	同轴(Cozxial)网线：已被淘汰
 	
@@ -349,7 +349,7 @@
 		TPID(2Byte) + PRI(3bit) + CFI(1bit) + VID(12bit)
 	
 	VID：VLAN ID（12bit，2的12次方等于4096），表示该数据帧所属VLAN的编号。VLAN ID取值范围是0～4095。由于0和4095为协议保留取值，所以VLAN ID的有效取值范围是1～4094 ！！
-	也就是说：只需要一根网线连接两个交换机，工占用两个交换机端口，就可以使交换机支持4094个VLAN！原理就是：因为帧中保存了VLAN的编号，这样就能识别每一帧是属于哪个VLAN！！
+	也就是说：只需要一根网线连接两个交换机，共占用两个交换机端口，就可以使交换机支持4094个VLAN！原理就是：因为帧中保存了VLAN的编号，这样就能识别每一帧是属于哪个VLAN！！
 	
 	
 
@@ -369,7 +369,7 @@
 6 tcpip协议和tcp详解（重点）
 	国际标准是osi模型，但事实上的标准是用的tcpip协议。
 	Transmission Control Protocol/Internet Protocol 传输控制协议/因特网互联协议
-	TCP/IP是一个Protocol Stack，包括TCP、IP、UDP、ICMP、RIP、TELNET、FTP、SMTP、ARP等许多协议，包含上百个协议，因为tcp和ip协议最重要，所以用这两个协议命令
+	TCP/IP是一个Protocol Stack，包括TCP、IP、UDP、ICMP、RIP、TELNET、FTP、SMTP、ARP等许多协议，包含上百个协议，因为tcp和ip协议最重要，所以用这两个协议命名
 	
 	TCP/IP工作在网络层、传输层、会话层、表示层、应用层，也就是说工作在数据链路层（不包括数据链路层）以上的层
 	
@@ -702,7 +702,7 @@ TCP 滑动窗口
 	ESTAB      0      36                                              192.168.32.101:22                                                            192.168.32.1:51970               users:(("sshd",pid=1885,fd=3))
 	ESTAB      0      0                                               192.168.32.101:22                                                            192.168.32.1:51695               users:(("sshd",pid=1513,fd=3))
 	
-	注意：“Peer”是网络连接另一端机器的常用术语，因为从历史上看，互联网上的所有服务器最初都被认为是平等的对等体，而不是分为“客户端机器”和“服务器机器”。
+	注意："Peer"是网络连接另一端机器的常用术语，因为从历史上看，互联网上的所有服务器最初都被认为是平等的对等体，而不是分为"客户端机器"和"服务器机器".
 	
 
 
