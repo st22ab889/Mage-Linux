@@ -136,7 +136,7 @@
 			  每次计算机启动的时候向网络发送自身MAC地址并请求IP，有个服务器，里面保存着IP和MAC的对应关系，当收到请求根据MAC就可以找到对应的IP，然后就可以将IP返回给主机！！
 	
 	
-1.6（了解）APR 还有一个非常重要的功能，用来避免IP地址冲突，发送的报文名叫 Gratuitous ARP(也称为免费ARP，无故ARP)
+1.6（了解）ARP 还有一个非常重要的功能，用来避免IP地址冲突，发送的报文名叫 Gratuitous ARP(也称为免费ARP，无故ARP)
 	Gratuitous ARP 不同于一般的ARP请求，它并非期待得到ip对应的mac地址，而是当主机启动的时候，将发送一个Gratuitous arp请求，即请求自己的ip地址的mac地址	
 	
 	免费ARP可以有两个方面的作用：
