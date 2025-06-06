@@ -721,7 +721,17 @@ TTL 实践2：
 		参考资料：
 			/etc/resolv.conf 文件详解：	https://www.cnblogs.com/zhangmingcheng/p/6273513.html
 			ping www.baidu.com时出现www.a.shifen.com：	https://www.jianshu.com/p/8c318314f2f0
+
+
+		网络配置文件也支持"/etc/sysconfig/network-scripts/ifcfg-IFACE"配置搜索域:
+			man -k ifcfg
+			man 5 nm-settings-ifcfg-rh	  			# 搜索"dns-search"跳到"Table 10. ipv4 setting".可以看到Centos7支持配置搜索域,可以用同样的方式查看Centos8是否支持
+			sudo grep -iR DOMAIN /etc/NetworkManager/*		# 配置完重启网络服务,DNS生效会在"/etc/resolv.conf"文件中有记录.未生效需检查 NetworkManager 的配置文件是否覆盖配置
 			
+			重要注意事项：
+				接口配置 vs 全局配置: 接口配置(ifcfg-*)优先级高于全局配置(/etc/sysconfig/network),推荐使用接口配置，特别是多网卡环境
+				NetworkManager 的影响: 如果使用 NetworkManager, 它会管理 /etc/resolv.conf, 确保在接口配置文件中设置 PEERDNS=yes
+
 
 修改网卡名称: 在 centos7 上是根据内核识别硬件状态,自动添加网卡名称,如果有多台机器导致网卡名不一样,不能统一管理,所以需要改网卡名称!
 	一般网卡命名为 eth0, 如果有多个网卡,依次命名为 eth1、eth2 等，centos4、centos5 都是这个名称!
