@@ -61,7 +61,7 @@
 				- 10.0.0.10/8
 				gateway4: 10.0.0.2
 				nameservers:
-					search: [magedu.com, magedu.org]	# 这里配置的搜索域会写进"/etc/resolv.conf"文件，centos7的网络配置文件似乎不支持搜索域和DOMAIN域的配置，配置后重启网络也不会写到"/etc/resolv.conf"文件中。
+					search: [magedu.com, magedu.org]	# 这里配置的搜索域会写进"/etc/resolv.conf"文件
 					addresses: [180.76.76.76, 8.8.8.8, 1.1.1.1]		# DNS 最多可以添加3个, "8.8.8.8"是谷歌的DNS，"1.1.1.1"是Cloudflare的DNS
 	
 	// 使网络配置生效
