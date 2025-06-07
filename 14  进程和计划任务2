@@ -421,7 +421,7 @@
 	  1508 pts/0    Ss     0:00 -bash
 	  1653 pts/0    R+     0:00 ps a	  
 	  
-	// x 参数表示显示所有进程，和终端有关没关的进程都显示
+	// x 参数表示显示所有不与终端关联的进程(包括守护进程,systemd、crond 等无终端的进程)
 	[root@localhost ~]#ps x
 	   PID TTY      STAT   TIME COMMAND
 		 1 ?        Ss     0:01 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
