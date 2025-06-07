@@ -1,6 +1,6 @@
 
 7 (重点)任务计划管理
-	通过任务计划，可以让系统自动的按时间或周期性任务执行任务
+	通过任务计划，可以让系统自动的按时间或周期性执行任务
 	配置邮件服务，可以实现自动报警！
 		// 安装并启动邮件服务
 		[root@centos8 ~]#yum -y install postfix
@@ -18,7 +18,7 @@
 7.1 (了解)一次性任务
 	at 工具
 		由包 at 提供
-		依赖与atd服务,需要启动才能实现at任务
+		依赖于atd服务,需要启动才能实现at任务
 		at队列存放在/var/spool/at目录中,ubuntu存放在/var/spool/cron/atjobs目录下
 		执行任务时PATH变量的值和当前定义任务的用户身份一致
 	
@@ -300,14 +300,14 @@
 
 	Default operation is replace, per 1003.2
 	
-	// 这个命令会用vim自动打开一个临时的空白文件，然后就可以在里面写计划任务的格式
+	// 这个命令会用vim自动打开一个临时的空白文件，然后就可以在里面按格式添加或删除计划任务
 	[root@localhost ~]#crontab -e
 	
 	// 计划任务的格式说明，注释行以 # 开头。/etc/crontab 格式说明，详情参见 man 5 crontab
 	[root@localhost ~]#cat /etc/crontab
 	SHELL=/bin/bash								# 默认的SHELL类型
 	PATH=/sbin:/bin:/usr/sbin:/usr/bin			# 默认的PATH变量值,可修改为其它路径
-	MAILTO=root									# 默认标准输出和错误发邮件给root,可以指向其它用户,应该把标准输出和标准错误隐藏掉，否则crontab会发大量的垃圾邮箱
+	MAILTO=root									# 默认标准输出和错误发邮件给root,可以指向其它用户,应该把标准输出和标准错误隐藏掉，否则crontab会发大量的垃圾邮件
 
 	# For details see man 4 crontabs
 
@@ -323,7 +323,7 @@
 
 系统cron计划任务：
 	
-	root@localhost ~]#vim /usr/local/bin/test.sh
+	[root@localhost ~]#vim /usr/local/bin/test.sh
 	[root@localhost ~]#cat /usr/local/bin/test.sh
 	#!/bin/bash
 	wall cron jobs is execute!
@@ -334,12 +334,12 @@
 	[root@localhost ~]#crontab -l
 	* * * * * test.sh
 	
-	// 计划任务重启仍然后效，同样的计划任务写到了文件中
+	// 计划任务重启后仍然有效，因为计划任务写到了文件中
 	[root@localhost ~]#cat /var/spool/cron/root
 	* * * * * test.sh	
 	
 	// 发现问题，每分钟的0秒广播没有在屏幕上打印出来。运行"mail"命令发现有了新邮件，显示"command not fount"
-	// 因为计划任务的PATH变量和平时的"$PATH"变量不统一，划任务的PATH变量只有很少的几个。这样就带来了严重的问题，很多命令都不能运行了，比如 useradd 等命令！
+	// 因为计划任务的PATH变量和平时的"$PATH"变量不统一，计划任务的PATH变量只有很少的几个。这样就带来了严重的问题，很多命令都不能运行了，比如 useradd 等命令！
 	[root@localhost ~]#crontab -e
 	* * * * * test.sh
 	* * * * * echo $PATH > /data/path.log
@@ -348,7 +348,7 @@
 	
 	
 	解决方法：
-		在脚本前面定义以个path，指定路径，就确保有些环境下path变量没有或不完整，以防止程序运行失败
+		在脚本前面定义一个path，指定路径，就确保有些环境下path变量没有或不完整，以防止程序运行失败
 		对于cron来说，也可以把path添加到corn脚本中
 	
 	[root@localhost ~]#crontab -e
@@ -432,7 +432,7 @@ crond任务相关文件:
 		[root@localhost test]#
 	
 	
-	"/etc/cron.daily/", "cron.daily"目录下由日志清理的相关计划任务：
+	"/etc/cron.daily/", "cron.daily"目录下有日志清理的相关计划任务：
 		[root@localhost test]#ll /etc/cron.daily/
 		total 8
 		-rwx------. 1 root root 219 Apr  1  2020 logrotate				# 自动清理日志，每天运行的清理任务，这是系统自带计划任务。
@@ -446,7 +446,7 @@ crond任务相关文件:
 	cron任务中不建议使用%，它有特殊用途，它表示换行，且第一个%后的所有字符串会被将成当作命令的标准输入,如果在命令中要使用%，则需要用 \ 转义。注意：将%放置于单引号中是不支持的
 		范例：在crontab中%的用法
 			30 2 * * * /bin/cp -a /etc/ /data/etc`date +\%F_\%T`
-			30 2 * * * /bin/cp -a /etc/ /data/etc`date +‘%F_%T’` 	# 有问题
+			30 2 * * * /bin/cp -a /etc/ /data/etc`date +'%F_%T'` 	# 有问题
 		
 		如果计划任务的命令有复杂写法，建议把要运行的命令写在shell脚本中，避免出现问题！
 	
@@ -510,7 +510,7 @@ echo和wall：
 
 
 ubuntu 修改默认的cron的文本编辑工具
-	// ubuntu 使用"crontab -e"回询问使用什么工具编辑计划任务
+	// ubuntu 使用"crontab -e"会询问使用什么工具编辑计划任务
 	root@ubuntu1804:~# crontab -e
 	no crontab for root - using an empty one
 	Select an editor. To change later, run 'select-editor'.
@@ -520,7 +520,7 @@ ubuntu 修改默认的cron的文本编辑工具
 		4. /bin/ed
 		Choose 1-4 [1]:
 
-	// 可以指定一个默认工作，再此编写计划任务时就不会再询问
+	// 可以指定一个默认工作，之后编写计划任务时就不会再询问
 	root@ubuntu1804:~# cat /etc/profile.d/env.sh
 	export EDITOR=vim	
 
