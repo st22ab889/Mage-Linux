@@ -31,13 +31,13 @@
 	
 	// 查看进程和线程
 	[root@localhost ~]#pstree -p
-	systemd(1)─┬─NetworkManager(699)─┬─{NetworkManager}(745)			# init是第一个进程，从 CentOS7 以后为名称改为systemd
+	systemd(1)─┬─NetworkManager(699)─┬─{NetworkManager}(745)		# init是第一个进程，从 CentOS7 以后为名称改为systemd
 			   │                     └─{NetworkManager}(747)
 			   ├─VGAuthService(673)
-			   ├─agetty(711)
+			   ├─agetty(711)										# 没有{}包裹的是进程,括号中是进程号(pid)	
 			   ├─auditd(647)───{auditd}(648)
-			   ├─automount(1002)─┬─{automount}(1012)					# automount 进程有5个线程(automount进程本身有一个主线程，其余四个线程是子线程)
-			   │                 ├─{automount}(1013)
+			   ├─automount(1002)─┬─{automount}(1012)				# 有{}包裹是线程,括号中是线程的pid. Linux中线程本质是轻量级进程(LWP),因此线程也有独立PID(实际是TID)
+			   │                 ├─{automount}(1013)				# automount 进程有5个线程(automount进程本身有一个主线程，其余四个线程是子线程)
 			   │                 ├─{automount}(1096)
 			   │                 └─{automount}(1104)
 			   ├─chronyd(682)
@@ -122,7 +122,7 @@
 				< 高优先级
 				n 低优先级
 				s 包含子进程
-				+ 位于后台的进程组
+				+ 位于前台的进程组
 
 		[root@localhost ~]#ping www.baidu.com
 		PING www.a.shifen.com (14.215.177.38) 56(84) bytes of data.
@@ -431,7 +431,7 @@
 	
 	
 	
-	// x 选项可以显示出更多信息，比如进程是以谁的身份运行、实际占用的空间等
+	// x 参数表示显示所有进程，和终端有关没关的进程都显示
 	[root@localhost ~]#ps aux
 	USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
 	root          1  0.0  0.1 125356  3876 ?        Ss   10:47   0:01 /usr/lib/systemd/systemd --switched-root --system --de
@@ -619,7 +619,7 @@
 	实践1：使用grep
 		ps aux | grep dd
 	
-	实践2：使用 pgrep，pgrep 是专门的过滤工具
+	实践2：使用 pgrep，pgrep 是专门的进程过滤工具
 		命令格式：pgrep [options] pattern
 		常用选项：
 			-u uid: effective user，生效者
@@ -689,7 +689,7 @@
 			14 min： 系统已启动的时间
 			2 users：当前上线人数
 			"load average: 0.00, 0.01, 0.03", 表示 系统平均负载（1、5、15分钟的平均负载，一般不会超过1，超过5时建议警报） 
-				系统平均负载: 系统平均负载: 指在特定时间间隔内运行队列中的平均进程数,通常每个CPU内核的当前活动进程数不大于3，那么系统的性能良好。如果每个CPU内核的任务数大于5，那么此主机的性能有严重问题 ！
+				系统平均负载: 指在特定时间间隔内运行队列中的平均进程数,通常每个CPU内核的当前活动进程数不大于3，那么系统的性能良好。如果每个CPU内核的任务数大于5，那么此主机的性能有严重问题 ！
 							  如：linux主机是1个双核CPU，当Load Average 为6的时候说明机器已经被充分使用	
 		
 	// w 命令的第一行就是uptime命令的结果	
@@ -1312,7 +1312,7 @@ ltrace：跟踪某个程序运行过程中的库调用关系
 	
 	// 显示当前系统可用信号：
 	kill -l
-	trap -l					# trap命令可以用来捕获信号
+	trap -l					# 查看所有信号, trap命令还可以用来捕获信号
 	
 	常用信号：
 		1) SIGHUP 无须关闭进程而让其重读配置文件
@@ -1412,8 +1412,8 @@ ltrace：跟踪某个程序运行过程中的库调用关系
 	9311 ping 2.2.2.2		
 	
 	
-示例：查看HUP信号(0信号)
-	#许多服务的支持的reload操作，实际就是发送了HUP信号
+示例：查看HUP信号(1信号)
+	#许多服务支持的reload操作，实际就是发送了HUP信号
 	#service httpd reload 即相当于 killall -1 httpd
 	[root@centos6 ~]#grep -A 10 -w reload -m 1 /etc/init.d/httpd
 	reload() {
@@ -1498,16 +1498,16 @@ ltrace：跟踪某个程序运行过程中的库调用关系
 	64 bytes from 192.168.32.2: icmp_seq=1 ttl=128 time=0.088 ms
 	64 bytes from 192.168.32.2: icmp_seq=2 ttl=128 time=0.153 ms
 	^Z
-	[1]+  Stopped                 ping 192.168.32.2						# 按下 ctrl +Z，注意："ctrl +Z"把进程放到后台，并且程序状态变为stop
+	[1]+  Stopped                 ping 192.168.32.2						# 按下"Ctrl+Z"，注意："Ctrl+Z"是把进程放到后台，并且程序状态变为stop
 	
 	[root@localhost ~]#ps aux | grep ping
 	root       2554  0.0  0.0 123044  1016 pts/1    T    13:53   0:00 ping 192.168.32.2		# 可以看到这里的状态是T
 	
-	// 查看当前终端所有作业：
+	// 查看当前终端所有作业
 	[root@localhost ~]#jobs
 	[1]+  Stopped                 ping 192.168.32.2
 	
-	// 将后台停止态恢复为后台运行态，格式是"bg 作业编号"。也可以发18信号
+	// 将前台停止态恢复为后台运行态,格式是"bg 作业编号",也可以发18信号.这时候按"Ctrl+Z"不能暂停进程.也不能使用"ctrl+c"结束进程,因为进程在后台运行
 	[root@localhost ~]#bg 1					# "kill -18 %1" 和 "bg 1"是一样的效果！
 	
 	
@@ -1520,11 +1520,11 @@ ltrace：跟踪某个程序运行过程中的库调用关系
 	// 发18信号将后台停止态恢复为后台运行态
 	[root@localhost ~]#kill -18 %1			# 等价于 bg 1
 	
-	// 将后台运行恢复为前台运行
+	// 将后台运行恢复为前台运行(虽然此时终端不断有输出,还是可以输入命令然后运行)
 	[root@localhost ~]#fg 1
 
 	
-	// 然后可以使用"ctrl + c" 结束进程
+	// 然后可以使用"ctrl+c" 结束进程
 	
 
 实践2：
