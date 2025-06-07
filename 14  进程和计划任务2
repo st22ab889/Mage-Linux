@@ -421,7 +421,7 @@
 	  1508 pts/0    Ss     0:00 -bash
 	  1653 pts/0    R+     0:00 ps a	  
 	  
-	// x 参数表示显示有有进程，和终端有关没关的进程都显示
+	// x 参数表示显示所有进程，和终端有关没关的进程都显示
 	[root@localhost ~]#ps x
 	   PID TTY      STAT   TIME COMMAND
 		 1 ?        Ss     0:01 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
@@ -431,7 +431,7 @@
 	
 	
 	
-	// x 参数表示显示所有进程，和终端有关没关的进程都显示
+	// x 选项可以显示出更多信息，比如进程是以谁的身份运行、实际占用的空间等
 	[root@localhost ~]#ps aux
 	USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
 	root          1  0.0  0.1 125356  3876 ?        Ss   10:47   0:01 /usr/lib/systemd/systemd --switched-root --system --de
