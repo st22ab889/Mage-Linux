@@ -467,7 +467,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		
 		
 		// 手动改软连接的名称可以控制服务是否开机启动，但一般不使用手动改
-		// chkconfig 命令可以用来设置当前系统中的各种服务。这个服务本质上、真正的路径都是在"/etc/init.d/"目录下, 这个目录下放着所有服务的启动脚本
+		// chkconfig 命令可以用来设置当前系统中的各种服务。这个命令本质上是修改"/etc/rc.d/rc${runlevel}.d/"目录下的软衔接名称是以K开头还是S开头
 		
 		// 列出所有的服务在各个模式下是否是开机启动。on代表开机启动，off 代表关闭
 		[root@centos6 ~]#chkconfig --list			
@@ -849,7 +849,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 
 6 Linux的内核参数配置
 
-6.1 /proc 目录和内核参数管理。/proc目录：内核把自己内部状态信息及统计信息，以及可配置参数通过proc伪文件系统加以输出
+6.1 /proc 目录和内核参数管理。/proc目录：内核把自己内部状态信息及统计信息，以及可配置参数通过proc为文件系统加以输出
 	
 	//帮助
 	man proc
@@ -859,7 +859,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		可写：可接受用户指定“新值”来实现对内核某功能或特性的配置
 	
 	
-	/proc 目录存放的是进程相关信息，包括内核状态。这实际上是一个虚拟文件见，它对应的是内存中的状态
+	/proc 目录存放的是进程相关信息，包括内核状态。这实际上是一个虚拟文件，它对应的是内存中的状态
 		// "/proc"目录内容虽然很多，但大小为0，因为都不是硬盘上的文件，里面的东西都在内存中，所以这里面的设置可以影响系统的运行！
 		[root@localhost ~]#du -sh /proc/
 		du: cannot access ‘/proc/1717/task/1717/fd/4’: No such file or directory
@@ -965,7 +965,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		vm.swappiness = 30									# 表示物理内存剩余30%的时候允许使用swap
 		
 		
-		"vm.swappiness"这个值要尽可能设小，因为如果还剩很多物理内存空间，就把数据往硬盘上些，会导致速度变量。
+		"vm.swappiness"这个值要尽可能设小，因为如果还剩很多物理内存空间，就把数据往硬盘放，会导致速度变量。
 		 所以要把这个值调小，或者调为0，调为0表示没有物理内存可用了才使用swap，或者关闭swap！
 		
 	
@@ -979,7 +979,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		// To free pagecache, dentries and inodes, use:
 		echo 3 > /proc/sys/vm/drop_caches
 		
-		注意：由于写入此文件是一项非破坏性操作，并且虚拟对象不可释放，因此用户应首先运行sync（1）。
+		注意：由于写入此文件是一项非破坏性操作，并且虚拟对象不可释放，因此用户应首先运行sync(1)。
 		
 	
 6.5 /sys 目录，这个目录和硬件相关，里面是一些硬件信息，由内核管理，一般不用去管它。
@@ -1035,7 +1035,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 	内核模块命令：
 		lsmod 命令：
 			显示由核心已经装载的内核模块
-			显示的内容来自于: /proc/modules文件
+			显示的内容来自于: /proc/modules 文件
 		
 		modinfo命令：
 			功能：管理内核模块
@@ -1200,7 +1200,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 	
 7.7 systemd 特性
 	Systemd：从 CentOS 7 版本之后开始用 systemd 实现init进程，系统启动和服务器守护进程管理器，负责在系统启动或运行时，激活系统资源，服务器进程和其它进程
-	相同的硬件配置， CentOS7 启动比 CentOS6 块，因为 CentOS7 支持并行启动。
+	相同的硬件配置， CentOS7 启动比 CentOS6 快，因为 CentOS7 支持并行启动。
 	
 	centos5、6、7 启动的区别：假如有1、2、3、4个服务需要开机启动，2服务依赖于 1 服务，4服务依赖于3服务
 		centos5：1、2、3、4 顺序启动
@@ -1225,7 +1225,7 @@ systemd 核心概念：unit
 		#查看unit类型，service、socket、socket这三种类型用的最多
 		[root@centos8 ~]#systemctl -t help
 		Available unit types:
-		service									# 这些service就类似于centos6上面的服务
+		service									# 这里的service就类似于centos6上面的服务
 		socket
 		target									# 这里的target，实际上就是centos6中的runlevel
 		device
@@ -1239,14 +1239,14 @@ systemd 核心概念：unit
 		
 	Unit类型说明：	
 		service unit: 文件扩展名为.service, 用于定义系统服务
-		Socket unit: .socket, 定义进程间通信用的socket文件，也可在系统启动时，延迟启动服务，实现按需启动
+		Socket unit: 文件扩展名为.socket, 定义进程间通信用的socket文件，也可在系统启动时延迟启动服务，实现按需启动
 		Target unit: 文件扩展名为.target，用于模拟实现运行级别
-		Device unit: .device, 用于定义内核识别的设备
-		Mount unit: .mount, 定义文件系统挂载点
-		Snapshot unit: .snapshot, 管理系统快照
-		Swap unit: .swap, 用于标识swap设备
-		Automount unit: .automount，文件系统的自动挂载点
-		Path unit: .path，用于定义文件系统中的一个文件或目录使用,常用于当文件系统变化时，延迟激活服务，如：spool 目录
+		Device unit: 文件扩展名为.device, 用于定义内核识别的设备
+		Mount unit: 文件扩展名为.mount, 定义文件系统挂载点
+		Snapshot unit: 文件扩展名为.snapshot, 管理系统快照
+		Swap unit: 文件扩展名为.swap, 用于标识swap设备
+		Automount unit: 文件扩展名为.automount，文件系统的自动挂载点
+		Path unit: 文件扩展名为.path，用于定义文件系统中的一个文件或目录使用,常用于当文件系统变化时，延迟激活服务，如：spool 目录
 	
 	unit的配置文件：
 		/usr/lib/systemd/system #每个服务最主要的启动脚本设置，类似于之前的/etc/init.d/。这些脚本的后缀以Unit类型结尾，比如 xxxx.server、yyyy.socket、zzzz.target。一看就知道属于哪个Unit类型
@@ -1271,7 +1271,10 @@ systemd 核心概念：unit
 	
 	#重启：相当于service name restart
 	systemctl restart name.service
-	
+
+	#请求服务重新加载配置(不重启), 需服务支持 reload 功能  
+	systemctl reload name 
+
 	#查看状态：相当于service name status
 	systemctl status name.service
 	
@@ -1332,8 +1335,8 @@ systemd 核心概念：unit
 		static 					开机不启动，但可被另一个启用的服务激活
 		indirect 				重定向到别处
 	
-	# 重新加载某个服务的配置文件，如果新安装了一个服务，归属于 systemctl 管理，要使新服务的服务程序配置文件生效，需重新加载。
-	systemctl reload-daemon  		// 加载新的unit 配置文件 
+	# 作用于Systemd管理器本身.用来重新加载所有单元文件(如 .service、.timer)使配置变更生效. 比如修改了服务的单元文件(如启动参数、依赖关系)或新增/删除了单元文件
+	systemctl reload-daemon  		// 加载新的 unit 配置文件 
 	
 	
 示例1：centos7安装nginx
