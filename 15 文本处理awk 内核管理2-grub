@@ -447,8 +447,8 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		-rw-r--r--. 1 root root  1160 Oct  2  2020 README
 
 		// 注:"/etc/rc.d/init.d/" 有个软衔接是 "/etc/init.d" 
-        	[root@centos6 ~]#ls -dl /etc/init.d         
-        	lrwxrwxrwx. 1 root root 11 Jul 21  2023 /etc/init.d -> rc.d/init.d
+        [root@centos6 ~]#ls -dl /etc/init.d         
+        lrwxrwxrwx. 1 root root 11 Jul 21  2023 /etc/init.d -> rc.d/init.d
 
 
 		//"service 服务名 status"可以看到服务有没有启动：
