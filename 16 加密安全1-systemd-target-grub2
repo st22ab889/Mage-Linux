@@ -227,7 +227,7 @@ service unit文件格式说明：
 		[root@localhost ~]#
 	
 	
-	target units：相当于CentOS 6以及之前版本的runlevel
+	target units：相当于CentOS6以及之前版本的runlevel
 		[root@localhost ~]#ls /usr/lib/systemd/system/*.target | wc -l			# targetunit配置文件
 		59
 		[root@localhost ~]#systemctl list-unit-files --type target --all | wc -l
