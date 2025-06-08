@@ -23,19 +23,19 @@
 
 1.2 service unit文件格式
 
-	各种systemd的单元的资源文件同一放在"/lib/systemd/system/"：
+	各种systemd的单元资源文件统一放在"/usr/lib/systemd/system/"：
 
 		[root@localhost ~]#ll -d /lib
 		lrwxrwxrwx. 1 root root 7 Aug 20  2021 /lib -> usr/lib
 
 
-		[root@localhost ~]#ll /lib/systemd/system/*.service | head
+		[root@localhost ~]#ll /usr/lib/systemd/system/*.service | head
 		-rw-r--r--. 1 root root  275 Aug  9  2019 /lib/systemd/system/arp-ethers.service
 		-rw-r--r--  1 root root  222 Oct 31  2018 /lib/systemd/system/atd.service
 		-rw-r--r--. 1 root root 1384 Aug  8  2019 /lib/systemd/system/auditd.service
 		......省略
 		
-		[root@localhost ~]#ll /lib/systemd/system/*.socket | head
+		[root@localhost ~]#ll /usr/lib/systemd/system/*.socket | head
 		-rw-r--r--  1 root root  373 Nov  9  2020 /lib/systemd/system/cockpit.socket
 		-rw-r--r--. 1 root root  102 Sep 30  2020 /lib/systemd/system/dbus.socket
 		-r--r--r--. 1 root root  248 Oct  1  2020 /lib/systemd/system/dm-event.socket
@@ -64,7 +64,7 @@ service unit文件格式说明：
 		[Unit]：定义与Unit类型无关的通用选项；用于提供unit的描述信息、unit行为及依赖关系等
 		[Service]：与特定类型相关的专用选项；此处为Service类型
 		[Install]：定义由“systemctl enable”以及"systemctl disable“命令在实现服务启用或禁用时用到的一些选项
-		注意：Unit和Install是通过部分，不管是service还是socket都有这两部分
+		注意：Unit和Install是通用部分，不管是service还是socket都有这两部分
 	
 	Unit段的常用选项：
 		Description：描述信息
@@ -138,7 +138,7 @@ service unit文件格式说明：
 
 实践：自定义service文件
 	
-	[root@centos8 ~]#vim /lib/systemd/system/hello.service						// service文件要放在"/lib/systemd/system/"目录下，并且后缀要命名为".service", Ubuntu也是一样
+	[root@centos8 ~]#vim /etc/systemd/system/hello.service						// 自定义的service文件应该放在"/etc/systemd/system/"目录下，并且后缀要命名为".service", Ubuntu也是一样
 	[Unit]
 	Description=Hello World
 	[Service]
@@ -159,14 +159,14 @@ service unit文件格式说明：
 	
 	
 	上面的示例是在centos中，如果是在Ubuntu中，要注意以下问题：
-		1.  "ExecStop=/bin/kill sh" 中的kill要写绝对路径，也就是"/bin/kill", 如果写为"kill sh"服务会开启失败。
+		1. "ExecStop=/bin/kill sh" 中的kill要写绝对路径，也就是"/bin/kill", 如果写为"kill sh"服务会开启失败。
 				[ubuntu@ubuntu1804 ~]#which kill
 				/usr/bin/kill
 				[ubuntu@ubuntu1804 ~]#type kill
 				kill is a shell builtin
 			kill 既是外部命令，也是一个内部命令，Ubuntu可能在service文件中不支持使用shell内部命令
 		
-		2.  ubuntu日志文件的日志路径是"var/log/syslog"，Ubuntu不会把每个打印输出都写到日志中，只会写一次。Ubuntu的日志记录规则需要查询文档了解！
+		2. ubuntu的日志文件路径是"/var/log/syslog"，Ubuntu不会把每个打印输出都写到日志中，只会写一次。Ubuntu的日志记录规则需要查询文档了解！
 	
 	
 	
@@ -227,8 +227,8 @@ service unit文件格式说明：
 		[root@localhost ~]#
 	
 	
-	target units：相当于CentOS 6以及之前版本的runlevel ,unit配置文件：
-		[root@localhost ~]#ls /usr/lib/systemd/system/*.target | wc -l
+	target units：相当于CentOS 6以及之前版本的runlevel
+		[root@localhost ~]#ls /usr/lib/systemd/system/*.target | wc -l			# targetunit配置文件
 		59
 		[root@localhost ~]#systemctl list-unit-files --type target --all | wc -l
 		62
