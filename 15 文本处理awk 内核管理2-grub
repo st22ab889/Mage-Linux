@@ -36,7 +36,7 @@
 	
 	Linux的bootloader：
 		LILO(LInux LOader)：早期的bootloader，功能单一
-		GRUB(GRand Unified Bootloader): CentOS 5,6 GRUB 0.97: GRUB Legacy， CentOS 7 以后使用GRUB 2.02
+		GRUB(GRand Unified Bootloader): CentOS 5,6 GRUB 0.97: GRUB Legacy，CentOS 7 以后使用GRUB 2.02
 			GRUB是一个系统引导程序,分为两个阶段,第一阶段它保存在MBR中。用汇编语言编写，也就是MBR中的引导程序部分。
 			GRUB引导程序的第二阶段，通常用C语音编写!
 			
@@ -368,7 +368,7 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		方法1：救援模式
 		方法2：在系统启动的时候(选择菜单倒计时的时候)。根据提示输入"a"就可以进入，然后敲入3，就可以临时以3模式进入到系统，进入到系统后再修改"/etc/inittab"文件
 					kernel (hd0,0)/vmlinuz-2.6.32-754.e16.x86_64 root=/dev/sda2 3 
-			   注意：如果在"/boot/grub/grub.conf"文件中的kernel项配置了" quiet rhgb",就会把内核的启动过程隐藏，这个时候就看不到选择菜单的界面。
+			   注意：如果在"/boot/grub/grub.conf"文件中的kernel项配置了"quiet rhgb",就会把内核的启动过程隐藏，这个时候就看不到选择菜单的界面。
 					 解决方法是在系统启动的时候，在进度条阶段以及进度条之后的倒计时阶段，按任意键就可以显示出选择菜单的界面，这个时候再输入"a", 再临时修改启动模式！
 
 
@@ -376,9 +376,6 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		[root@centos6 ~]#cat /etc/init/rcS.conf
 		......省略
 		exec /etc/rc.d/rc/sysinit  		# 关键代码，这就是系统的第一个初始化脚本"/etc/rc.d/rc/sysinit"
-		......省略
-
-		[root@centos6 ~]#cat /etc/init/rcS.conf
 		......省略
 		
 		"/etc/rc.d/rc/sysinit"这个初始化脚本实现了以下功能：
@@ -404,13 +401,13 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		
 		start on runlevel [0123456]
 		
-		stop on runlevel [!$RUNLEVEL]			# 这里引用的的就是"/etc/inittab"文件中定义的级别
+		stop on runlevel [!$RUNLEVEL]			# 这里引用的就是"/etc/inittab"文件中定义的级别
 		
 		task
 		
 		export RUNLEVEL
 		console output
-		exec /etc/rc.d/rc $RUNLEVEL				# 这里引用的的就是"/etc/inittab"文件中定义的级别
+		exec /etc/rc.d/rc $RUNLEVEL				# 这里引用的就是"/etc/inittab"文件中定义的级别
 		
 		[root@centos6 ~]#cat /etc/rc.d/rc
 		......省略
@@ -435,21 +432,25 @@ centos6以及之前的版本破解root口令：破解操作必须在机器面前
 		drwxr-xr-x. 10 root root 127 Aug 20  2021 /etc/rc.d
 		
 		
-		// 可以发现下面的文件都是软连接，都指向了"/init.d"目录，这个目录下面都是服务脚本
+		// 可以发现下面的文件都是软连接，都指向了"/etc/rc.d/init.d"目录，这个目录下面都是服务脚本
 		// 软连接的名称分为K开头和S开头，意思是启动的时候停止K开头的服务，启动S开头的服务，这个逻辑"/etc/rc.d/rc"这个脚本中实现
 		[root@centos6 ~]#ls -l /etc/rc.d/rc3.d/
 		total 0
 		lrwxrwxrwx. 1 root root 20 Aug 20  2021 K50netconsole -> ../init.d/netconsole
 		lrwxrwxrwx. 1 root root 17 Aug 20  2021 S10network -> ../init.d/network
 		
-		[root@centos6 ~]#ll /etc/init.d/
+		[root@centos6 ~]#ll /etc/rc.d/init.d
 		total 40
 		-rw-r--r--. 1 root root 18281 May 22  2020 functions
 		-rwxr-xr-x. 1 root root  4569 May 22  2020 netconsole
 		-rwxr-xr-x. 1 root root  7928 May 22  2020 network
 		-rw-r--r--. 1 root root  1160 Oct  2  2020 README
-		
-		
+
+		// 注:"/etc/rc.d/init.d/" 有个软衔接是 "/etc/init.d" 
+        	[root@centos6 ~]#ls -dl /etc/init.d         
+        	lrwxrwxrwx. 1 root root 11 Jul 21  2023 /etc/init.d -> rc.d/init.d
+
+
 		//"service 服务名 status"可以看到服务有没有启动：
 		service atd status				# 等价于  /etc/init.d/atd status
 		service httpd status			# 等价于  /etc/init.d/httpd status
