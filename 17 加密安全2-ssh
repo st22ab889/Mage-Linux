@@ -185,11 +185,11 @@ SSH的known_hosts文件：
 	在windows中，图形界面和操作系统是绑定在一起的，在linux里，图形界面并不属于操作系统的固定组件，只是一个软件而已！
 	
 	在linux里要实现图形界面，需要装 X server 组件，X server 组件使用的是 X protocol，X server 组件需要配合 X client，X client 就是平时用的图形化客户端，比如 firefox。
-	X client 其实其实利用 X protocol 把指令和数据传递给 X server，X server再连接显卡，然后显示把图形渲染出来。
+	X client 其实利用 X protocol 把指令和数据传递给 X server，X server再连接显卡，然后显示把图形渲染出来。
 	
 	X protocol 可以基于tcp/ip协议，也就是说 X server 和 X client 可以分别属于不同的主机！当前使用的 X protocol 版本是 X11！
 	X server 并不是在linux上独有，X server也有window版本，也就是说在linux上运行 X client，利用 X protocol 发给windows上的 X server，就可以在windows上显示linux的图形界面！
-	windows上都可以实现 X server 有 XManager、MobaXterm等！
+	windows上可以用的 X server 有 XManager、MobaXterm 等等！
 	
 	使用场景：Linux中有些工具安装的时候本身就是图形界面安装，比如 oracle 数据库
 	
@@ -215,7 +215,7 @@ scp命令：
 		-q 静默模式
 		-P PORT 指明remote host的监听的端口
 	
-	// 将 test 目录拷贝到目标主机的data目录下，-r 拷贝文件见
+	// 将 test 目录拷贝到目标主机的data目录下，-r 拷贝文件夹
 	scp  -r test/ 10.0.0.10:/data 
 
 	
@@ -247,7 +247,7 @@ rsync命令：此工具来自于rsync包
 	
 	
 sftp命令：
-	交互式文件传输工具，用法和传统的ftp工具相似，利用ssh服务实现安全的文件上传和下载使用ls cd mkdir rmdir pwd get put等指令，可用？或help获取帮助信息
+	交互式文件传输工具，用法和传统的ftp工具相似，利用ssh服务实现安全的文件上传和下载，使用ls cd mkdir rmdir pwd get put等指令，可用 ？或help获取帮助信息
 	sftp 是交互式命令工作，用的不多，了解！
 	
 	[root@localhost ~]#sftp 192.168.32.101
@@ -362,7 +362,7 @@ sftp命令：
 	
 	说明：
 		只要是基于ssh验证，都可以通过这种方式 远程运行命令 和 传输文件到远程主机，安全又方便
-		企业中有大量服务器，都会把基于key的验证配置号！
+		企业中有大量服务器，都会把基于key的验证配置好！
 	
 	
 实践2：假如有100台机器，如何把客户端的公钥拷贝到100台机器上？
@@ -374,7 +374,7 @@ sftp命令：
 	sshpass 格式：
 		sshpass [option] command parameters
 		常见选项：
-			-p password #后跟密码它允许你用 -p 参数指定明文密码，然后直接登录远程服务器
+			-p password #指定明文密码，然后直接登录远程服务器
 			-f filename #后跟保存密码的文件名，密码是文件内容的第一行
 			-e 			#将环境变量SSHPASS作为密码
 	
@@ -409,7 +409,7 @@ sftp命令：
 		rsync -av /root/.ssh 192.168.32.112:/root		// 把这个目录同步到 192.168.32.112 主机
 		
 	原理：
-		所有主机都公用一个公钥私钥对，并且自己信任自己，这样就实现了多台主机之间的彼此互通！	
+		所有主机都共用一个公钥私钥对，并且自己信任自己，这样就实现了多台主机之间的彼此互通！	
 		缺点是有些不安全，一旦有人拿到root密码，就可以操作集群中的任何主机
 		
 	解决不安全的问题：
@@ -464,7 +464,7 @@ SSH 本地端口转发
 			-N 不打开远程shell，处于等待状态
 			-g 启用网关功能
 		    -L 打开一个本地端口。您发送到该端口的所有内容均通过ssh连接放置，并通过服务器保留。相当于 正向代理！
-			   例如，ssh -L 4444:google.com:80如果http://localhost:4444在浏览器中打开，则实际上会看到Google的页面。
+			   例如，ssh -L 4444:google.com:80 $sshserver ，如果http://localhost:4444在浏览器中打开，则实际上会看到Google的页面。
 			-R 表示 反向代理
 			-D 表示 socks5 代理
 	
@@ -567,9 +567,7 @@ SSH动态端口转发
 	LoginGraceTime 2m
 	PermitRootLogin yes 			#ubuntu默认不允许root远程ssh登录
 	StrictModes yes 				#检查.ssh/文件的所有者，权限等
-	MaxAuthTries 6 					#pecifies the maximum number of authentication
-	attempts permitted per connection. Once the number of failures reaches half this
-	value, additional failures are logged. The default is 6.
+	MaxAuthTries 6 					#指定每个 SSH 连接允许的最大认证失败次数.默认值为6.当失败次数达到该值的一半时，后续失败会被记录到日志中.达到最大值后，服务端会断开该连接，防止暴力破解
 	MaxSessions 10 					#同一个连接最大会话
 	PubkeyAuthentication yes 		#基于key验证，比密码更安全
 	PermitEmptyPasswords no 		#空密码连接
