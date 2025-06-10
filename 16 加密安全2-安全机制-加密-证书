@@ -92,7 +92,7 @@
 			DSA只能做数字签名(来源确认)，不能做数据加密
 		ECC（Elliptic Curves Cryptography）：椭圆曲线密码编码学，比RSA加密算法使用更小的密钥，提供相当的或更高等级的安全
 	说明：
-		公钥和私钥其实就是一个文件，里面的内容经过base64加密！
+		公钥和私钥其实就是一个文件，里面的内容经过base64编码！
 		通讯双方各有一把公钥和一把私钥，公钥公开，私钥私有。所以通讯双方共有四把钥匙！
 		公钥加密，必须要用对应的私钥解密；私钥加密，必须要用对应的公钥解密；公钥和私钥成对使用！
 		A给B发消息：
@@ -391,7 +391,7 @@ PKI的标准可分为两个部分：一类用于定义PKI，而另一类用于PK
 
 
 5.6 安全协议 SSL/TLS
-	SSL后面被改名为TLS，所有 SSL 和TLS是一个东西！
+	SSL后面被改名为TLS，所以 SSL 和 TLS 是一个东西！
 	SSL/TLS协议是个集成产品，由几个不同的小协议组成，实际加密过程很复杂！
 	SSL/TLS协议层位于应用层和传输层之间！
 	SSL/TLS是个通用协议，具有通用功能，通常和应用层协议组合使用！
@@ -683,7 +683,7 @@ OpenSSL包括三个组件：
 	......省略
 	
 	
-	// 加密经过加密的私钥
+	// 这一步相当于去除私钥的密码.然后从 app.key.key 中提取公钥不用再输入密码
 	[root@localhost ~]#openssl rsa -in app.key -out app.key.key
 	Enter pass phrase for app.key:					# 输入密码才能解密	
 	writing RSA key					
@@ -786,7 +786,7 @@ OpenSSL包括三个组件：
 	# For the CA policy	  证书的匹配策略，作为CA来讲，将来给用户颁发证书，需要指定CA机构的相关信息  
 	// 可以看到下面有三项match，意思是将来给CA和用户颁发证书，国家、州或省份、组织都要保持一致，不一样会拒绝颁发证书！
 	// 因为是私有CA(私有就是在一个区域内部)，它会认为CA所在的国家和使用证书的用户所在的国家应该是同一个国家！ 
-	// 默认用的私有CA这种策略，只要是match的项，都必须保持一致，非match项，可以不用保持一致！
+	// 私有CA默认用 policy_match 这种策略，只要是match的项，都必须保持一致，非match项，可以不用保持一致！
 	[ policy_match ]
 	countryName             = match			//	CA所在的国家
 	stateOrProvinceName     = match			//	州或省份
