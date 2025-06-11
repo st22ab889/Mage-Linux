@@ -134,14 +134,14 @@
 	%wheel  ALL=(ALL)       ALL							# 如果以"%"开头，表示是对组授权。注意：系统中默认就有 wheel 这个组
 
 	## Same thing without a password
-	# %wheel        ALL=(ALL)       NOPASSWD: AL		# NOPASSWD 表示使用sudo的时候不用输入密码，好处是在脚本中使用sudo，不会被要求输入密码
+	# %wheel        ALL=(ALL)       NOPASSWD: ALL		# NOPASSWD 表示使用sudo的时候不用输入密码，好处是在脚本中使用sudo，不会被要求输入密码
 	......省略
 	
 	// 用户切换为 xiaoming
 	
 	// 第一次使用sudo要输入密码，然后在连续的时间段内不用再输第二次，时间间隔大概五分钟！
-	[xiaoming@localhost ~]#sudo mount /dev/cdrom /mnt		#命令运行失败，因为少了一个"/", 一定要和 sudoers 文件中定义的规则完全匹配
-	[xiaoming@localhost ~]#sudo mount /dev/cdrom /mnt		# 命名能运行成功
+	[xiaoming@localhost ~]#sudo mount /dev/cdrom /mnt		# 命令运行失败，因为少了一个"/", 一定要和 sudoers 文件中定义的规则完全匹配
+	[xiaoming@localhost ~]#sudo mount /dev/cdrom /mnt		# 命令能运行成功
 	
 	说明：
 		如果 sudoers 文件中的规则为"/usr/bin/mount /dev/cdrom", 表示用户可以把"/dev/cdrom"目录挂载到任意目录！
@@ -168,7 +168,7 @@
 		xiaoming:x:0:1001::/home/xiaoming:/bin/bash
 		......
 		
-		// 退出后再用root登录，可以看到提示符已经变为"$"(普通用户的提示符)，没有权限操作只有管理员才能操作的文件
+		// 退出后再用root登录，可以看到提示符已经变为"$"(普通用户的提示符)，没有权限操作，只有管理员才能操作这个文件
 		// 但是在"/etc/sudoers"中root用户有被授权为管理员权限
 		sudo -u xiaoming cat /etc/shadown		# -u 指定管理员，不指定默认为root。但现在xiaoming是管理员，所以要显示指定
 		
@@ -197,9 +197,9 @@
 实践5：在命令中使用通配符
 	情景1：
 		cat /etc/sudoers.d/test
-		wang ALL=(ALL) /bin/cat /var/log/messages*				#这种写法有漏洞
+		wang ALL=(ALL) /bin/cat /var/log/messages*				# 这种写法有漏洞
 		
-		sudo cat /var/log/messages /etc/shadow					#被授权的用户可以通过这种方式访问被限制的文件
+		sudo cat /var/log/messages /etc/shadow					# 被授权的用户可以通过这种方式访问被限制的文件
 		
 		//在官方文档中对这种情况有说明
 		[root@centos8 ~]#man sudoers
@@ -229,7 +229,7 @@
 	uid=1000(xiaoming) gid=1000(xiaoming) groups=1000(wang),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),108(lxd),113(lpadmin),114(sambashare)
 
 
-实践8：修改ubuntu的visudo的默认编辑器，ubuntu上visudo的默认编辑器时nano
+实践8：修改ubuntu的visudo的默认编辑器，ubuntu上visudo的默认编辑器是nano
 	root@ubuntu1804:~# export EDITOR=vim	   # 把"export EDITOR=vim"写到"/root/.profile"文件中，可以永久生效，修改后使用". .profile"命令使配置马上生效
 	root@ubuntu1804:~# visudo
 	
@@ -243,7 +243,7 @@
 	// 查看被授权了哪些操作
 	sudo -l
 	
-	// 默认时代表root
+	// 默认是代表root
 	sudo cat /etc/shadow		// 等价于 sudo -u root cat /etc/shadow
 	
 	//  如果是代表非root用户，要用 -u 选项显示指明 
