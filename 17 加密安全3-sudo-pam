@@ -282,7 +282,7 @@
 		模块比较简单，就不会提供专门的配置文件，如果有参数，参数直接跟在模块名称的后面！
 	应用程序调用PAM模块的配置文件
 		主配置文件：/etc/pam.conf，默认不存在，一般不使用主配置
-		为每种应用模块提供一个专用的配置文件：/etc/pam.d/APP_NAME 。 注意：如/etc/pam.d存在，/etc/pam.conf将失效
+		为每种应用模块提供一个专用的配置文件：/etc/pam.d/APP_NAME 。 注意：如 /etc/pam.d 存在，/etc/pam.conf 将失效
 	
 	// 查看pam模块，lib64代表64位，从centos7开始就没有32位系统了	
 	[root@localhost ~]#ll /lib64/security/
@@ -336,16 +336,15 @@
 	
 	通用配置文件/etc/pam.conf格式,此格式不使用：
 		application type control module-path arguments
-	
+		格式字段说明：
+			application：指服务名，如：telnet、login、ftp等，服务名字“OTHER”代表所有没有在该文件中明确配置的其它服务
 	专用配置文件 /etc/pam.d/ 格式
 		type control module-path arguments
-	
-	格式字段说明：
-		application：指服务名，如：telnet、login、ftp等，服务名字“OTHER”代表所有没有在该文件中明确配置的其它服务
-		type：指模块类型，即功能
-		control ：PAM库该如何处理与该服务相关的PAM模块的成功或失败情况，一个关健词实现
-		module-path： 用来指明本模块对应的程序文件的路径名
-		Arguments： 用来传递给该模块的参数
+		格式字段说明：
+			type：指模块类型，即功能
+			control ：PAM库该如何处理与该服务相关的PAM模块的成功或失败情况，一个关健词实现
+			module-path：用来指明PAM模块文件的路径名
+			Arguments： 用来传递给该模块的参数
 	
 	
 	模块类型（module-type）	
@@ -354,7 +353,7 @@
 				限制用户的位置(例如：root用户只能从控制台登录)
 		Password 用户修改密码时密码复杂度检查机制等功能
 		Session 用户会话期间的控制，如：最多打开的文件数，最多的进程数等
-		-type 表示因为缺失而不能加载的模块将不记录到系统日志,对于那些不总是安装在系统上的模块有用，写法如：-Auth、-Account、-Password、-Session	
+		-type 表示因为缺失而不能加载的模块将不记录到系统日志,对于那些不总是安装在系统上的有用模块，写法如：-Auth、-Account、-Password、-Session	
 			  如果这个模块没有了或安装的时候没有这个模块文件，-type	表示没有这个模块也不报错，也不记录日志，也就是说模块可有可无！
 
 	Control:
@@ -370,15 +369,15 @@
 	module-path
 		模块文件所在绝对路径：
 		模块文件所在相对路径：/lib64/security目录下的模块可使用相对路径，如：pam_shells.so、pam_limits.so
-		有些模块有自已的专有配置文件，在/etc/security/*.conf目 录下
+		有些模块有自已的专有配置文件，在 /etc/security/*.conf 目录下
 		
 	Arguments
-		debug ：该模块应当用syslog( )将调试信息写入到系统日志文件中
-		no_warn ：表明该模块不应把警告信息发送给应用程序
-		use_first_pass ：该模块不能提示用户输入密码，只能从前一个模块得到输入密码
-		try_first_pass ：该模块首先用前一个模块从用户得到密码，如果该密码验证不通过，再提示用户输入新密码
-		use_mapped_pass 该模块不能提示用户输入密码，而是使用映射过的密码
-		expose_account 允许该模块显示用户的帐号名等信息，一般只能在安全的环境下使用，因为泄漏用户名会对安全造成一定程度的威胁	
+		debug：该模块应当用syslog( )将调试信息写入到系统日志文件中
+		no_warn：表明该模块不应把警告信息发送给应用程序
+		use_first_pass：该模块不能提示用户输入密码，只能从前一个模块得到输入密码
+		try_first_pass：该模块首先用前一个模块从用户得到密码，如果该密码验证不通过，再提示用户输入新密码
+		use_mapped_pass：该模块不能提示用户输入密码，而是使用映射过的密码
+		expose_account：允许该模块显示用户的帐号名等信息，一般只能在安全的环境下使用，因为泄漏用户名会对安全造成一定程度的威胁	
 	
 	说明：
 		注意：修改PAM配置文件将马上生效(退出重新登录就生效)
@@ -448,10 +447,10 @@
 	
 7.5 常用的PAM模块 - pam_securetty.so模块
 	功能：只允许root用户在/etc/securetty列出的安全终端上登陆
-		  注：centos8默认没有"/etc/securetty"这个文件，centos7有
+		  注：Centos8默认没有"/etc/securetty"这个文件，Centos7有
 	案例：CentOS 7 允许root在telnet登陆，CentOS7、8都需要安装telnet
 		
-	// centos7 上 telnet 默认不允许root直接登录，就是因为有 securetty.so 模块校验
+	// Centos7 上 telnet 默认不允许root直接登录，就是因为有 pam_securetty.so 模块校验
 	[root@localhost ~]#grep pam_securetty /etc/pam.d/*
 	/etc/pam.d/login:auth [user_unknown=ignore success=ok ignore=ignore default=bad] pam_securetty.so
 	/etc/pam.d/remote:auth       required     pam_securetty.so     
@@ -459,7 +458,7 @@
 	// remote文件的文件名，虽然没有和telnet这个应用程序的名称保持一致，但是 telnet 仍然内部使用了 remote 的配置
 	[root@localhost ~]#cat /etc/pam.d/remote	
 	#%PAM-1.0
-	auth       required     pam_securetty.so		# centos8 的 remote 文件默认没有这项配置
+	auth       required     pam_securetty.so		# Centos8 的 remote 文件默认没有这项配置
 	auth       substack     password-auth
 	auth       include      postlogin
 	......省略
