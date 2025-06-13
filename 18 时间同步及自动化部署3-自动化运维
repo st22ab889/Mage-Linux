@@ -16,11 +16,9 @@
 	在系统光盘的isolinux目录下有和安装相关的文件
 		boot.cat: 相当于grub的第一阶段
 		isolinux.bin：光盘引导程序，在mkisofs的选项中需要明确给出文件路径，这个文件属于SYSLINUX项目
-		isolinux.cfg：启动菜单的配置文件，当光盘启动后（即运行isolinux.bin），会自动去找
+		isolinux.cfg：启动菜单的配置文件，当光盘启动后（即运行isolinux.bin），会自动去找 isolinux.cfg 文件
 					  这个文件很重要，可以参考这个文件自定义启动菜单，比如：光盘启动、网络启动、U盘启动、图形界面启动等
-		isolinux.cfg文件
-		vesamenu.c32：是光盘启动后的启动菜单图形界面，也属于SYSLINUX项目，menu.c32提供纯文的菜单
-					  在centos8中有3个c32文件，缺一不可
+		vesamenu.c32：是光盘启动后的启动菜单图形界面，也属于SYSLINUX项目，menu.c32提供纯文的菜单。在centos8中有3个c32文件，缺一不可
 		memtest：内存检测程序
 		splash.png：光盘启动菜单界面的背景图
 		vmlinuz：是内核映像
@@ -370,11 +368,14 @@
 	
 	DHCP工作原理：
 		DHCP( Dynamic Host Configuration Protocol，动态主机配置协议): 作用是给主机分配地址
-		UDP协议，C/S模式，dhcp server：67/udp,dhcpv4 client :68/udp，dhcpv6 client：546/udp
+		UDP协议，C/S模式:
+			dhcp server：67/udp,dhcpv4 
+			client :68/udp，dhcpv6 
+			client：546/udp
 		DHCP申请地址的过程实际上是基于广播实现！
 		DHCP服务端监听UDP 67 端口，如果主机设置为自动获取IP，就会开启DHCP客户端，监听 UDP 68 端口！
 		
-		HCP客户端监听UDP 68 端口
+		DHCP客户端监听UDP 68 端口
 
 	主要用途：
 		用于内部网络和网络服务供应商自动分配IP地址给用户
@@ -382,7 +383,7 @@
 		自动化安装系统
 		解决IPV4资源不足问题
 	
-	DHCP服务续租: DHCP把IP分给客户端用，是由时间限制的，所以客户端需要续租
+	DHCP服务续租: DHCP把IP分给客户端用，是有时间限制的，所以客户端需要续租
 		(1) 50% ：租赁时间达到50%时来续租，刚向DHCP服务器发向新的DHCPREQUEST请求。如果dhcp服务没有拒绝的理由，则回应DHCPACK信息。
 			当DHCP客户端收到该应答信息后，就重新开始新的租用周期
 		(2) 87.5%：如果之前DHCP Server没有回应续租请求，等到租约期的7/8时，主机会再发送一次广播请求
@@ -407,7 +408,7 @@
 		DHCP服务的实现软件：
 			dhcp（CentOS 7 之前版本） 或 dhcp-server（CentOS 8 中的包名）
 			dnsmasq：小型服务软件，可以提供dhcp和dns功能
-		注意：实现DHCP服务前，先将网络已有DHCP服务，如：vmware中的DHCP关闭，访止冲突DHCP服务的实现软件：
+		注意：实现DHCP服务前，先将网络已有DHCP服务，如：vmware中的DHCP关闭，访止冲突。
 	
 	
 5.2 在centos8上使用dhcp包实现DHCP服务
@@ -514,7 +515,7 @@
 6 基于PXE实现自动化的系统安装
   
 	PXE介绍：
-		PXE（Preboot Excution Environment，预启动执行环境）： 是由Intel公司研发，基于Client/Server的网络模式，	
+		PXE（Preboot Excution Environment，预启动执行环境）：是由Intel公司研发，基于Client/Server的网络模式。
 		PXE支持远程主机通过网络从远端服务器下载映像，并由此支持通过网络启动操作系统，可以引导和安装Windows，linux等多种操作系统
 	
 	PXE网卡：
@@ -602,7 +603,7 @@
 7.1安装Cobbler及其相关的服务和组件：
 		
 	Cobbler所依赖的服务包括HTTPD,TFTP,DHCP等，如果有web界面要求，还需要安装相关的组件
-		[root@centos7 ~]#yum -y install dhcp cobbler cobbler-web pykickstart	#CentOS8 目前还没有提供Cobbler相关包，因为centos8上没有提供Python2
+		[root@centos7 ~]#yum -y install dhcp cobbler cobbler-web pykickstart	# CentOS8 目前还没有提供Cobbler相关包，因为centos8上没有提供Python2
 		[root@centos7 ~]#systemctl enable --now cobblerd httpd tftp dhcpd
 	
 	相关包说明：
