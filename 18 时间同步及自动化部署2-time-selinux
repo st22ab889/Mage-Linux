@@ -3,8 +3,7 @@
   工作中，每个服务器的时间要求一致，并且和互联网时间的服务器同步，不一致会造成很多问题，比如证书是有有效期的
 	
 公共NTP(Network Time Protocol)服务：
-	pool.ntp.org：项目是一个提供可靠易用的NTP服务的虚拟集群cn.pool.ntp.org，0-
-		3.cn.pool.ntp.org
+	pool.ntp.org：项目是一个提供可靠易用的NTP服务的虚拟集群cn.pool.ntp.org，0-3.cn.pool.ntp.org
 	
 	阿里云公共NTP服务器
 		Unix/linux类：ntp.aliyun.com，ntp[1-7].aliyun.com
@@ -112,7 +111,7 @@
 	......省略
 	
 	
-	// centos7、8系统安装时已自带
+	// Centos7、8系统安装时已自带
 	[root@localhost ~]#rpm -qi chrony
 	Name        : chrony
 	Version     : 3.4
@@ -283,7 +282,7 @@
 
 2.4 (了解)SELinux(Security-Enhanced Linux)：和安全相关的技术
 	SELinux是美国国家安全局(NSA=The National Security Agency)和SCC(Secure Computing Corporation)开发的 Linux的一个强制访问控制的安全模块。
-	2000年以GNU GPL发布，Linux内核2.6版本后集成在内核中.红帽和centos默认安装Linux，其它系统默认不安装selinux，比如ubuntu。
+	2000年以GNU GPL发布，Linux内核2.6版本后集成在内核中. 红帽和Centos默认安装SELinux，其它系统默认不安装SELinux，比如ubuntu。
 	
 	关闭SELinux用的是DAC技术，开启SELinux用的是MAC技术：
 		DAC：Discretionary Access Control 自由访问控制，所有进程不受约束，进程无束缚
@@ -330,7 +329,7 @@
 	#     mls - Multi Level Security protection.
 	SELINUXTYPE=targeted
 	
-	[root@localhost ~]#reboot				# 开启关闭Linux后都要重启才会生效
+	[root@localhost ~]#reboot				# 开启关闭SELinux后都要重启才会生效
 	
 	
 	把策略改为enforcing后，在重启的时候会自动扫描硬盘上所有的文件，发现没有标签的文件会自动贴上标签，所以在重启的时候会出现等待的过程。
