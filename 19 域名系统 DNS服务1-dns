@@ -479,7 +479,7 @@
 	options {
 			listen-on port 53     { any; };
 			listen-on-v6 port 53 { ::1; };
-			directory       "/var/named			// 这里定义了目录路径，dns相关的配置文件都是以这个目录为相对目录
+			directory       "/var/named";			// 这里定义了目录路径，dns相关的配置文件都是以这个目录为相对目录
 			......省略
 			allow-query     { any; };
 	};	
@@ -704,7 +704,7 @@
 	options {
         listen-on port 53 { any; };				// 这里改为 any，代表允许监听任何IP地址。或者直接注释或删除此行
 		allow-query     { any; };				// 这里改为 any，代表允许任何主机查询。或者直接注释或删除此行
-		directory       "/var/named				// 这里定义了目录路径，dns相关的配置文件都是以这个目录为相对目录
+		directory       "/var/named";				// 这里定义了目录路径，dns相关的配置文件都是以这个目录为相对目录
 		// 下面两项是和dns安全相关加密的项，一般不启动加密，启动加密，有些操作可能会失败
 		dnssec-enable no;
 		dnssec-validation no;		
@@ -763,7 +763,7 @@
 	options {
         listen-on port 53 { any; };				
 		allow-query     { any; };				
-		directory       "/var/named
+		directory       "/var/named";
 		allow-transfer {192.168.32.101;};		// 允许同步数据的服务器，这里就可以指定从DNS服务器的IP
 		// 下面两项是和dns安全相关加密的项，一般不启动加密，启动加密，有些操作可能会失败
 		dnssec-enable no;
@@ -778,7 +778,7 @@
 	options {
         listen-on port 53 { any; };				
 		allow-query     { any; };				
-		directory       "/var/named
+		directory       "/var/named";
 		allow-transfer {none;};					// 不允许任何人抓取数据。注意：抓取数据和查询DNS是两个概念，步允许抓取数据，不影响dns查询
 		dnssec-enable no;
 		dnssec-validation no;
@@ -847,7 +847,7 @@
 	options {
         listen-on port 53 { any; };				
 		allow-query     { any; };				
-		directory       "/var/named
+		directory       "/var/named";
 		allow-transfer {none;};			# 如果子域有从DNS服务器，这里填从DNS服务器的地址
 		dnssec-enable no;
 		dnssec-validation no;
@@ -920,7 +920,7 @@
 		options {
 			listen-on port 53 { any; };				
 			allow-query     { any; };				
-			directory       "/var/named
+			directory       "/var/named";
 			allow-transfer {none;};			# 如果子域有从DNS服务器，这里填从DNS服务器的地址
 			dnssec-enable no;				# 要设置为no,防止转发失败
 			dnssec-validation no;			# 要设置为no,防止转发失败
