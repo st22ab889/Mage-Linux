@@ -1098,7 +1098,7 @@
 		Always succeeds.
 
 
-(2) Ubuntu 上使用 Netplan 配置网络_
+(2) Ubuntu 上使用 Netplan 配置网络
 	
 	netplan apply		# 重启网络
 
