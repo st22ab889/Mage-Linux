@@ -88,7 +88,7 @@
 		[root@localhost ~]#	
 		
 		说明：
-			centos可以直接通过改这个文件的host字段实现优先级的改变；ubuntu 除了改这个地方，还需要改其它地方！
+			Centos可以直接通过改这个文件的host字段实现优先级的改变；ubuntu 除了改这个地方，还需要改其它地方！
 		
 		
 	完整的查询请求经过的流程：
@@ -497,7 +497,7 @@
 	[root@localhost named]#cd /var/named/; ll named.localhost
 	-rw-r----- 1 root named 152 Jun 21  2007 named.localhost
 	
-	// 拷贝的时候注意权限  可以直接拷贝一份进行修改
+	// 拷贝的时候注意权限,可以直接拷贝一份进行修改
 	[root@localhost named]#cp -p named.localhost company.org.zone
 	
 	[root@localhost named]#ll company.org.zone
@@ -506,7 +506,7 @@
 	
 	// 域名解析数据库是由资源记录组成(Resource Record),简称RR
 	[root@centos8 named]#vim  /var/named/company.org.zone
-	$TTL 1D											# 表示为以下所有的资源记录统一定义了TTl，这样在每行中就可以省略TTL定义		
+	$TTL 1D											# 表示为以下所有的资源记录统一定义了TTL，这样在每行中就可以省略TTL定义		
 	@	IN SOA	master  admin.company.org.   (		# SOA类型的"资源记录"相当于描述了区域数据库的元数据。这里的master要和A记录成对使用，表示当前这个域的DNS服务器是哪个
 				0		; serial	# 表示这个解析数据库的版本号，每次修改这个数据库后都要修改版本号，修改后域名解析数据库才会更新
 				1D		; refresh	# 如果是主从DNS，表示每隔多长时间，从DNS服务器同步主DNS的数据
@@ -525,7 +525,7 @@
 	
 	
 	说明1:
-		资源记录定义d格式为：
+		资源记录定义的格式为：
 			name [TTL] IN RR_type value
 	
 	说明2:
@@ -617,7 +617,7 @@
 4.1 反向域名的层级
 	
 	比如IP：192.168.32.100
-		IP有由网络名和主机名，网络名相当于网址中的域名，主机名相当于网址中的主机名!
+		IP有网络名和主机名，网络名相当于网址中的域名，主机名相当于网址中的主机名!
 		同样根域为.，顶级域名为 arpa，二级域名为 in-addr，这些都是固定的!
 		依次将IP中的网络段反写，因为解析是以网段为单位,所以不用写主机名！
 		最终IP的反向写法形式为：
@@ -627,9 +627,9 @@
 4.2 配置文件写法，以 192.168.32.100 为例：
 	
 	[root@localhost ~]#cat /etc/named.rfc1912.zones
-	zone "32.168.192.in-addr.arpa" IN {			// zone后面的跟的名字就是负责要解析的域名， IN 可以省略
+	zone "32.168.192.in-addr.arpa" IN {			// 解析 192.168.32.0/24 网段内的 IP 到域名
 		type master;
-		file "192.168.32.zone";		// 如果访问的域名是"company.org"就从"company.org.zone"这个文件里面查询IP，这个文件在"/var/named"目录下;
+		file "192.168.32.zone";	
 	}
 	......省略
 	
