@@ -9,7 +9,7 @@
 	
 	扩展模块的查看帮助 ：man iptables-extensions
 	
-	// iptables 包中包含了很多iso文件，每一个so文件都是一个扩展的功能模块，要使用扩展功能模块，要指定模块名，并且要添加模块支持的选项
+	// iptables 包中包含了很多so文件，每一个so文件都是一个扩展的功能模块，要使用扩展功能模块，要指定模块名，并且要添加模块支持的选项
 	[root@localhost ~]#rpm -ql iptables | grep .so
 	/usr/lib64/xtables/libxt_sctp.so
 	/usr/lib64/xtables/libxt_set.so
@@ -104,13 +104,13 @@
 
 4.1 multiport扩展：以离散方式定义多端口匹配,最多指定15个端口
 
-	#指定多个源端口，端口不能指定太多，有个数要求
+	# 指定多个源端口，端口不能指定太多，有个数要求
 	[!] --source-ports,--sports port[,port|,port:port]...
 	
 	# 指定多个目标端口，":"就是支持连续范围，从多少到多少
 	[!] --destination-ports,--dports port[,port|,port:port]...
 	
-	#多个源或目标端
+	# 多个源或目标端
 	[!] --ports port[,port|,port:port]...
 
 	// 拒绝"192.168.32.101"主机访问本机80和6379端口
@@ -174,7 +174,7 @@
 	[!] --monthdays day[,day...] 				# 每个月的几号
 	[!] --weekdays day[,day...] 				# 星期几，1 – 7 分别表示星期一到星期日
 	--kerneltz									# 内核时区（当地时间），不建议使用，CentOS 7版本以上系统默认为 UTC
-		注意： centos6 不支持kerneltz ，--localtz指定本地时区(默认)
+		注意：Centos6 不支持kerneltz，--localtz 指定本地时区(默认)
 	
 	
 	// 每天的 22:00 到 23:00 不允许访问本机(注意：这个时间是UTC时间)。在centos8上运行这个命令会提示找不到time模块
@@ -206,7 +206,7 @@
 	iptables -I INPUT 2 -p icmp -j REJECT				# 配合上面的规则一起使用，表示不满足上面的规则就直接拒绝
 	
 
-4.8 (很重要)state扩展，state 扩展模块，可以根据”连接追踪机制“去检查连接的状态，较耗资源
+4.8 (很重要)state扩展，state 扩展模块，可以根据"连接追踪机制"去检查连接的状态，较耗资源
 	conntrack机制：追踪本机上的请求和响应之间的关系
 	注意：这里的状态和TCP协议的状态没有关系，这里仅仅表示网络的通讯状态，和TCP、UDP、ICMP没有任何关系！
 	
@@ -217,18 +217,18 @@
 		NEW：新发出请求；连接追踪信息库中不存在此连接的相关信息条目，因此，将其识别为第一次发出的请求。
 			谁访问谁都可以，不管用什么协议，第一次的、单向的一个包发送到对方主机就算NEW！
 		ESTABLISHED：NEW状态之后，连接追踪信息库中为其建立的条目失效之前期间内所进行的通信状态。
-			除了第一个包，后面的包都算 ESTABLISHED。比如A发给B是第一个包，A再次给B发个包 或 B回给A一个包，这个包就算ESTABLISHED
-		RELATED：新发起的但与已有连接相关联的连接，如：ftp协议中的数据连接与命令连接之间的关系
-			ftp会自动打开和某个端口相关的其它端口，这就是相关的连接
-		INVALID：无效的连接，如flag标记不正确
-			比如TCP协议中的6个标记位全为1或全为0都是错误的包
-		UNTRACKED：未进行追踪的连接，如：raw表中关闭追踪
+			除了第一个包，后面的包都算 ESTABLISHED。比如A发给B是第一个包，A再次给B发个包 或 B回给A一个包，这个包就算ESTABLISHED。
+		RELATED：新发起的但与已有连接相关联的连接，如：ftp协议中的数据连接与命令连接之间的关系。
+			ftp会自动打开和某个端口相关的其它端口，这就是相关的连接。
+		INVALID：无效的连接，如flag标记不正确。
+			比如TCP协议中的6个标记位全为1或全为0都是错误的包。
+		UNTRACKED：未进行追踪的连接，如：raw表中关闭追踪。
 	
 		
 	说明：
 		如果启用了连接跟踪功能模块，在内核里面有一个内存空间可以记录下来连接情况，对应会生成"/proc/net/nf_conntrack"文件，文件会记录连接信息！
 		系统重启，默认情况下连接跟踪功能模块没有加载，使用 iptables 指定 state 模块时(比如 "-m state --state")会自动加载state模块，不需要人为加载。
-		centos6有个BUG，只要一运行iptables命令，比如"iptables -vnL"，就会自动加载 state 模块!
+		Centos6有个BUG，只要一运行iptables命令，比如"iptables -vnL"，就会自动加载 state 模块!
 	
 	
 	
@@ -340,7 +340,7 @@
 	
 	
 	说明：	
-		1)接跟踪，需要加载模块： modprobe nf_conntrack_ipv4
+		1)连接跟踪，需要加载模块： modprobe nf_conntrack_ipv4
 			[root@localhost ~]# lsmod | grep conntrack
 			nf_conntrack_ipv4      15053  0
 			nf_defrag_ipv4         12729  1 nf_conntrack_ipv4
@@ -519,7 +519,7 @@
 	WantedBy=basic.target
 	
 	
-	// 这个文件存的就算系统自带的规则
+	// 这个文件存的就是系统自带的规则
 	[root@localhost ~]# cat /etc/sysconfig/iptables
 	# sample configuration for iptables service
 	# you can edit this manually or use system-config-firewall
@@ -639,7 +639,7 @@
 	
 	
 5.4 自定义链
-	自定义链相当于自定义函数，可以把常用的功能定义成自定义链，之后只可以用内置链调用自定义链！
+	自定义链相当于自定义函数，可以把常用的功能定义成自定义链，之后就可以用内置链调用自定义链！
 	比如往INPUT链中添加很多规则，修改的时候就很不方便，利用自定义链可以把规则分类，相当于规则模块化，在 INPUT 链中就可以引用分类后的模块！
 	
 	链管理相关选项：
@@ -649,9 +649,9 @@
 		-P：Policy，设置默认策略；对filter表中的链而言，其默认策略有：ACCEPT：接受, DROP：丢弃
 	
 	
-	iptables -N web-chain	# 创建一个名为 web-chain 的自定义链！
+	iptables -N web-chain				# 创建一个名为 web-chain 的自定义链
 	
-	iptables -E WEB-CHAIN	# 重命名自定义链，名称一般大写，因为自带的内置链名称也是大写
+	iptables -E web-chain WEB-CHAIN		# 重命名自定义链，名称一般大写，因为自带的内置链名称也是大写
 	
 	iptables -vnL			# 创建自定义链后，默认就会把链加到 filter 表中
 	
