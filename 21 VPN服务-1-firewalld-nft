@@ -136,7 +136,7 @@
 
 
 	示例：
-		//拒绝从192.168.0.100的所有流量，当address 选项使用source 或 destination时，必须用family= ipv4|ipv6
+		//拒绝从192.168.0.100过来的所有流量，当 address 选项使用 source 或 destination 时，必须用family= ipv4|ipv6
 		firewall-cmd --permanent --zone=public --add-rich-rule='rule family=ipv4 source address=192.168.0.100/32 reject'
 		
 		// 限制每分钟只有两个连接到ftp服务，实现限流功能
@@ -160,7 +160,7 @@
 	
 		示例：
 			//接受ssh新连接，记录日志到syslog的notice级别，每分钟最多三条信息
-			firewall-cmd --permanent --zone=work --add-rich-rule='rule service name="ssh" log prefix="ssh " level="notice" limit value="3/m" accept
+			firewall-cmd --permanent --zone=work --add-rich-rule='rule service name="ssh" log prefix="ssh " level="notice" limit value="3/m" accept'
 			
 
 1.3 伪装和端口转发
@@ -208,7 +208,7 @@
 		nft	是用户空间工具，可以替代 iptables 以及其它防火墙工具，功能更加丰富。
 		nft 基于较新内核实现新功能，原因是新底层内核的工作原理和工作框架已经有一些变化，
 		以前的 iptables、ip6tables、arptables、ebtables 框架是独立的，各有个的框架和工具，ntf把这些框架统一起来，用ntf统一管理，ntf相当于是集成工具
-		在 Linux 内核版本高于 3.13 时可用。提供一个新的命令行工具 nft 语法与 iptables 不同。centos7的内核版本是"3.10.0"，所以centos7不支持nft
+		在 Linux 内核版本高于 3.13 时可用。提供一个新的命令行工具 nft，语法与 iptables 不同。centos7的内核版本是"3.10.0"，所以centos7不支持nft
 	
 	nft 相关概念
 		nftables 和 iptables 一样，由表（table）、链（chain）和规则（rule）组成，其中表包含链，链包含规则，规则是真正的 action，
@@ -453,7 +453,7 @@
 	[root@centos8 ~]#nft insert rule inet test_table test_filter_input_chain index 0 ip saddr 10.0.0.7 accept
 
 
-	// 这是 " 10.0.0.7" 主机可以访问http服务，其它主机不行，说明规则也有次序
+	// 这时"10.0.0.7"主机可以访问http服务，其它主机不行，说明规则也有次序
 	
 
 	[root@centos8 ~]#nft list ruleset
