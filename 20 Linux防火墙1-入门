@@ -4,7 +4,7 @@ netfilter
 	Linux内核内置了 netfilter 这个防火墙模块，不仅实现了防火墙功能，还有nat、包的管理功能等！
 	netfilter 是非常重要的技术，比如虚拟化、容器、k8s等，都会接触到Linux防火墙！
 	netfilter 是内核的功能，需要借助用户空间的工具去配置管理linux内核中防火墙，常用的用户空间工具如下：
-		iptables：centos6、7、8 和 Ubuntu 都支持。所以iptables目前是最主流的管理netfilter模块的工具。注意：iptables是防火墙，仅仅是个命令、工具！
+		iptables：centos6、7、8 和 Ubuntu 都支持。所以iptables目前是最主流的管理netfilter模块的工具。注意：iptables不是防火墙，仅仅是个命令、工具！
 		firewalld：centos7、8提供
 		ntf：centos8 提供
 
@@ -110,7 +110,7 @@ iptables
 	......省略
 	
 	
-	// 在centos8上，可以看到软衔接指向的是 xtables-nft-multi，因为centos8上用的工具是nft，但是命令之间的基本用法互相兼容
+	// 在Centos8上，可以看到软衔接指向的是 xtables-nft-multi，因为Centos8上用的工具是nft，但是命令之间的基本用法互相兼容
 	[root@localhost ~]#ll /usr/sbin/iptables
 	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/sbin/iptables -> xtables-multi		
 
@@ -156,7 +156,7 @@ nftables
 	
 
 说明：
-	iptables、firewalld、nftables 这三个工具只使用启动一个，因为功能相同，用两个或三个会冲突
+	iptables、firewalld、nftables 这三个工具只使用其中一个，因为功能相同，用两个或三个会冲突
 	iptables、firewalld、nftables 都是调用的是Linux内核中的 Netfilter 提供的勾子函数(接口)
 	推荐使用 iptables！
 	
@@ -193,11 +193,11 @@ nftables
 	
 	
 iptables的组成
-	ptables由五个表(table)和五个链(chain)以及一些规则组成
+	iptables由五个表(table)和五个链(chain)以及一些规则组成
 		五个表对应的是 filter、nat、mangle、raw、security，这个五个表是从功能上区分！
 		五个链对应的就是五个勾子函数，五个链对应的名称为 INPUT,OUTPUT,FORWARD,PREROUTING,POSTROUTING，和勾子函数同名！
 	
-	ptables的五个表：只需掌握 filter 和 nat 表，其它表很少用
+	iptables的五个表：只需掌握 filter 和 nat 表，其它表很少用
 		filter：过滤规则表，根据预定义的规则过滤符合条件的数据包,默认表。实现拒绝/允许功能！
 		nat：network address translation 地址转换规则表
 		mangle：修改数据标记位规则表。修改报文用，在数据包经过内核的时候，可能会修改里面的内容，比如给报文设置优先级！
@@ -353,14 +353,14 @@ iptables的组成
 
 	// 问题？为什么"192.168.32.100"和"192.168.32.101"访问"192.168.32.99"的结果不一样？
 	// 回答：因为规则有次序，前后的次序决定了处理的次序，按首次匹配的规则处理，匹配后就不会再往下匹配规则！
-	[root@localhost ~]# iptables -vnL --line-numbers			# "--line-numbers"表示显示显示详细的编号，也就是顺序显示，说明规则有前后次序
+	[root@localhost ~]# iptables -vnL --line-numbers			# "--line-numbers"表示显示详细的编号，也就是顺序显示，说明规则有前后次序
 	Chain INPUT (policy ACCEPT 144 packets, 11536 bytes)
 	num   pkts bytes target     prot opt in     out     source               destination
 	1      119  9684 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0
 	2 		32 	4592 REJECT		all  --  *      *		192.168.32.0/24 	 0.0.0.0/0 		reject-with icmp-port-unreachable	
 	......省略
 	说明：
-		"reject-with icmp-port-unreachable"表示如果时icmp报文的包，就返回内容为"unreachable"这样的数据包！
+		"reject-with icmp-port-unreachable"表示如果是icmp报文的包，就返回内容为"unreachable"这样的数据包！
 		iptables 有一个容易犯的错，设置的策略决绝了自己，导致不能通过ssh远程登录，定义规则的时候要小心这个风险！
 	
 	
@@ -379,7 +379,7 @@ iptables的组成
 	......省略
 	
 	
-	// 删除filter表中INPUT链的编号为2的规则, 删除后之前编号为3的规则就变为了2，依次类推！
+	// 删除filter表中INPUT链的编号为2的规则, 删除后之前编号为3的规则就变为了2，依此类推！
 	[root@localhost ~]# iptables -D INPUT 2		# 这里省略了"-t filter", 因为默认使用的就是 filter 表
 	
 	// 删除filter表中INPUT链的所有规则
@@ -527,9 +527,7 @@ iptables的组成
 	// 拒绝来自"192.168.32.101"的icmp报文(也就是ping)
 	[root@localhost ~]#iptables -A INPUT -s 192.168.32.101 -p icmp -j REJECT
 	
-	，只是ping不通，仍然可以用其它网络协议连接，比如使用SSH登录这台主机
-	
-	// "192.168.32.101"这台主机只是ping不通
+	// "192.168.32.101"这台主机只是ping不通，仍然可以用其它网络协议连接，比如使用SSH登录这台主机
 	[root@localhost ~]#ping 192.168.32.100
 	PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.
 	From 192.168.32.100 icmp_seq=1 Destination Port Unreachable
