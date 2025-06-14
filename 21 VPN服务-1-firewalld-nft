@@ -3,7 +3,7 @@
 
 1.1 firewalld
 	firewalld是CentOS 7.0新推出的管理netfilter的用户空间软件工具,也被ubuntu18.04版以上所支持(apt install firewalld安装即可)
-	firewalld是配置和监控防火墙规则的系统守护进程。可以实iptables,ip6tables,ebtables的功能
+	firewalld是配置和监控防火墙规则的系统守护进程。可以实现iptables,ip6tables,ebtables的功能
 	firewalld服务由firewalld包提供
 	firewalld支持划分区域zone,每个zone可以设置独立的防火墙规则
 	
@@ -40,8 +40,8 @@
 	
 	
 	firewalld预定义服务配置
-		firewall-cmd --get-services 查看预定义服务列表
-		/usr/lib/firewalld/services/*.xml预定义服务的配置
+		firewall-cmd --get-services             # 查看预定义服务列表
+		/usr/lib/firewalld/services/*.xml    # 预定义服务的配置
 	
 	
 	firewalld 三种配置方法
@@ -85,10 +85,10 @@
 			
 			
 		示例：永久保存规则并立马生效	
-			firewall-cmd --set-default-zone=dmz		#默认zone设为dmz
-			firewall-cmd --permanent --zone=internal --add-source=192.168.0.0/24		#在internal zone中增加源地址192.168.0.0/24的永久规则
-			firewall-cmd --permanent --zone=internal --add-service=mysql				#在internal zone中增加协议mysql的永久规则
-			firewall-cmd --reload					#加载新规则以生效
+			firewall-cmd --set-default-zone=dmz											# 默认zone设为dmz
+			firewall-cmd --permanent --zone=internal --add-source=192.168.0.0/24		# 在internal zone中增加源地址192.168.0.0/24的永久规则
+			firewall-cmd --permanent --zone=internal --add-service=mysql				# 在internal zone中增加协议mysql的永久规则
+			firewall-cmd --reload														# 加载新规则以生效
 	
 	
 	firewall 图形化操作：
@@ -100,7 +100,8 @@
 		
 	当基本firewalld语法规则不能满足要求时，可以使用以下更复杂的规则
 		rich-rules 富规则，功能强,表达性语言
-		Direct configuration rules 直接规则，灵活性差, 帮助：man 5 firewalld.direct
+		Direct configuration rules 直接规则，灵活性差
+			man 5 firewalld.direct			# 帮助
 
 
 1.2 管理rich规则	
