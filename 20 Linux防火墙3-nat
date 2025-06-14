@@ -158,7 +158,7 @@ NAT应用：
 		" 172.18.1.6-172.18.1.9" 表示 172.18.1.6 到 172.18.1.9 连续4个IP！
 		
 
-7.2 DNAT，配置SNAT,实现的是外网访问内网
+7.2 DNAT，配置DNAT,实现的是外网访问内网
 	DNAT：nat表的target，适用于端口映射，即可重定向到本机，也可以支持重定向至不同主机的不同端口，但不支持多目标，即不支持负载均衡功能
 	DNAT选项：
 		--to-destination [ipaddr[-ipaddr]][:port[-port]]
@@ -173,7 +173,7 @@ NAT应用：
 	
 
 7.3 REDIRECT 转发
-	REDIRECT，是NAT表的 target，通过改变目标IP和端口，将接受的包转发至同一个主机的不同端口，可用于PREROUTING、OUTPUT链
+	REDIRECT，是NAT表的 target，通过改变目标IP和端口，将接收的包转发至同一个主机的不同端口，可用于PREROUTING、OUTPUT链
 	REDIRECT选项：
 		--to-ports port[-port]
 	
