@@ -372,18 +372,18 @@ rsyslog配置文件
 	/var/log/secure：系统安全日志，文本格式，应周期性分析。比如用户账号登录的日志，可以判断系统是否有安全风险
 	/var/log/btmp：当前系统上，用户的失败尝试登录相关的日志信息，二进制格式，lastb 命令进行查看，运行命令就自动读取btmp文件中的内容
 	/var/log/wtmp：当前系统上，用户正常登录系统以及重启的相关日志信息，二进制格式，last 命令可以查看，运行命令就自动读取wtmp文件中的内容
-	/var/log/lastlog:每一个用户最近一次的登录信息，二进制格式，lastlog 命令可以查看，运行命令就自动读取lastlog文件中的内容
+	/var/log/lastlog：每一个用户最近一次的登录信息，二进制格式，lastlog 命令可以查看，运行命令就自动读取lastlog文件中的内容
 	/var/log/dmesg：
 		CentOS7 之前版本系统引导过程中的日志信息(包括硬件信息)，文本格式，开机后的硬件变化将不再记录
 		CentOS8 已经没有这个文件，使用专用命令 dmesg 查看，可持续记录硬件变化的情况，centos7也支持 dmesg 命令  
-	/var/log/boot.log 系统服务启动的相关信息，文本格式。可以看到就是开机启动打印出来的信息！
-	/var/log/messages ：系统中大部分的信息，包含主机日记以及很多服务的日志
-	/var/log/anaconda : 记录的是操作系统安装过程中发生的各种事件日志
-		/var/log/anaconda/packaging.log ：	 
-		/var/log/anaconda/storage.log ： 划分存储的相关信息，包括 grub 的安装信息
+	/var/log/boot.log：系统服务启动的相关信息，文本格式。可以看到就是开机启动打印出来的信息
+	/var/log/messages：系统中大部分的信息，包含主机日记以及很多服务的日志
+	/var/log/anaconda：记录的是操作系统安装过程中发生的各种事件日志
+		/var/log/anaconda/packaging.log：记录安装过程中所有软件包的操作（如安装、卸载、依赖处理等），便于排查安装失败或异常问题
+		/var/log/anaconda/storage.log：划分存储的相关信息，包括 grub 的安装信息
 
 2.3 日志管理工具 journalctl
-	CentOS 7 以后版，利用Systemd 统一管理所有 Unit 的启动日志。带来的好处就是，可以只用 journalctl一个命令，查看所有日志（内核日志和应用日志）
+	CentOS7 以后利用Systemd 统一管理所有 Unit 的启动日志。带来的好处就是，可以只用 journalctl 一个命令，查看所有日志（内核日志和应用日志）
 	journalctl 工具非常强大，本身就带有丰富的过滤日志功能
 	
 	
