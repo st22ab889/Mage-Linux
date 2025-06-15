@@ -571,7 +571,7 @@ rsyslog配置文件
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 3 基于loganalyzer实现日志的web展示
-	loganalyzer是用 php 语言实现的日志管理系统，可将MySQL数据库的日志用丰富的WEB方式进行展示
+	loganalyzer是用 php 语言实现的日志管理系统，可将MySQL数据库的日志用丰富的WEB方式进行展示。这实际上就是LAMP架构！
 	官网：https://loganalyzer.adiscon.com
 
 
