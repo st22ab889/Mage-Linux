@@ -464,7 +464,6 @@ rsyslog配置文件
 	
 
 2.4 把日志数据存储到MySQL数据库
-	php要连接MySQL数据库需要用到 php-mysql(新版本为mysqlnd)包
 	rsyslog的日志记录要存储到MySQL数据库需要用到 rsyslog-mysql
 
 
@@ -554,7 +553,6 @@ rsyslog配置文件
 		mysql> select * from SystemEvents\G;				// "\G"表示垂直顺序显示结果(表中每条记录的每个字段名和其值放在单独一行显示)
 		
 
-
 示例：为了方便阅读，在mysql中，sql语句后面加"\G"表示将查询结果按列打印(也称为"垂直顺序显示")
 	
 	mysql> select * from product\G；
@@ -585,9 +583,9 @@ rsyslog配置文件
 		一台：httpd + php 服务器，并安装loganalyzer展示web图形，IP：10.0.0.38
 
 	
-	
 	在 10.0.0.38 主机上安装httpd, php和相关软件包
-		
+
+		// php要连接MySQL数据库需要用到 php-mysql(新版本为mysqlnd)包
 		// centos8上php默认就是"php-fpm"模式，centos7上默认是模块模式；centos8上装 php-mysqlnd，centos7上装 php-mysql；
 		yum -y install httpd php-fpm php-mysqlnd php-gd				// "php-gd"是用来处理图片，可以用饼状图、柱状图等展示一些统计信息
 		
