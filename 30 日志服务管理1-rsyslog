@@ -511,8 +511,8 @@ rsyslog配置文件
 		[root@centos8 ~]#vim /etc/rsyslog.conf
 		#
 		####MODULES####
-		module(load="ommysql")			# 如果是 CentOS 8 加此行
-		#$ModLoad ommysql				# 如果是 CentOS 7，6 加此行
+		module(load="ommysql")			# 如果是 CentOS8，加此行
+		#$ModLoad ommysql				# 如果是 CentOS6 或 CentOS7，加此行
 		#在RULES语句块加下面行的格式
 		#facility.priority :ommysql:DBHOST,DBNAME,DBUSER, PASSWORD
 		*.info :ommysql:10.0.0.28,Syslog,rsyslog,123456
