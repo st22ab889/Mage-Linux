@@ -122,7 +122,7 @@ rsyslog配置文件
 	
 	/etc/rsyslog.conf 配置文件格式：由三部分组成
 		MODULES：相关模块配置，到底加载哪些模块，和"apache httpd"一样，用到这个功能的时候才加载到内存中
-		GLOBAL： DIRECTIVES：全局配置
+		GLOBAL DIRECTIVES：全局配置
 		RULES：	日志记录相关的规则配置
 	
 	RULES配置格式：
@@ -347,10 +347,10 @@ rsyslog配置文件
 			客户端发过去的日志根据服务器rsyslog的配置将日志保存在对应的文件中。比如服务器配置将日志保存在messages文件，那么客户端发过去的日志也保存在messages文件中
 			客户端的主机名不要和其它客户端的主机名、以及服务端的主机名一样，如果主机名一样就不能区分出日志的来源
 			
-		
+		// 该方法会直接写入 /etc/hostname 文件，并且立刻生效，重启后也生效
 		[root@centos7 ~]#hostnamectl set-hostname client-1.localhost	
 		
-		// 退出重新登录
+		// 上面方式是永久改主机名，所以退出后重新登录也有效
 		[root@centos7 ~]#exit
 		
 		// 重启服务
@@ -511,8 +511,8 @@ rsyslog配置文件
 		[root@centos8 ~]#vim /etc/rsyslog.conf
 		#
 		####MODULES####
-		module(load="ommysql")			#在 MODULES 语言下面，如果是 CentOS 8 加此行
-		#$ModLoad ommysql				#在 MODULES 语言下面，如果是 CentOS 7，6 加此行
+		module(load="ommysql")			# 如果是 CentOS 8 加此行
+		#$ModLoad ommysql				# 如果是 CentOS 7，6 加此行
 		#在RULES语句块加下面行的格式
 		#facility.priority :ommysql:DBHOST,DBNAME,DBUSER, PASSWORD
 		*.info :ommysql:10.0.0.28,Syslog,rsyslog,123456
