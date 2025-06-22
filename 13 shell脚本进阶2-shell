@@ -1034,7 +1034,7 @@ expect最常用的语法(tcl语言:模式-动作)
 				number #要取出的元素个数
 			
 			#取偏移量之后的所有元素
-			{ARRAY[@]:offset}
+			${ARRAY[@]:offset}
 		
 		向数组中追加元素：
 			ARRAY[${#ARRAY[*]}]=value
